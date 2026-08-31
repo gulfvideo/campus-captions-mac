@@ -4,6 +4,7 @@ Endpoints (see docs/MESSAGES.md):
 
     GET  /wall /phone /status      the three pages
     GET  /tune                     build a wall-view URL with sliders
+    GET  /<name>                   any other viewer/<name>.html
     WS   /ws/viewer?role=wall      caption feed
     WS   /ws/source?token=...      capture client, bidirectional
     WS   /ws/status                status page feed
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 import socket
 import time
 from pathlib import Path
@@ -30,6 +32,9 @@ STATUS_PUSH_SECONDS = 0.4
 
 PAGES = {"wall": "wall.html", "phone": "phone.html",
          "status": "status.html", "tune": "tune.html"}
+
+# Only a bare file name may be requested as a page.
+SAFE_PAGE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 # Never cached: ProPresenter can hold a page for the length of an event, and an
 # operator editing query params must always get the current file.
@@ -123,6 +128,28 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.get("/tune")
     async def tune_page() -> FileResponse:
         return page("tune")
+
+    # Any other viewer/*.html, addressed by name. Registered last, so every
+    # explicit route above still wins.
+    #
+    # This exists because HTML is read from disk per request while routes are
+    # registered once at startup: adding a page used to mean editing this file
+    # AND restarting, and the page would appear in a link while 404ing. Now a
+    # new file in viewer/ is reachable immediately.
+    @app.get("/{page}")
+    async def named_page(page: str) -> FileResponse:
+        if not SAFE_PAGE_NAME.match(page):
+            raise HTTPException(status_code=404, detail="not found")
+        name = page if page.endswith(".html") else f"{page}.html"
+        path = config_module.VIEWER_DIR / name
+        try:
+            path.resolve().relative_to(config_module.VIEWER_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not found")
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f"{name} not found")
+        return FileResponse(path, media_type="text/html; charset=utf-8",
+                            headers=NO_STORE)
 
     # -- operator API ----------------------------------------------------
 

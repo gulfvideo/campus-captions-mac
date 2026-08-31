@@ -137,6 +137,7 @@ appears in a config file — that stays in the environment.
 | Endpoint | Purpose |
 |---|---|
 | `GET /wall` `/phone` `/status` `/tune` | the four pages, served `no-store` |
+| `GET /<name>` | any other `viewer/<name>.html`, no code change needed |
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
 | `WS /ws/source?token=…` | capture client, bidirectional |
 | `WS /ws/status` | full status snapshot ~2.5×/second |
@@ -145,6 +146,11 @@ appears in a config file — that stays in the environment.
 
 Pages are served with `no-store`: ProPresenter can hold a page for a whole
 event, and an operator editing query params must always get the current file.
+
+**HTML is read from disk on every request; routes are registered once at
+startup.** So editing `wall.html` takes effect on the next reload, but changing
+anything under `relay/` or `capture/` needs the launcher restarted. Dropping a
+new page into `viewer/` needs neither — it is reachable by name immediately.
 
 ---
 
