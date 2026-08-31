@@ -42,7 +42,9 @@ class MockBackend(ASRBackend):
     def __init__(self, config: dict | None = None):
         super().__init__(config)
         cfg = self.config
-        self.script_path = Path(cfg.get("mock_script", "config/mock_script.txt"))
+        # An empty value in event.toml must fall back, not resolve to "."
+        self.script_path = Path(
+            str(cfg.get("mock_script") or "config/mock_script.txt"))
         self.interim_ms = float(cfg.get("mock_interim_ms", 180))
         self.gap_ms = float(cfg.get("mock_gap_ms", 900))
         self.jitter = float(cfg.get("mock_jitter", 0.35))

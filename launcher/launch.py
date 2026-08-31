@@ -96,11 +96,58 @@ def spawn(python: Path, args: list[str], title: str) -> subprocess.Popen:
     return subprocess.Popen([str(python), "-u", *args], cwd=str(ROOT))
 
 
-def wait_for_relay(port: int) -> bool:
+def port_in_use(port: int) -> bool:
+    """Connect, don't bind.
+
+    A bind probe is wrong on Windows: with SO_REUSEADDR it succeeds even when
+    another process is already listening, so the port looks free when it is not.
+    If a connection is accepted, something is there.
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.8)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def existing_relay(port: int) -> dict | None:
+    """Is the thing on this port one of ours, or someone else's server?"""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status",
+                                    timeout=2) as response:
+            data = json.load(response)
+        return data if "session_id" in data and "relay" in data else None
+    except Exception:
+        return None
+
+
+def port_owner(port: int) -> str:
+    """Best effort name of whatever holds the port, for the error message."""
+    if os.name != "nt":
+        return ""
+    try:
+        out = subprocess.run(["netstat", "-ano"], capture_output=True,
+                             text=True, timeout=5).stdout
+        for line in out.splitlines():
+            if f":{port} " in line and "LISTENING" in line:
+                pid = line.split()[-1]
+                task = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                    capture_output=True, text=True, timeout=5).stdout.strip()
+                name = task.split(",")[0].strip('"') if task else "unknown"
+                return f"{name} (PID {pid})"
+    except Exception:
+        pass
+    return ""
+
+
+def wait_for_relay(port: int, proc: subprocess.Popen) -> bool:
+    """Wait for OUR relay. If it exits, stop waiting - do not adopt another."""
     url = f"http://127.0.0.1:{port}/api/status"
     deadline = time.time() + RELAY_READY_TIMEOUT
     while time.time() < deadline:
-        try:
+        if proc.poll() is not None:
+            return False                      # our relay died; whatever is on
+        try:                                  # that port is not ours
             with urllib.request.urlopen(url, timeout=1.5) as response:
                 json.load(response)
                 return True
@@ -135,14 +182,44 @@ def main() -> int:
     procs: dict[str, subprocess.Popen] = {}
     restarts = {"relay": 0, "capture": 0}
 
+    # Preflight. Starting the relay against an occupied port used to look like
+    # a working system: the launcher found *something* answering on the port,
+    # declared itself ready, and pointed the capture client at a relay that was
+    # not its own while its own relay died over and over.
+    if port_in_use(port):
+        running = existing_relay(port)
+        if running is not None:
+            rule("already running")
+            say(f"Campus Captions is already running on port {port}"
+                f" (session {running.get('session_id')}).")
+            say("Use that one - opening its status page now.")
+            say("\nIf you want a fresh start, close the other Campus Captions")
+            say("window first, then run this again.")
+            try:
+                webbrowser.open(f"http://127.0.0.1:{port}/status")
+            except Exception:
+                pass
+            input("\npress Enter to close this window ")
+            return 0
+
+        owner = port_owner(port)
+        rule("cannot start")
+        say(f"Port {port} is already in use"
+            + (f" by {owner}." if owner else " by another program."))
+        say("\nClose that program, or change the port in config/event.toml:")
+        say("\n    [relay]")
+        say(f"    port = {port + 1}")
+        say("\nIf you change it, the wall and phone URLs change too.")
+        input("\npress Enter to close ")
+        return 1
+
     rule("starting")
     procs["relay"] = spawn(python, ["-m", "relay"], "relay server")
 
-    if not wait_for_relay(port):
-        say("\nthe relay did not start.")
-        say(f"most likely something else is already using port {port}.")
-        say("close the other program, or change the port in config/event.toml.")
-        procs["relay"].terminate()
+    if not wait_for_relay(port, procs["relay"]):
+        say("\nthe relay did not start. its error is above.")
+        if procs["relay"].poll() is None:
+            procs["relay"].terminate()
         input("\npress Enter to close ")
         return 1
 

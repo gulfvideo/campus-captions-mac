@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import math
 import queue
-import sys
+import time
 from dataclasses import dataclass
 
 try:
@@ -33,6 +33,8 @@ except Exception as exc:                       # no PortAudio, headless box, ...
 PREFERRED_RATE = 16000
 BLOCK_MS = 100                                  # 100 ms blocks
 HOSTAPI_PREFERENCE = ("Windows WASAPI", "Windows DirectSound", "MME")
+# A transient glitch should disappear from the status page on its own.
+ERROR_TTL = 6.0
 
 
 @dataclass
@@ -168,13 +170,25 @@ class AudioInput:
         self.level = 0.0
         self.blocks_dropped = 0
         self.blocks_read = 0
+        self.overflows = 0
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=32)
         self._stream = None
         self._error: str | None = None
+        self._error_at = 0.0
+
+    def _note_error(self, message: str) -> None:
+        self._error = message
+        self._error_at = time.monotonic()
 
     def _callback(self, indata, frames, time_info, status) -> None:
         if status:
-            self._error = str(status)
+            # PortAudio glitches are usually a single dropped buffer at startup
+            # or when another app grabs the device. Count them, report them, but
+            # never latch - a stale error on the status page during an event
+            # sends the operator hunting for a problem that already passed.
+            if getattr(status, "input_overflow", False):
+                self.overflows += 1
+            self._note_error(f"audio: {status}")
         try:
             mono = indata[:, 0] if indata.ndim > 1 else indata
             # RMS of int16 normalised to 0..1, for the status page meter.
@@ -185,7 +199,7 @@ class AudioInput:
         except queue.Full:
             self.blocks_dropped += 1
         except Exception as exc:
-            self._error = f"{exc.__class__.__name__}: {exc}"
+            self._note_error(f"{exc.__class__.__name__}: {exc}")
 
     def start(self) -> None:
         self._stream = sd.InputStream(
@@ -194,6 +208,10 @@ class AudioInput:
             samplerate=self.device.sample_rate,
             dtype="int16",
             blocksize=self.block_frames,
+            # Ask PortAudio for generous buffers. Caption latency is dominated
+            # by the ASR service, not by this, and the older Windows host APIs
+            # (MME especially) overflow at low latency settings.
+            latency="high",
             callback=self._callback,
         )
         self._stream.start()
@@ -225,6 +243,8 @@ class AudioInput:
 
     @property
     def error(self) -> str | None:
+        if self._error and (time.monotonic() - self._error_at) > ERROR_TTL:
+            self._error = None
         return self._error
 
 
