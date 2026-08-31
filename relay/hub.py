@@ -88,6 +88,14 @@ class Hub:
         self.finals: dict[str, deque[dict]] = {}
         self.state = RelayState(session_id=self.session_id)
         self.on_event = None          # optional callback(msg) for logging
+        # Called with each committed source-language line. The server uses it to
+        # queue translation; the hub itself stays transport-only and knows
+        # nothing about translation providers.
+        self.on_source_final = None
+        # Extra blocks to merge into every status snapshot. The hub knows
+        # nothing about translation; the server contributes that here so the
+        # websocket feed and the HTTP endpoint cannot drift apart.
+        self.snapshot_extra = None
 
     # -- outbound --------------------------------------------------------
 
@@ -118,6 +126,7 @@ class Hub:
 
         if kind == "final":
             msg["id"] = f"{self.session_id}:{msg['seq']}"
+            msg.setdefault("utterance", msg["id"])
             self._buffer_for(lang).append(msg)
         elif kind == "clear":
             for buffer in self.finals.values():
@@ -131,6 +140,9 @@ class Hub:
                 self.viewers.pop(client.cid, None)
         if self.on_event:
             self.on_event(msg)
+        if (kind == "final" and lang == self.source_language
+                and self.on_source_final):
+            self.on_source_final(msg)
         return msg
 
     def push_status(self) -> None:
@@ -247,7 +259,10 @@ class Hub:
         return counts
 
     def snapshot(self) -> dict:
-        return self.state.snapshot(self.viewer_counts(), self.seq)
+        snap = self.state.snapshot(self.viewer_counts(), self.seq)
+        if self.snapshot_extra:
+            snap.update(self.snapshot_extra())
+        return snap
 
     def heartbeat(self) -> None:
         self.broadcast({

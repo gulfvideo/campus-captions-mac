@@ -33,6 +33,7 @@ class RelayConfig:
     # [languages]
     source_language: str = "en"
     offer_languages: tuple[str, ...] = ()
+    translate_provider: str = "none"
 
     @property
     def token_required(self) -> bool:
@@ -83,6 +84,9 @@ def load(path: Path | None = None) -> RelayConfig:
             offered = langs.get("offer") or []
             if isinstance(offered, list):
                 cfg.offer_languages = tuple(str(x) for x in offered)
+            cfg.translate_provider = str(
+                (data.get("translate", {}) or {}).get("provider",
+                                                      cfg.translate_provider))
 
             cfg.config_path = chosen
         except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:

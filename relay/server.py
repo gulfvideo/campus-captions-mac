@@ -28,6 +28,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import config as config_module
+from . import translate as translate_module
 from .hub import CONTROL_ACTIONS, Client, Hub
 
 HEARTBEAT_SECONDS = 5.0
@@ -72,6 +73,36 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     cfg = cfg or config_module.load()
     hub = Hub(source_language=cfg.source_language)
 
+    targets = [lang for lang in cfg.offer_languages
+               if lang and lang != cfg.source_language]
+    translator = translate_module.create(cfg.translate_provider, targets)
+    worker: translate_module.TranslationWorker | None = None
+
+    def available_languages() -> list[str]:
+        """Only languages that can actually be delivered are advertised, so the
+        phone picker never offers a choice that does nothing."""
+        if worker is None:
+            return [cfg.source_language]
+        return [cfg.source_language] + list(worker.targets)
+
+    if translator is not None:
+        def emit_translation(lang: str, text: str, utterance_id: str) -> None:
+            hub.broadcast({"type": "final", "text": text, "lang": lang,
+                           "utterance": utterance_id})
+
+        worker = translate_module.TranslationWorker(
+            translator, cfg.source_language, targets, emit_translation)
+        hub.on_source_final = lambda msg: worker.submit(
+            msg.get("text", ""), msg.get("id", ""))
+
+    # One definition of the translation block, used by both the websocket feed
+    # and /api/status. Adding it to only one is exactly the bug this avoids.
+    hub.snapshot_extra = lambda: {
+        "translation": (worker.stats() if worker is not None
+                        else {"provider": "none", "targets": []}),
+        "languages": available_languages(),
+    }
+
     async def heartbeat_loop() -> None:
         while True:
             await asyncio.sleep(HEARTBEAT_SECONDS)
@@ -88,6 +119,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             asyncio.create_task(heartbeat_loop()),
             asyncio.create_task(status_loop()),
         ]
+        if worker is not None:
+            worker.start()
         ip = local_ip()
         print(f"[relay] session {hub.session_id}")
         print(f"[relay] wall    http://{ip}:{cfg.port}/wall")
@@ -99,6 +132,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] public  {cfg.public_url}")
         if cfg.is_public:
             print(f"[relay] PUBLIC MODE - operator pages need ?admin={cfg.admin_token}")
+        if worker is not None:
+            print(f"[relay] translating {cfg.source_language} -> "
+                  f"{', '.join(worker.targets)} via {translator.name}")
+        elif targets:
+            print("[relay] translation NOT active - source language only")
         if cfg.token_required:
             print("[relay] source token required")
         try:
@@ -107,6 +145,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            if worker is not None:
+                await worker.stop()
 
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan)
     app.state.hub = hub
@@ -196,7 +236,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "base_url": base,
             "phone_url": base + "/phone",
             "source": cfg.source_language,
-            "available": [cfg.source_language],
+            "available": available_languages(),
             "offered": list(cfg.offer_languages),
         }, headers=NO_STORE)
 
@@ -210,7 +250,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         """
         return JSONResponse({
             "source": cfg.source_language,
-            "available": [cfg.source_language],
+            "available": available_languages(),
             "offered": list(cfg.offer_languages),
         }, headers=NO_STORE)
 

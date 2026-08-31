@@ -162,6 +162,40 @@ Environment always wins, so the launcher can override without editing files:
 `CAPTIONS_HOST`, `CAPTIONS_PORT`, `CAPTIONS_SOURCE_TOKEN`. No Deepgram key ever
 appears in a config file — that stays in the environment.
 
+## Translation
+
+`relay/translate.py`. Azure Translator today; the provider sits behind a
+`Translator` interface, so another service - or a local model - is one new class
+and one line in `create()`.
+
+**Only committed lines are translated.** Interims change several times a second;
+translating them would multiply the bill by roughly twenty and produce text that
+rewrites itself faster than anyone can read. So a viewer watching Spanish sees
+finals only, which is the better reading experience regardless.
+
+Each language is an independent stream with its own replay buffer, and a viewer
+receives only the language it asked for. One source line becomes **one** HTTP
+request covering every target language at once, and identical lines are served
+from a small LRU cache.
+
+Translation is best-effort by construction: the source line has already been
+delivered before anything reaches the translator, so a provider outage degrades
+to source-only rather than losing captions. Failures surface on the status page
+and never touch the source stream.
+
+```toml
+[languages]
+source = "en"
+offer = ["es", "pt", "zh-Hans"]     # this list is the cost lever
+
+[translate]
+provider = "azure"                   # key from AZURE_TRANSLATOR_KEY in .env
+```
+
+The relay advertises only languages it can actually deliver, so the phone
+picker never shows an option that does nothing. With one language it hides
+itself entirely.
+
 ## Relay endpoints
 
 | Endpoint | Purpose |

@@ -406,6 +406,57 @@ as keyword boosting instead, automatically.
 
 ---
 
+## 8b. Languages
+
+Captions can be delivered in more than one language at once. The audience picks
+a language on the phone view; the wall view always shows the source language.
+
+**Set it up once:**
+
+1. Create a **Translator** resource in the Azure portal. The free tier covers
+   2M characters a month, which is far more than a normal event schedule needs.
+2. Put the key in `.env`:
+
+```
+AZURE_TRANSLATOR_KEY=your_key_here
+AZURE_TRANSLATOR_REGION=eastus
+```
+
+`AZURE_TRANSLATOR_REGION` is required for a regional resource and ignored for a
+global one. If the key is missing the relay says so at startup and runs in the
+source language only — it does not fail to start.
+
+3. List the languages in `config/event.toml`:
+
+```toml
+[languages]
+source = "en"
+offer = ["es", "pt", "zh-Hans"]
+
+[translate]
+provider = "azure"
+```
+
+Common codes: `es` Spanish, `pt` Portuguese, `zh-Hans` Simplified Chinese,
+`zh-Hant` Traditional Chinese, `ko` Korean, `vi` Vietnamese, `fr` French.
+Chinese needs the specific variant, not plain `zh`.
+
+**What it costs.** An hour-long event is roughly 45,000 characters. Azure bills
+per *source* character once, no matter how many languages ride along on the same
+request — so three languages costs the same as one. The `offer` list is the
+lever: remove a language and you stop paying for it.
+
+**What the audience sees.** Only committed lines are translated, so a viewer on
+Spanish sees finished sentences rather than words appearing one at a time. That
+is deliberate — translating in-progress text would multiply the bill by about
+twenty and produce text that rewrites itself faster than anyone can read.
+
+**If translation fails mid-event**, captions keep working in the source
+language. The English line is already delivered before translation is attempted.
+The **Languages** tile on the status page turns red and shows the error.
+
+---
+
 ## 9. Pre-event checklist
 
 Roughly 30 minutes before doors.
@@ -437,6 +488,11 @@ Roughly 30 minutes before doors.
 
 - [ ] `http://<relay-ip>:8000/phone` opens on a phone on the venue wifi
 - [ ] URL is printed / on a slide / on a QR card where the audience can see it
+
+**Languages** (only if you offer them)
+
+- [ ] **Languages** tile on the status page is green and lists the right ones
+- [ ] Open the phone view, tap the language button, confirm text appears in each
 
 **Go live**
 

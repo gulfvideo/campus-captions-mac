@@ -143,6 +143,12 @@
     <div class="big"><span class="dot"></span><span id="viewers-count">&mdash;</span></div>
     <div class="sub" id="viewers-sub">&nbsp;</div>
   </div>
+
+  <div class="card" id="c-lang">
+    <h2>Languages</h2>
+    <div class="big"><span class="dot"></span><span id="lang-state">&mdash;</span></div>
+    <div class="sub" id="lang-sub">&nbsp;</div>
+  </div>
 </div>
 
 <div class="controls">
@@ -249,10 +255,34 @@
           (open ? '  ·  connection is billing' : '  ·  not billing') });
 
     var v = s.viewers || {};
+    var byLang = v.by_language || {};
+    var langBits = [];
+    for (var code in byLang) {
+      if (byLang[code]) langBits.push(byLang[code] + ' ' + code);
+    }
     setCard('c-viewers', v.total > 0 ? 'ok' : 'idle',
       { id: 'viewers-count', text: String(v.total || 0) },
       { id: 'viewers-sub', text: (v.wall || 0) + ' wall  ·  ' + (v.phone || 0) +
-          ' phone  ·  ' + (v.status || 0) + ' status' });
+          ' phone  ·  ' + (v.status || 0) + ' status' +
+          (langBits.length ? '  ·  ' + langBits.join(', ') : '') });
+
+    var tr = s.translation || {};
+    var tgt = tr.targets || [];
+    var cls, headline;
+    if (!tgt.length) {
+      cls = 'idle'; headline = 'Source only';
+    } else if (tr.healthy === false) {
+      cls = 'bad'; headline = 'Translation failing';
+    } else {
+      cls = 'ok'; headline = tgt.length + ' extra';
+    }
+    setCard('c-lang', cls,
+      { id: 'lang-state', text: headline },
+      { id: 'lang-sub', text: tgt.length
+          ? (tgt.join(', ') + '  ·  ' + (tr.translated_lines || 0) + ' lines  ·  '
+             + (tr.characters || 0) + ' chars'
+             + (tr.error ? '  ·  ' + String(tr.error).slice(0, 60) : ''))
+          : 'no translation configured' });
 
     $('btn-open').disabled = open || !s.source.connected;
     $('btn-close').disabled = !open || !s.source.connected;

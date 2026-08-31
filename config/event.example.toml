@@ -29,10 +29,24 @@ admin_token = ""
 
 [languages]
 source = "en"
-# Offered in the phone view's picker once translation is configured. The relay
-# advertises only languages it can actually deliver, so listing one here before
-# a translator exists does not put a dead option in front of the audience.
+# Offered in the phone view's picker. The relay advertises only languages it can
+# actually deliver, so a language listed here without a working translator does
+# not put a dead option in front of the audience.
+#
+# This list is also the cost lever: each language here is translated for every
+# committed line while the stream is open. Removing one stops paying for it.
+#   "es" Spanish   "pt" Portuguese   "zh-Hans" Simplified Chinese
+#   "zh-Hant" Traditional Chinese    "ko" Korean   "vi" Vietnamese
 offer = []
+
+[translate]
+# "azure" or "none". The key is read from AZURE_TRANSLATOR_KEY in .env - never
+# from this file. AZURE_TRANSLATOR_REGION is required for a regional resource.
+#
+# Only committed lines are translated, never in-progress ones: interims change
+# several times a second, so translating them would multiply the bill by roughly
+# twenty and produce text that rewrites itself faster than anyone can read.
+provider = "none"
 
 # --- stage 3, not read by the relay ---------------------------------------
 
