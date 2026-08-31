@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=5">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Captions</title>
+<style>
+  :root {
+    --size: 24px;
+    --color: #f2f2f2;
+    --bg: #000000;
+    --dim: #8b8b8b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--color);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    overscroll-behavior: none;
+  }
+
+  /* Connection state, deliberately almost invisible: a hairline at the top
+     edge. Amber while the link is down. The phone view may hint; the wall
+     view may not. */
+  #link {
+    position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 5;
+    background: transparent; transition: background 400ms linear;
+  }
+  #link.down { background: #b8860b; }
+
+  #scroll {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding:
+      calc(env(safe-area-inset-top) + 18px)
+      calc(env(safe-area-inset-right) + 18px)
+      calc(env(safe-area-inset-bottom) + 26px)
+      calc(env(safe-area-inset-left) + 18px);
+  }
+
+  #lines > div {
+    font-size: var(--size);
+    line-height: 1.45;
+    margin: 0 0 0.75em 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  #lines > div.new { animation: fadein 260ms ease-out; }
+  @keyframes fadein { from { opacity: 0.35; } to { opacity: 1; } }
+
+  #interim {
+    font-size: var(--size);
+    line-height: 1.45;
+    color: var(--dim);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    min-height: 1.45em;
+  }
+
+  #latest {
+    position: fixed;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom) + 22px);
+    z-index: 6;
+    padding: 12px 20px;
+    border-radius: 999px;
+    background: #2a2a2a; color: #fff; border: 1px solid #454545;
+    font-size: 16px; font-family: inherit;
+    display: none;
+  }
+  #latest.on { display: block; }
+
+  /* Size cycler. One 44px target, low contrast, bottom right - the only
+     control on the page. */
+  #size {
+    position: fixed;
+    right: calc(env(safe-area-inset-right) + 14px);
+    bottom: calc(env(safe-area-inset-bottom) + 14px);
+    z-index: 6;
+    width: 44px; height: 44px; border-radius: 22px;
+    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.42);
+    border: 0; font-family: inherit; font-size: 17px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #dbg {
+    position: fixed; top: 6px; left: 6px; z-index: 9;
+    font: 11px/1.4 Menlo, Consolas, monospace;
+    color: #0f0; background: rgba(0,0,0,0.85);
+    padding: 5px 7px; white-space: pre; display: none; pointer-events: none;
+  }
+  #dbg.on { display: block; }
+</style>
+</head>
+<body>
+<div id="link"></div>
+<div id="scroll">
+  <div id="lines"></div>
+  <div id="interim"></div>
+</div>
+<button id="latest" type="button">Jump to latest</button>
+<button id="size" type="button" aria-label="Text size">A</button>
+<div id="dbg"></div>
+<script>
+(function () {
+  'use strict';
+
+  var P, cfg, elScroll, elLines, elInterim, elLatest, elSize, elLink, elDbg;
+  var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
+  var sessionId = null, lastSeq = -1, msgCount = 0, lastMsgAt = 0, startedAt = 0;
+  var seenIds = Object.create(null), seenOrder = [], pinned = true, lineCount = 0;
+  var SIZES = [19, 22, 26, 31, 37];
+
+  function now() { return Date.now(); }
+  function log() {
+    try { console.log.apply(console, ['[phone]'].concat([].slice.call(arguments))); } catch (e) {}
+  }
+
+  function num(key, dflt, lo, hi) {
+    var v = parseFloat(P.get(key));
+    if (!isFinite(v)) return dflt;
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+  function hex(key, dflt) {
+    var v = (P.get(key) || '').replace(/^#/, '');
+    return /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? ('#' + v) : dflt;
+  }
+  function flag(key) {
+    var v = P.get(key);
+    return v !== null && v !== '' && v !== '0' && v !== 'false' && v !== 'no';
+  }
+
+  function readConfig() {
+    return {
+      size:  num('size', 24, 12, 64),           // px - phones are read at arm's length
+      color: hex('color', '#f2f2f2'),
+      bg:    hex('bg', '#000000'),
+      lines: Math.round(num('lines', 200, 10, 2000)),  // scrollback cap, bounded DOM
+      debug: flag('debug'),
+      relay: P.get('relay')
+    };
+  }
+
+  // ---- text size, remembered per device ----------------------------------
+
+  function loadSize() {
+    try {
+      var s = parseFloat(localStorage.getItem('cc.size'));
+      if (isFinite(s) && s >= 12 && s <= 64) return s;
+    } catch (e) {}
+    return cfg.size;
+  }
+  function setSize(px) {
+    document.documentElement.style.setProperty('--size', px + 'px');
+    try { localStorage.setItem('cc.size', String(px)); } catch (e) {}
+  }
+  function cycleSize() {
+    var cur = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--size')) || cfg.size;
+    var best = 0, i;
+    for (i = 0; i < SIZES.length; i++) if (Math.abs(SIZES[i] - cur) < Math.abs(SIZES[best] - cur)) best = i;
+    var wasPinned = pinned;
+    setSize(SIZES[(best + 1) % SIZES.length]);
+    if (wasPinned) scrollToBottom();
+  }
+
+  // ---- scroll ------------------------------------------------------------
+
+  function atBottom() {
+    return (elScroll.scrollHeight - elScroll.scrollTop - elScroll.clientHeight) < 90;
+  }
+  function scrollToBottom() {
+    elScroll.scrollTop = elScroll.scrollHeight;
+    pinned = true;
+    elLatest.className = '';
+  }
+  function onScroll() {
+    pinned = atBottom();
+    elLatest.className = pinned ? '' : 'on';
+  }
+
+  // ---- render ------------------------------------------------------------
+
+  function addLine(text, isReplay) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    if (!isReplay) d.className = 'new';
+    elLines.appendChild(d);
+    lineCount++;
+    // Bounded DOM: an all-day service must not grow without limit.
+    while (elLines.childNodes.length > cfg.lines) {
+      elLines.removeChild(elLines.firstChild);
+    }
+    if (pinned) scrollToBottom();
+    else elLatest.className = 'on';
+  }
+
+  function setInterimText(text) {
+    elInterim.textContent = text || '';
+    if (pinned) scrollToBottom();
+  }
+
+  function resetAll() {
+    while (elLines.firstChild) elLines.removeChild(elLines.firstChild);
+    setInterimText('');
+    seenIds = Object.create(null);
+    seenOrder.length = 0;
+    lineCount = 0;
+    scrollToBottom();
+  }
+
+  // Dedupe committed lines across reconnects, with a bounded id table.
+  function seen(id) {
+    if (!id) return false;
+    if (seenIds[id]) return true;
+    seenIds[id] = 1;
+    seenOrder.push(id);
+    if (seenOrder.length > 600) {
+      var drop = seenOrder.splice(0, 300);
+      for (var i = 0; i < drop.length; i++) delete seenIds[drop[i]];
+    }
+    return false;
+  }
+
+  // ---- websocket ---------------------------------------------------------
+
+  function wsUrl() {
+    var host = cfg.relay || location.host;
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (!host) { host = 'localhost:8000'; proto = 'ws:'; }
+    return proto + '//' + host + '/ws/viewer?role=phone';
+  }
+
+  function setLink(up) {
+    elLink.className = up ? '' : 'down';
+  }
+
+  function connect() {
+    log('connect', wsUrl(), 'attempt', attempts);
+    try {
+      sock = new WebSocket(wsUrl());
+    } catch (e) {
+      sock = null;
+      scheduleReconnect();
+      return;
+    }
+    sock.onopen = function () {
+      attempts = 0;
+      lastMsgAt = now();
+      setLink(true);
+      log('open');
+    };
+    sock.onmessage = onMessage;
+    sock.onclose = teardown;
+    sock.onerror = teardown;
+  }
+
+  function teardown() {
+    if (sock) {
+      sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null;
+      try { sock.close(); } catch (e) {}
+      sock = null;
+    }
+    setLink(false);
+    setInterimText('');        // an in-progress line is not trustworthy once the link drops
+    scheduleReconnect();
+  }
+
+  function scheduleReconnect() {
+    if (reconnTimer) return;
+    attempts++;
+    var base = Math.min(10000, 500 * Math.pow(2, Math.min(attempts, 6)));
+    lastDelay = Math.round(base * (0.75 + Math.random() * 0.5));
+    reconnTimer = setTimeout(function () {
+      reconnTimer = null;
+      connect();
+    }, lastDelay);
+  }
+
+  function onMessage(ev) {
+    lastMsgAt = now();
+    msgCount++;
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (!m || typeof m.type !== 'string') return;
+
+    if (m.type === 'hello') {
+      if (sessionId && m.session_id !== sessionId) {
+        log('new session', m.session_id, '- clearing scrollback');
+        resetAll();
+      }
+      sessionId = m.session_id || null;
+      lastSeq = -1;
+      return;
+    }
+    if (typeof m.seq === 'number') {
+      if (m.seq <= lastSeq) return;
+      lastSeq = m.seq;
+    }
+    switch (m.type) {
+      case 'interim':
+        setInterimText(m.text || '');
+        break;
+      case 'final':
+        if (seen(m.id)) { setInterimText(''); break; }
+        if (m.text) addLine(m.text, !!m.replay);
+        setInterimText('');
+        break;
+      case 'clear':
+        resetAll();
+        break;
+      case 'heartbeat':
+        if (m.session_id && sessionId && m.session_id !== sessionId) {
+          sessionId = m.session_id;
+          resetAll();
+        }
+        break;
+      default: break;
+    }
+  }
+
+  // ---- screen wake -------------------------------------------------------
+  // Phones sleeping mid-service is the top complaint about a view like this.
+  // Best effort, silent if unsupported.
+
+  var wakeLock = null;
+  function requestWake() {
+    try {
+      if (!navigator.wakeLock || wakeLock) return;
+      navigator.wakeLock.request('screen').then(function (l) {
+        wakeLock = l;
+        l.addEventListener('release', function () { wakeLock = null; });
+      })['catch'](function () {});
+    } catch (e) {}
+  }
+
+  // ---- single timer ------------------------------------------------------
+
+  var WS_NAMES = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+  function tick() {
+    var n = now();
+    if (sock && sock.readyState === 1 && (n - lastMsgAt) > 20000) {
+      // Heartbeats are every 5s; 20s of silence means the link is dead even
+      // though the socket has not noticed yet.
+      log('stale link, forcing reconnect');
+      teardown();
+    }
+    if (cfg.debug) {
+      elDbg.textContent =
+        'ws       ' + (sock ? WS_NAMES[sock.readyState] : 'none') + '\n' +
+        'session  ' + (sessionId || '-') + '\n' +
+        'seq      ' + lastSeq + '  msgs ' + msgCount + '\n' +
+        'last     ' + ((n - lastMsgAt) / 1000).toFixed(1) + 's ago\n' +
+        'lines    ' + elLines.childNodes.length + '/' + cfg.lines +
+          '  total ' + lineCount + '\n' +
+        'pinned   ' + pinned + '  attempts ' + attempts + '\n' +
+        'uptime   ' + ((n - startedAt) / 1000).toFixed(0) + 's';
+    }
+  }
+
+  // ---- boot --------------------------------------------------------------
+
+  function boot() {
+    P = new URLSearchParams(location.search);
+    cfg = readConfig();
+    elScroll = document.getElementById('scroll');
+    elLines = document.getElementById('lines');
+    elInterim = document.getElementById('interim');
+    elLatest = document.getElementById('latest');
+    elSize = document.getElementById('size');
+    elLink = document.getElementById('link');
+    elDbg = document.getElementById('dbg');
+
+    document.documentElement.style.setProperty('--color', cfg.color);
+    document.documentElement.style.setProperty('--bg', cfg.bg);
+    setSize(loadSize());
+    if (cfg.debug) elDbg.className = 'on';
+
+    elScroll.addEventListener('scroll', onScroll, { passive: true });
+    elLatest.addEventListener('click', scrollToBottom);
+    elSize.addEventListener('click', cycleSize);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { requestWake(); if (pinned) scrollToBottom(); }
+    });
+
+    startedAt = lastMsgAt = now();
+    setLink(false);
+    requestWake();
+    connect();
+    setInterval(tick, 1000);
+    log('booted', cfg);
+  }
+
+  try {
+    boot();
+  } catch (e) {
+    try { console.error('[phone] boot failed', e); } catch (e2) {}
+  }
+})();
+</script>
+</body>
+</html>

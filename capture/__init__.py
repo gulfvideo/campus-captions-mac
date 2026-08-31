@@ -1,0 +1,1 @@
+"""Campus Captions capture client."""

@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Captions</title>
+<style>
+  :root {
+    --size: 6.5vh;
+    --lh: 1.28;
+    --color: #ffffff;
+    --bar: rgba(0,0,0,0.85);
+    --pad: 2vh;
+    --radius: 1.5vh;
+    --width: 86vw;
+    --bottom: 9vh;
+    --fade: 600ms;
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden;
+  }
+  body { cursor: none; -webkit-user-select: none; user-select: none; }
+
+  #bar {
+    position: fixed;
+    left: 50%;
+    bottom: var(--bottom);
+    width: var(--width);
+    box-sizing: border-box;
+    padding: var(--pad) calc(var(--pad) * 1.4);
+    background: var(--bar);
+    border-radius: var(--radius);
+    transform: translateX(-50%) translateZ(0);
+    opacity: 0;
+    transition: opacity var(--fade) linear;
+    will-change: opacity;
+  }
+  #bar.on { opacity: 1; }
+
+  .line {
+    display: block;
+    height: calc(var(--size) * var(--lh));
+    line-height: calc(var(--size) * var(--lh));
+    font-size: var(--size);
+    font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--color);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #dbg {
+    position: fixed; top: 0; left: 0; z-index: 99;
+    font: 12px/1.45 Menlo, Consolas, monospace;
+    color: #0f0; background: rgba(0,0,0,0.8);
+    padding: 6px 9px; white-space: pre; display: none;
+    pointer-events: none;
+  }
+  #dbg.on { display: block; }
+</style>
+</head>
+<body>
+<div id="bar"><span class="line" id="l0"></span><span class="line" id="l1"></span></div>
+<div id="dbg"></div>
+<script>
+(function () {
+  'use strict';
+
+  // Nothing in here may ever paint a message. Every failure path ends in an
+  // empty transparent page plus a console line.
+
+  var P, cfg, elBar, elTop, elBot, elDbg;
+  var top = '', bot = '', awaitNewLine = false;
+  var barOn = false, lastTextAt = 0, lastMsgAt = 0, startedAt = 0;
+  var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
+  var sessionId = null, lastSeq = -1, msgCount = 0, clipped = false;
+  var mode = 'live';
+
+  function now() { return Date.now(); }
+  function log() {
+    try { console.log.apply(console, ['[wall]'].concat([].slice.call(arguments))); } catch (e) {}
+  }
+
+  // ---- query params ------------------------------------------------------
+
+  function num(key, dflt, lo, hi) {
+    var v = parseFloat(P.get(key));
+    if (!isFinite(v)) return dflt;
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    return v;
+  }
+  function hex(key, dflt) {
+    var v = (P.get(key) || '').replace(/^#/, '');
+    return /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? ('#' + v) : dflt;
+  }
+  function flag(key) {
+    var v = P.get(key);
+    return v !== null && v !== '' && v !== '0' && v !== 'false' && v !== 'no';
+  }
+  function rgba(hexColor, alpha) {
+    var h = hexColor.replace('#', '');
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+  }
+
+  function readConfig() {
+    return {
+      size:     num('size', 6.5, 1, 40),          // vh
+      bottom:   num('bottom', 9, 0, 90),          // vh
+      width:    num('width', 86, 10, 100),        // vw
+      pad:      num('pad', 2, 0, 12),             // vh
+      radius:   num('radius', 1.5, 0, 20),        // vh
+      opacity:  num('opacity', 0.85, 0, 1),
+      bar:      hex('bar', '#000000'),
+      color:    hex('color', '#ffffff'),
+      idle:     num('idle', 5, 0, 3600),          // seconds, 0 = never fade
+      fade:     num('fade', 600, 0, 10000),       // ms
+      maxchars: Math.round(num('maxchars', 42, 8, 200)),
+      watchdog: num('watchdog', 120, 10, 86400),  // seconds dead before reload
+      debug:    flag('debug'),
+      text:     P.get('text'),
+      soak:     P.get('soak'),
+      relay:    P.get('relay')
+    };
+  }
+
+  function applyStyle() {
+    var r = document.documentElement.style;
+    r.setProperty('--size', cfg.size + 'vh');
+    r.setProperty('--bottom', cfg.bottom + 'vh');
+    r.setProperty('--width', cfg.width + 'vw');
+    r.setProperty('--pad', cfg.pad + 'vh');
+    r.setProperty('--radius', cfg.radius + 'vh');
+    r.setProperty('--fade', cfg.fade + 'ms');
+    r.setProperty('--color', cfg.color);
+    r.setProperty('--bar', rgba(cfg.bar, cfg.opacity));
+  }
+
+  // ---- text shaping ------------------------------------------------------
+
+  // Split a committed line into pieces that each fit maxchars, on word
+  // boundaries. Only finals go through this - it is the only line break.
+  function chunk(text, max) {
+    var out = [], cur = '';
+    var words = String(text).replace(/\s+/g, ' ').replace(/^ | $/g, '').split(' ');
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      if (!w) continue;
+      while (w.length > max) {                  // a token longer than a whole line
+        if (cur) { out.push(cur); cur = ''; }
+        out.push(w.slice(0, max));
+        w = w.slice(max);
+      }
+      if (!cur) cur = w;
+      else if (cur.length + 1 + w.length <= max) cur += ' ' + w;
+      else { out.push(cur); cur = w; }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  // An interim may not reflow or break, so when it outgrows the line we show
+  // its tail - the words just spoken - cut at a word boundary.
+  function tail(text, max) {
+    var t = String(text).replace(/\s+/g, ' ').replace(/^ | $/g, '');
+    if (t.length <= max) return t;
+    t = t.slice(t.length - max);
+    var sp = t.indexOf(' ');
+    return sp >= 0 ? t.slice(sp + 1) : t;
+  }
+
+  // ---- render ------------------------------------------------------------
+
+  function paint() {
+    elTop.textContent = top;
+    elBot.textContent = bot;
+    if (cfg.debug) {
+      clipped = elBot.scrollWidth > elBot.clientWidth || elTop.scrollWidth > elTop.clientWidth;
+    }
+  }
+  function wake() {
+    lastTextAt = now();
+    if (!barOn) { barOn = true; elBar.className = 'on'; }
+  }
+  function hideBar() {
+    if (barOn) { barOn = false; elBar.className = ''; }
+  }
+  function resetLines() {
+    top = ''; bot = ''; awaitNewLine = false;
+    paint();
+    hideBar();
+  }
+
+  function onInterim(text) {
+    var t = tail(text, cfg.maxchars);
+    if (!t) return;
+    if (awaitNewLine) { top = bot; awaitNewLine = false; }
+    bot = t;
+    paint();
+    wake();
+  }
+
+  function onFinal(text) {
+    var parts = chunk(text, cfg.maxchars);
+    if (!parts.length) return;
+    for (var i = 0; i < parts.length; i++) {
+      if (i === 0 && !awaitNewLine) {
+        bot = parts[0];               // the final commits the line already showing
+      } else {
+        top = bot; bot = parts[i];    // push the older line up and out
+      }
+    }
+    awaitNewLine = true;
+    paint();
+    wake();
+  }
+
+  // ---- websocket ---------------------------------------------------------
+
+  function wsUrl() {
+    var host = cfg.relay || location.host;
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (!host) { host = 'localhost:8000'; proto = 'ws:'; }   // opened as file://
+    return proto + '//' + host + '/ws/viewer?role=wall';
+  }
+
+  function connect() {
+    var url = wsUrl();
+    log('connect', url, 'attempt', attempts);
+    try {
+      sock = new WebSocket(url);
+    } catch (e) {
+      log('ctor failed', e);
+      sock = null;
+      scheduleReconnect();
+      return;
+    }
+    sock.onopen = function () {
+      attempts = 0;
+      lastMsgAt = now();
+      log('open');
+    };
+    sock.onmessage = onMessage;
+    sock.onclose = teardown;
+    sock.onerror = teardown;
+  }
+
+  function teardown() {
+    if (sock) {
+      // drop handlers so a late error/close cannot schedule a second reconnect
+      sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null;
+      try { sock.close(); } catch (e) {}
+      sock = null;
+    }
+    scheduleReconnect();
+  }
+
+  function scheduleReconnect() {
+    if (reconnTimer) return;
+    attempts++;
+    var base = Math.min(10000, 500 * Math.pow(2, Math.min(attempts, 6)));
+    lastDelay = Math.round(base * (0.75 + Math.random() * 0.5));   // jitter +/-25%
+    log('reconnect in', lastDelay, 'ms');
+    reconnTimer = setTimeout(function () {
+      reconnTimer = null;
+      connect();
+    }, lastDelay);
+  }
+
+  function onMessage(ev) {
+    lastMsgAt = now();
+    msgCount++;
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (!m || typeof m.type !== 'string') return;
+
+    if (m.type === 'hello') {
+      if (sessionId && m.session_id !== sessionId) {
+        log('new session', m.session_id, '- resetting');
+        resetLines();
+      }
+      sessionId = m.session_id || null;
+      lastSeq = -1;                        // the replay burst carries older seqs
+      return;
+    }
+    if (typeof m.seq === 'number') {
+      if (m.seq <= lastSeq) return;        // dupe or out of order
+      lastSeq = m.seq;
+    }
+    switch (m.type) {
+      case 'interim':   onInterim(m.text || ''); break;
+      case 'final':     onFinal(m.text || ''); break;
+      case 'clear':     resetLines(); break;
+      case 'heartbeat':
+        if (m.session_id && sessionId && m.session_id !== sessionId) {
+          sessionId = m.session_id;
+          resetLines();
+        }
+        break;
+      default: break;                      // unknown types ignored, silently
+    }
+  }
+
+  // ---- soak generator ----------------------------------------------------
+  // Synthetic captions on a single chained timeout - never more than one timer
+  // pending, no array that grows. Runs indefinitely.
+
+  var SOAK_WORDS = ('the campus chapel service continues this morning with a reading ' +
+    'from the second letter to the church at corinth followed by remarks from the ' +
+    'dean of students about the upcoming semester schedule and a reminder that the ' +
+    'library will keep extended hours through the end of examination week thank you').split(' ');
+
+  function startSoak(rate) {
+    var interimMs = Math.max(40, 200 / (rate || 1));
+    var wordAt = 0, built = '', wordsThisLine = 0, target = 6, lineCount = 0;
+    function step() {
+      built = built ? built + ' ' + SOAK_WORDS[wordAt] : SOAK_WORDS[wordAt];
+      wordAt = (wordAt + 1) % SOAK_WORDS.length;
+      wordsThisLine++;
+      if (wordsThisLine >= target) {
+        onFinal(built.charAt(0).toUpperCase() + built.slice(1) + '.');
+        built = ''; wordsThisLine = 0;
+        target = 5 + Math.floor(Math.random() * 8);
+        lineCount++;
+        if (lineCount % 40 === 0) resetLines();     // exercise the clear path too
+        setTimeout(step, interimMs * 6);
+      } else {
+        onInterim(built);
+        setTimeout(step, interimMs);
+      }
+    }
+    log('soak mode, rate', rate || 1);
+    step();
+  }
+
+  // ---- the single timer --------------------------------------------------
+
+  function tick() {
+    var n = now();
+    if (cfg.idle > 0 && barOn && (n - lastTextAt) > cfg.idle * 1000) hideBar();
+    if (mode === 'live' && (n - lastMsgAt) > cfg.watchdog * 1000) {
+      log('watchdog: no traffic for', cfg.watchdog, 's - reloading');
+      try { location.reload(); } catch (e) {}
+      return;
+    }
+    if (cfg.debug) paintDebug(n);
+  }
+
+  var WS_NAMES = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+  function paintDebug(n) {
+    var st = sock ? (WS_NAMES[sock.readyState] || sock.readyState) : 'none';
+    elDbg.textContent =
+      'mode      ' + mode + '\n' +
+      'ws        ' + st + '  ' + (mode === 'live' ? wsUrl() : '-') + '\n' +
+      'session   ' + (sessionId || '-') + '\n' +
+      'seq       ' + lastSeq + '   msgs ' + msgCount + '\n' +
+      'last msg  ' + ((n - lastMsgAt) / 1000).toFixed(1) + 's ago\n' +
+      'attempts  ' + attempts + '   next backoff ' + lastDelay + 'ms\n' +
+      'bar       ' + (barOn ? 'visible' : 'faded') +
+        '   idle ' + ((n - lastTextAt) / 1000).toFixed(1) + 's\n' +
+      'maxchars  ' + cfg.maxchars + (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
+      'size      ' + cfg.size + 'vh   width ' + cfg.width + 'vw\n' +
+      'uptime    ' + ((n - startedAt) / 1000).toFixed(0) + 's';
+  }
+
+  // ---- boot --------------------------------------------------------------
+
+  function boot() {
+    P = new URLSearchParams(location.search);
+    cfg = readConfig();
+    elBar = document.getElementById('bar');
+    elTop = document.getElementById('l0');
+    elBot = document.getElementById('l1');
+    elDbg = document.getElementById('dbg');
+    applyStyle();
+    if (cfg.debug) { elDbg.className = 'on'; document.body.style.cursor = 'default'; }
+    startedAt = lastMsgAt = lastTextAt = now();
+
+    if (cfg.text !== null) {
+      mode = 'text';          // framing mode: static text, no socket, no fade
+      cfg.idle = 0;
+      onFinal(cfg.text);
+      wake();
+    } else if (cfg.soak !== null) {
+      mode = 'soak';
+      startSoak(parseFloat(cfg.soak) || 1);
+    } else {
+      connect();
+    }
+    setInterval(tick, 250);   // the only interval on the page
+    log('booted', cfg);
+  }
+
+  try {
+    boot();
+  } catch (e) {
+    // Last resort: leave the page blank and transparent. Never paint an error.
+    try { console.error('[wall] boot failed', e); } catch (e2) {}
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# Exact versions installed and tested on Python 3.14.6 / Windows 11.
+# Every one of these had a cp314 wheel, so no build tools are needed.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# There is no Deepgram SDK here on purpose: the backend speaks Deepgram's
+# streaming websocket directly through `websockets`, which keeps the connection
+# lifecycle explicit and avoids the SDK's own transitive pins.
+
+# --- direct ---------------------------------------------------------------
+fastapi==0.141.1
+uvicorn==0.52.4
+websockets==17.1
+sounddevice==0.5.6         # PortAudio binding; the wheel bundles PortAudio
+numpy==2.5.2               # RMS level metering on the audio callback
+
+# --- pulled in by the above, pinned so a rebuild on show day is identical --
+PyYAML==6.0.3
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+cffi==2.1.1
+click==8.5.0
+h11==0.16.0
+httptools==0.8.0
+idna==3.19
+pycparser==3.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+python-dotenv==1.2.3
+starlette==1.6.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+watchfiles==1.2.0

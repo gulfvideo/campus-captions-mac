@@ -1,0 +1,23 @@
+# Copy to config/event.toml and edit. config/event.toml is gitignored, so the
+# real one never lands in the repo.
+
+[relay]
+host = "0.0.0.0"          # all interfaces, so phones on the LAN can connect
+port = 8000
+# Shared secret the capture client must send on /ws/source. Empty = no token,
+# which is fine on a closed booth network. This is not a Deepgram key; that
+# lives in the environment only, never in this file.
+source_token = ""
+
+# --- stage 3, not read by the relay ---------------------------------------
+
+[capture]
+backend = "mock"                                   # mock | deepgram
+device = ""                                        # index or name substring
+relay_url = "ws://127.0.0.1:8000/ws/source"
+mock_script = "config/mock_script.txt"
+
+[deepgram]
+model = "nova-3"
+language = "en-US"
+keyterms_file = "config/keyterms.txt"

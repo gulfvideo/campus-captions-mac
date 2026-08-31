@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Captions status</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1e2127;
+    --edge: #2c313a;
+    --text: #eceff4;
+    --dim: #939bab;
+    --ok: #3fbf6f;
+    --warn: #d8a33a;
+    --bad: #d95c5c;
+    --idle: #5a6270;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    padding: 22px;
+  }
+  h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  header .meta { color: var(--dim); font-size: 13px; }
+
+  .grid {
+    display: grid; gap: 14px; margin-bottom: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 12px; padding: 17px 19px 19px;
+  }
+  .card h2 {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--dim); margin: 0 0 12px;
+  }
+  .big { font-size: 30px; font-weight: 650; line-height: 1.15; }
+  .sub { color: var(--dim); font-size: 13.5px; margin-top: 7px; min-height: 1.4em; }
+
+  .dot {
+    display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--idle); margin-right: 10px; vertical-align: baseline;
+  }
+  .ok .dot { background: var(--ok); }
+  .warn .dot { background: var(--warn); }
+  .bad .dot { background: var(--bad); }
+  .ok .big { color: var(--ok); }
+  .warn .big { color: var(--warn); }
+  .bad .big { color: var(--bad); }
+
+  /* input level */
+  .meter {
+    height: 15px; background: #0e1013; border-radius: 8px;
+    overflow: hidden; margin-top: 15px; position: relative;
+  }
+  .meter i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--ok), #86cf5a 72%, var(--warn) 88%, var(--bad));
+    transition: width 120ms linear;
+  }
+  .meter b {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: rgba(255,255,255,.55); left: 0;
+    transition: left 260ms ease-out;
+  }
+  .scale {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--dim); margin-top: 5px;
+  }
+
+  .controls { display: flex; gap: 11px; flex-wrap: wrap; margin-bottom: 18px; }
+  button {
+    font: inherit; font-weight: 600; font-size: 15px;
+    padding: 13px 21px; border-radius: 10px;
+    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  }
+  button:hover:not(:disabled) { background: #2f353f; }
+  button:disabled { opacity: .38; }
+  button.go { background: #1f6b3d; border-color: #2b8a51; }
+  button.go:hover:not(:disabled) { background: #248049; }
+  button.stop { background: #7a2f2f; border-color: #9a3d3d; }
+  button.stop:hover:not(:disabled) { background: #8d3737; }
+
+  .links { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+  .link {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 10px; padding: 13px 16px;
+  }
+  .link span { display: block; font-size: 11.5px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: .11em; margin-bottom: 5px; }
+  .link code { font-size: 17px; color: var(--text); word-break: break-all; }
+
+  .last {
+    margin-top: 16px; background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 10px; padding: 13px 16px; color: var(--dim); font-size: 14px;
+  }
+  .last b { color: var(--text); font-weight: 500; }
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
+    padding: 11px 19px; border-radius: 9px; font-size: 14px;
+    opacity: 0; transition: opacity 220ms; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Campus Captions</h1>
+  <div class="meta" id="meta">connecting to relay&hellip;</div>
+</header>
+
+<div class="grid">
+  <div class="card" id="c-audio">
+    <h2>Audio input</h2>
+    <div class="big"><span class="dot"></span><span id="audio-state">&mdash;</span></div>
+    <div class="sub" id="audio-sub">&nbsp;</div>
+    <div class="meter"><i id="meter-fill"></i><b id="meter-peak"></b></div>
+    <div class="scale"><span>silent</span><span>good</span><span>hot</span></div>
+  </div>
+
+  <div class="card" id="c-asr">
+    <h2>Captions</h2>
+    <div class="big"><span class="dot"></span><span id="asr-state">&mdash;</span></div>
+    <div class="sub" id="asr-sub">&nbsp;</div>
+  </div>
+
+  <div class="card" id="c-stream">
+    <h2>ASR stream</h2>
+    <div class="big"><span class="dot"></span><span id="stream-state">&mdash;</span></div>
+    <div class="sub" id="stream-sub">&nbsp;</div>
+  </div>
+
+  <div class="card" id="c-viewers">
+    <h2>Viewers</h2>
+    <div class="big"><span class="dot"></span><span id="viewers-count">&mdash;</span></div>
+    <div class="sub" id="viewers-sub">&nbsp;</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btn-open" class="go">Open ASR stream</button>
+  <button id="btn-close" class="stop">Close ASR stream</button>
+  <button id="btn-clear">Clear captions</button>
+  <button id="btn-keyterms">Reload keyterms</button>
+</div>
+
+<div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
+
+<div class="links" style="margin-top:18px">
+  <div class="link"><span>Wall view &mdash; ProPresenter</span><code id="url-wall">&mdash;</code></div>
+  <div class="link"><span>Phone view &mdash; audience</span><code id="url-phone">&mdash;</code></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var sock = null, reconnTimer = null, attempts = 0, lastSnap = null, lastMsgAt = 0;
+
+  function $(id) { return document.getElementById(id); }
+  function setCard(id, cls, big, sub) {
+    var card = $(id);
+    card.className = 'card ' + cls;
+    $(big.id).textContent = big.text;
+    $(sub.id).textContent = sub.text;
+  }
+  function toast(text) {
+    var t = $('toast');
+    t.textContent = text;
+    t.className = 'on';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = ''; }, 2600);
+  }
+  function ago(v) {
+    if (v === null || v === undefined) return 'never';
+    if (v < 1) return 'just now';
+    if (v < 60) return Math.round(v) + 's ago';
+    return Math.round(v / 60) + 'm ago';
+  }
+
+  // ---- rendering -------------------------------------------------------
+
+  var AUDIO = {
+    live:      ['ok',   'Receiving'],
+    silent:    ['warn', 'Silent'],
+    stale:     ['bad',  'Capture stalled'],
+    no_source: ['bad',  'No capture client']
+  };
+  var ASR = {
+    producing:    ['ok',   'Producing text'],
+    open_no_text: ['warn', 'Open, no text yet'],
+    closed:       ['idle', 'Stream closed'],
+    no_source:    ['bad',  'No capture client']
+  };
+
+  var peakHold = 0, peakAt = 0;
+
+  function render(s) {
+    lastSnap = s;
+
+    var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
+    setCard('c-audio', a[0],
+      { id: 'audio-state', text: a[1] },
+      { id: 'audio-sub', text: s.source.device
+          ? s.source.device + '  ·  peak ' + ago(s.audio.age)
+          : (s.source.connected ? 'no device reported' : 'start the capture client') });
+
+    // Perceptual-ish scaling: a linear RMS bar sits near zero for normal speech.
+    // The fill uses the smoothed level so it does not collapse between words;
+    // the tick is the instantaneous peak, held briefly, so transients show.
+    var smoothed = (s.audio.smoothed === undefined) ? s.audio.level : s.audio.smoothed;
+    var pct = Math.min(100, Math.sqrt(smoothed) * 118);
+    var inst = Math.min(100, Math.sqrt(s.audio.level) * 118);
+    $('meter-fill').style.width = pct.toFixed(1) + '%';
+    var now = Date.now();
+    if (inst >= peakHold || (now - peakAt) > 2500) { peakHold = inst; peakAt = now; }
+    $('meter-peak').style.left = peakHold.toFixed(1) + '%';
+
+    var r = ASR[s.asr.state] || ['bad', s.asr.state];
+    setCard('c-asr', r[0],
+      { id: 'asr-state', text: r[1] },
+      { id: 'asr-sub', text: s.asr.finals + ' lines  ·  last ' + ago(s.asr.last_final_age) });
+
+    var open = s.asr.stream_open;
+    setCard('c-stream', open ? 'ok' : 'idle',
+      { id: 'stream-state', text: open ? 'OPEN' : 'Closed' },
+      { id: 'stream-sub', text: (s.source.backend || 'no backend') +
+          (open ? '  ·  connection is billing' : '  ·  not billing') });
+
+    var v = s.viewers || {};
+    setCard('c-viewers', v.total > 0 ? 'ok' : 'idle',
+      { id: 'viewers-count', text: String(v.total || 0) },
+      { id: 'viewers-sub', text: (v.wall || 0) + ' wall  ·  ' + (v.phone || 0) +
+          ' phone  ·  ' + (v.status || 0) + ' status' });
+
+    $('btn-open').disabled = open || !s.source.connected;
+    $('btn-close').disabled = !open || !s.source.connected;
+    $('btn-keyterms').disabled = !s.source.connected;
+
+    $('last-line').innerHTML = 'Last caption: <b></b>';
+    $('last-line').getElementsByTagName('b')[0].textContent =
+      s.asr.last_final_text || '—';
+
+    var err = s.source.error;
+    $('meta').textContent = 'session ' + s.session_id +
+      '  ·  up ' + Math.round(s.uptime / 60) + 'm' +
+      (err ? '  ·  capture reports: ' + err : '');
+  }
+
+  function renderOffline() {
+    ['c-audio', 'c-asr', 'c-stream', 'c-viewers'].forEach(function (id) {
+      $(id).className = 'card bad';
+    });
+    $('audio-state').textContent = 'Relay unreachable';
+    $('asr-state').textContent = '—';
+    $('stream-state').textContent = '—';
+    $('viewers-count').textContent = '—';
+    $('meta').textContent = 'relay unreachable — retrying';
+    $('btn-open').disabled = $('btn-close').disabled = $('btn-keyterms').disabled = true;
+  }
+
+  // ---- transport -------------------------------------------------------
+
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var host = location.host || 'localhost:8000';
+    try {
+      sock = new WebSocket(proto + '//' + host + '/ws/status');
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+    sock.onopen = function () { attempts = 0; lastMsgAt = Date.now(); };
+    sock.onmessage = function (ev) {
+      lastMsgAt = Date.now();
+      try { render(JSON.parse(ev.data)); } catch (e) {}
+    };
+    sock.onclose = sock.onerror = function () {
+      if (sock) { sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null; }
+      sock = null;
+      renderOffline();
+      scheduleReconnect();
+    };
+  }
+  function scheduleReconnect() {
+    if (reconnTimer) return;
+    attempts++;
+    var d = Math.min(8000, 400 * Math.pow(2, Math.min(attempts, 5)));
+    reconnTimer = setTimeout(function () { reconnTimer = null; connect(); }, d);
+  }
+
+  function control(action, label) {
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action })
+    }).then(function (r) { return r.json(); }).then(function (out) {
+      toast(out.delivered_to
+        ? label + ' — sent to capture client'
+        : label + ' — no capture client connected');
+    })['catch'](function () { toast(label + ' — failed, relay unreachable'); });
+  }
+
+  function boot() {
+    $('btn-open').onclick = function () { control('open_stream', 'Open stream'); };
+    $('btn-close').onclick = function () { control('close_stream', 'Close stream'); };
+    $('btn-clear').onclick = function () { control('clear', 'Clear'); };
+    $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Reload keyterms'); };
+
+    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+      if (s.relay) {
+        var base = 'http://' + s.relay.ip + ':' + s.relay.port;
+        $('url-wall').textContent = base + '/wall';
+        $('url-phone').textContent = base + '/phone';
+      }
+    })['catch'](function () {});
+
+    renderOffline();
+    connect();
+    setInterval(function () {
+      if (sock && sock.readyState === 1 && (Date.now() - lastMsgAt) > 6000) {
+        sock.close();
+      }
+    }, 2000);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

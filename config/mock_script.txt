@@ -1,0 +1,56 @@
+# Mock transcript script.
+#
+#   - one spoken line per line of this file
+#   - lines starting with # are comments
+#   - a blank line is a pause (3x the normal gap) - use it between segments
+#   - [clear] wipes the display, as the operator would at the end of a segment
+#
+# Each line is emitted word by word as interims, then committed as one final.
+# Timing comes from --interim-ms / --gap-ms, not from this file.
+#
+# Line lengths here are deliberately varied: short ones, ones that land right
+# at the wall view's 42-character default, and ones long enough to force a
+# final to break across both lines.
+
+Good morning, and welcome to chapel.
+
+Please take a moment to silence your phones.
+Our reading this morning comes from the second letter to the church at Corinth, chapter four.
+We do not lose heart.
+Though outwardly we are wasting away, inwardly we are being renewed day by day.
+
+[clear]
+
+Thank you.
+It is my privilege to introduce this morning's speaker.
+Doctor Amara Vasquez is professor of molecular biology and directs the undergraduate research program in the Whitfield Science Center.
+She joined the faculty in two thousand fourteen.
+Please welcome Doctor Vasquez.
+
+Thank you, and good morning.
+I want to start with a question that sounds simple.
+What does it mean to notice something?
+In the lab we spend an enormous amount of time building instruments whose only job is to notice.
+A sensor is a machine for paying attention.
+And attention, it turns out, is expensive.
+
+[clear]
+
+Let me give you a concrete example from our work this past year.
+We were looking at protein folding in low temperature environments.
+The instrument recorded roughly four hundred thousand events per second.
+Almost all of them were noise.
+The interesting question was never how to collect more data.
+It was how to decide what deserved a second look.
+
+I think that is also a question about how we live.
+
+Now, a few announcements before we close.
+The library will keep extended hours through the end of examination week.
+Advising appointments for spring registration open on Monday at eight a.m.
+The Whitfield Center loading dock will be closed Thursday and Friday.
+Shuttle service to the north lot resumes at four thirty this afternoon.
+
+Let us close the way we opened, in gratitude.
+
+[clear]
