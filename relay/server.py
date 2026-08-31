@@ -16,13 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import re
+import secrets
 import socket
 import time
 from pathlib import Path
 
+import segno
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import config as config_module
 from .hub import CONTROL_ACTIONS, Client, Hub
@@ -31,7 +34,11 @@ HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
 
 PAGES = {"wall": "wall.html", "phone": "phone.html",
-         "status": "status.html", "tune": "tune.html"}
+         "status": "status.html", "tune": "tune.html", "qr": "qr.html"}
+
+# Reachable without the admin token when the relay is public. Everything else -
+# the status page, the tuner, the control API - is operator-only.
+PUBLIC_PAGES = {"phone", "qr", "wall"}
 
 # Only a bare file name may be requested as a page.
 SAFE_PAGE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -63,7 +70,7 @@ def peer_of(ws: WebSocket) -> str:
 
 def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     cfg = cfg or config_module.load()
-    hub = Hub()
+    hub = Hub(source_language=cfg.source_language)
 
     async def heartbeat_loop() -> None:
         while True:
@@ -87,6 +94,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         print(f"[relay] phone   http://{ip}:{cfg.port}/phone")
         print(f"[relay] status  http://{ip}:{cfg.port}/status")
         print(f"[relay] tune    http://{ip}:{cfg.port}/tune")
+        print(f"[relay] qr      http://{ip}:{cfg.port}/qr")
+        if cfg.public_url:
+            print(f"[relay] public  {cfg.public_url}")
+        if cfg.is_public:
+            print(f"[relay] PUBLIC MODE - operator pages need ?admin={cfg.admin_token}")
         if cfg.token_required:
             print("[relay] source token required")
         try:
@@ -99,6 +111,19 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan)
     app.state.hub = hub
     app.state.config = cfg
+
+    def admin_ok(request: Request) -> bool:
+        """Operator routes are open on a LAN and token-gated when public."""
+        if not cfg.is_public:
+            return True
+        supplied = (request.query_params.get("admin")
+                    or request.headers.get("x-admin-token", ""))
+        return bool(supplied) and secrets.compare_digest(supplied, cfg.admin_token)
+
+    def require_admin(request: Request) -> None:
+        if not admin_ok(request):
+            # 404, not 403: a public visitor should not learn these exist.
+            raise HTTPException(status_code=404, detail="not found")
 
     # -- pages -----------------------------------------------------------
 
@@ -122,12 +147,72 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         return page("phone")
 
     @app.get("/status")
-    async def status_page() -> FileResponse:
+    async def status_page(request: Request) -> FileResponse:
+        require_admin(request)
         return page("status")
 
     @app.get("/tune")
-    async def tune_page() -> FileResponse:
+    async def tune_page(request: Request) -> FileResponse:
+        require_admin(request)
         return page("tune")
+
+    @app.get("/qr")
+    async def qr_page() -> FileResponse:
+        return page("qr")
+
+    @app.get("/robots.txt")
+    async def robots() -> PlainTextResponse:
+        # A live transcript of a room should never turn up in a search engine.
+        return PlainTextResponse("User-agent: *\nDisallow: /\n",
+                                 headers=NO_STORE)
+
+    @app.get("/api/qr.svg")
+    async def qr_svg(request: Request) -> Response:
+        """QR for the phone view, as SVG so it stays sharp on an LED wall."""
+        target = request.query_params.get("url") or (
+            cfg.base_url(local_ip()) + "/phone")
+        try:
+            code = segno.make(target, error="m")
+        except Exception:
+            raise HTTPException(status_code=400, detail="cannot encode that url")
+        buf = io.BytesIO()
+        code.save(buf, kind="svg", scale=10, border=2,
+                  dark=request.query_params.get("dark", "#000000"),
+                  light=request.query_params.get("light", "#ffffff"))
+        return Response(content=buf.getvalue(), media_type="image/svg+xml",
+                        headers=NO_STORE)
+
+    @app.get("/api/site")
+    async def api_site() -> JSONResponse:
+        """Public metadata: what address to advertise, what languages exist.
+
+        Deliberately separate from /api/status, which is operator-only. A phone
+        or a QR screen needs the base URL and the language list and nothing
+        else - no audio levels, no viewer counts, no stream state.
+        """
+        ip = local_ip()
+        base = cfg.base_url(ip)
+        return JSONResponse({
+            "base_url": base,
+            "phone_url": base + "/phone",
+            "source": cfg.source_language,
+            "available": [cfg.source_language],
+            "offered": list(cfg.offer_languages),
+        }, headers=NO_STORE)
+
+    @app.get("/api/languages")
+    async def api_languages() -> JSONResponse:
+        """What the phone picker offers.
+
+        `available` is what actually has a translator behind it. Until the
+        translation stage lands that is the source language only, and the picker
+        hides itself rather than offering choices that do nothing.
+        """
+        return JSONResponse({
+            "source": cfg.source_language,
+            "available": [cfg.source_language],
+            "offered": list(cfg.offer_languages),
+        }, headers=NO_STORE)
 
     # Any other viewer/*.html, addressed by name. Registered last, so every
     # explicit route above still wins.
@@ -137,10 +222,15 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # AND restarting, and the page would appear in a link while 404ing. Now a
     # new file in viewer/ is reachable immediately.
     @app.get("/{page}")
-    async def named_page(page: str) -> FileResponse:
+    async def named_page(page: str, request: Request) -> FileResponse:
         if not SAFE_PAGE_NAME.match(page):
             raise HTTPException(status_code=404, detail="not found")
         name = page if page.endswith(".html") else f"{page}.html"
+        # Without this, /status.html walks straight past the gate that /status
+        # enforces. Default-deny: anything not explicitly public is operator-
+        # only, so a page added later is protected before anyone remembers to.
+        if name[:-5] not in PUBLIC_PAGES:
+            require_admin(request)
         path = config_module.VIEWER_DIR / name
         try:
             path.resolve().relative_to(config_module.VIEWER_DIR.resolve())
@@ -154,19 +244,25 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # -- operator API ----------------------------------------------------
 
     @app.get("/api/status")
-    async def api_status() -> JSONResponse:
+    async def api_status(request: Request) -> JSONResponse:
+        require_admin(request)
         snap = hub.snapshot()
+        ip = local_ip()
         snap["relay"] = {
             "host": cfg.host,
             "port": cfg.port,
-            "ip": local_ip(),
+            "ip": ip,
             "token_required": cfg.token_required,
             "config": str(cfg.config_path) if cfg.config_path else None,
+            "mode": cfg.mode,
+            "public_url": cfg.public_url,
+            "base_url": cfg.base_url(ip),
         }
         return JSONResponse(snap, headers=NO_STORE)
 
     @app.post("/api/control")
     async def api_control(request: Request) -> JSONResponse:
+        require_admin(request)
         try:
             body = await request.json()
         except Exception:
@@ -210,15 +306,22 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             hub.remove(client)
 
     @app.websocket("/ws/viewer")
-    async def ws_viewer(ws: WebSocket, role: str = "wall") -> None:
+    async def ws_viewer(ws: WebSocket, role: str = "wall",
+                        lang: str = "") -> None:
         await ws.accept()
-        client = hub.add_viewer(role, peer_of(ws))
+        client = hub.add_viewer(role, peer_of(ws), lang=lang)
         print(f"[relay] + {client} ({len(hub.viewers)} viewers)")
         await serve(ws, client, read=False)
         print(f"[relay] - {client} ({len(hub.viewers)} viewers)")
 
     @app.websocket("/ws/status")
-    async def ws_status(ws: WebSocket) -> None:
+    async def ws_status(ws: WebSocket, admin: str = "") -> None:
+        # The status feed carries audio levels, viewer counts and the last line
+        # spoken. Gating the page but not its data would be theatre.
+        if cfg.is_public and not (admin and secrets.compare_digest(
+                admin, cfg.admin_token)):
+            await ws.close(code=4401)
+            return
         await ws.accept()
         client = hub.add_status(peer_of(ws))
         await serve(ws, client, read=False)

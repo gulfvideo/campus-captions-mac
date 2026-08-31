@@ -190,6 +190,15 @@
 (function () {
   'use strict';
 
+  // When the relay is public the operator opens this page with ?admin=TOKEN.
+  // Carry that token on every request the page makes, or the page loads and
+  // then silently fails to fetch anything.
+  var ADMIN = new URLSearchParams(location.search).get('admin') || '';
+  function withAdmin(url) {
+    if (!ADMIN) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'admin=' + encodeURIComponent(ADMIN);
+  }
+
   // Defaults must match wall.html. Anything equal to these is left out of the
   // URL, so the result stays short and readable.
   var SPEC = [
@@ -467,7 +476,7 @@
 
     // The URL must point at the address ProPresenter will use, not at
     // localhost, whenever the relay knows its own LAN address.
-    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+    fetch(withAdmin('/api/status')).then(function (r) { return r.json(); }).then(function (s) {
       if (s && s.relay && s.relay.ip) {
         relayBase = 'http://' + s.relay.ip + ':' + s.relay.port;
         urlBox.value = finalUrl();

@@ -27,6 +27,11 @@ Unknown `type` values MUST be ignored silently. Unknown fields MUST be ignored.
 `role` affects only how many committed lines are replayed on connect
 (`wall` → 2, `phone` → 30). It changes nothing else.
 
+`/ws/viewer` also takes **`lang`**. Each language is an independent stream with
+its own replay buffer, so a viewer that asks for `lang=es` receives only Spanish
+finals and replays Spanish history on reconnect. Omitting it means the source
+language. A viewer never receives a language it did not ask for.
+
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /api/status`,
 `POST /api/control`.
 
@@ -49,8 +54,12 @@ HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /api/status`,
 Sent once, first frame after the socket opens.
 
 ```json
-{"type":"hello","seq":0,"session_id":"7f3a1c9e","server_time":1756590000.12,"protocol":1}
+{"type":"hello","seq":0,"session_id":"7f3a1c9e","server_time":1756590000.12,
+ "protocol":1,"lang":"en"}
 ```
+
+`lang` echoes back the stream this viewer was actually joined to, which may
+differ from what it asked for if the language is not available.
 
 `hello` always carries `seq: 0` — it is the one exception to monotonic `seq`,
 because the replay burst that follows carries the *original* sequence numbers of
@@ -72,7 +81,7 @@ its own entry. Interims are not replayed to late joiners.
 
 ```json
 {"type":"final","seq":43,"t":1756590003.4,"id":"7f3a1c9e:43",
- "text":"Our next speaker is Dr. Vasquez."}
+ "lang":"en","text":"Our next speaker is Dr. Vasquez."}
 ```
 
 Commits a line. A `final` replaces the in-progress line if one is showing,
@@ -82,6 +91,12 @@ each piece as its own line — this is the only place a line break happens.
 
 `id` is `{session_id}:{seq}` and is stable across replays, so the phone view can
 dedupe when it reconnects.
+
+`lang` is always present on `interim` and `final`. Translations arrive as their
+own `final` messages on their own language stream, after the source line - so a
+Spanish viewer sees committed lines only, and never interims. That is
+deliberate: interims change several times a second, and translating them would
+multiply cost by roughly twenty while making the text unreadable.
 
 ### replayed `final`
 
@@ -219,6 +234,29 @@ sentences.
 
 `ip` is the relay's LAN address, which is what the status page prints for
 phones and for the ProPresenter URL.
+
+## Public and operator routes
+
+The relay serves two audiences, and `[site] mode` decides whether that
+distinction is enforced.
+
+| Route | `mode = "lan"` | `mode = "public"` |
+|---|---|---|
+| `/phone`, `/qr`, `/wall` | open | open |
+| `/ws/viewer`, `/api/site`, `/api/qr.svg`, `/robots.txt` | open | open |
+| `/status`, `/tune`, `/api/status`, `/ws/status`, `POST /api/control` | open | **admin token required** |
+
+In public mode the operator routes answer **404**, not 403 — a visitor who does
+not have the token should not learn they exist. The token is supplied as
+`?admin=…` or an `X-Admin-Token` header, and the operator pages forward whatever
+token they were opened with to their own API and websocket calls.
+
+The rule is default-deny: any page not explicitly public is operator-only,
+including one reached by filename through the catch-all route. A page added to
+`viewer/` later is protected before anyone remembers to protect it.
+
+`/robots.txt` disallows everything in both modes. A live transcript of a room
+should never end up in a search engine.
 
 ## Control API
 

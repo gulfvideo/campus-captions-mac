@@ -167,6 +167,15 @@
 (function () {
   'use strict';
 
+  // When the relay is public the operator opens this page with ?admin=TOKEN.
+  // Carry that token on every request the page makes, or the page loads and
+  // then silently fails to fetch anything.
+  var ADMIN = new URLSearchParams(location.search).get('admin') || '';
+  function withAdmin(url) {
+    if (!ADMIN) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'admin=' + encodeURIComponent(ADMIN);
+  }
+
   var sock = null, reconnTimer = null, attempts = 0, lastSnap = null, lastMsgAt = 0;
 
   function $(id) { return document.getElementById(id); }
@@ -277,7 +286,7 @@
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var host = location.host || 'localhost:8000';
     try {
-      sock = new WebSocket(proto + '//' + host + '/ws/status');
+      sock = new WebSocket(proto + '//' + host + withAdmin('/ws/status'));
     } catch (e) {
       scheduleReconnect();
       return;
@@ -302,7 +311,7 @@
   }
 
   function control(action, label) {
-    fetch('/api/control', {
+    fetch(withAdmin('/api/control'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: action })
@@ -319,7 +328,7 @@
     $('btn-clear').onclick = function () { control('clear', 'Clear'); };
     $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Reload keyterms'); };
 
-    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+    fetch(withAdmin('/api/status')).then(function (r) { return r.json(); }).then(function (s) {
       if (s.relay) {
         var base = 'http://' + s.relay.ip + ':' + s.relay.port;
         $('url-wall').textContent = base + '/wall';

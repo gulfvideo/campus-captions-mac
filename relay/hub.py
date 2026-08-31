@@ -48,13 +48,15 @@ def clean_text(value: object) -> str:
 class Client:
     """One subscriber. `kind` is viewer, status or source."""
 
-    __slots__ = ("cid", "kind", "role", "peer", "queue", "dropped", "joined_at")
+    __slots__ = ("cid", "kind", "role", "peer", "queue", "dropped", "joined_at",
+                 "lang")
 
-    def __init__(self, kind: str, role: str, peer: str):
+    def __init__(self, kind: str, role: str, peer: str, lang: str = ""):
         self.cid = next(_counter)
         self.kind = kind
         self.role = role
         self.peer = peer
+        self.lang = lang
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=CLIENT_QUEUE_MAX)
         self.dropped = False
         self.joined_at = time.time()
@@ -72,13 +74,18 @@ class Client:
 
 
 class Hub:
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None,
+                 source_language: str = "en"):
         self.session_id = session_id or uuid.uuid4().hex[:8]
+        self.source_language = source_language
         self.seq = 0
         self.viewers: dict[int, Client] = {}
         self.status_clients: dict[int, Client] = {}
         self.sources: dict[int, Client] = {}
-        self.finals: deque[dict] = deque(maxlen=REPLAY_BUFFER)
+        # One replay buffer per language. A translated stream is an independent
+        # stream of finals that happens to share utterance ids with the source,
+        # so a late joiner in Spanish replays Spanish.
+        self.finals: dict[str, deque[dict]] = {}
         self.state = RelayState(session_id=self.session_id)
         self.on_event = None          # optional callback(msg) for logging
 
@@ -90,18 +97,36 @@ class Hub:
         msg.setdefault("t", round(time.time(), 3))
         return msg
 
+    def _buffer_for(self, lang: str) -> deque:
+        if lang not in self.finals:
+            self.finals[lang] = deque(maxlen=REPLAY_BUFFER)
+        return self.finals[lang]
+
     def broadcast(self, msg: dict) -> dict:
-        """Number a message, remember it if it is a final, fan it out."""
+        """Number a message, remember it if it is a final, fan it out.
+
+        Messages carrying a `lang` reach only viewers watching that language.
+        Everything without one - clear, heartbeat - reaches everybody.
+        """
         msg = self._stamp(msg)
         kind = msg.get("type")
+        lang = msg.get("lang")
+
+        if kind in ("interim", "final") and not lang:
+            lang = self.source_language
+            msg["lang"] = lang
+
         if kind == "final":
             msg["id"] = f"{self.session_id}:{msg['seq']}"
-            self.finals.append(msg)
+            self._buffer_for(lang).append(msg)
         elif kind == "clear":
-            self.finals.clear()
+            for buffer in self.finals.values():
+                buffer.clear()
 
         payload = json.dumps(msg, ensure_ascii=False)
         for client in list(self.viewers.values()):
+            if lang and client.lang and client.lang != lang:
+                continue
             if not client.send(payload):
                 self.viewers.pop(client.cid, None)
         if self.on_event:
@@ -169,9 +194,10 @@ class Hub:
 
     # -- membership ------------------------------------------------------
 
-    def add_viewer(self, role: str, peer: str) -> Client:
+    def add_viewer(self, role: str, peer: str, lang: str = "") -> Client:
         role = role if role in REPLAY_FOR_ROLE else "wall"
-        client = Client("viewer", role, peer)
+        lang = lang or self.source_language
+        client = Client("viewer", role, peer, lang=lang)
         self.viewers[client.cid] = client
         client.send(json.dumps({
             "type": "hello",
@@ -179,9 +205,11 @@ class Hub:
             "session_id": self.session_id,
             "server_time": round(time.time(), 3),
             "protocol": 1,
+            "lang": lang,
         }))
         depth = REPLAY_FOR_ROLE[role]
-        for msg in list(self.finals)[-depth:] if depth else []:
+        buffer = self.finals.get(lang) or deque()
+        for msg in list(buffer)[-depth:] if depth else []:
             replayed = dict(msg)
             replayed["replay"] = True
             client.send(json.dumps(replayed, ensure_ascii=False))
@@ -210,9 +238,12 @@ class Hub:
 
     def viewer_counts(self) -> dict[str, int]:
         counts = {"total": 0, "wall": 0, "phone": 0, "status": len(self.status_clients)}
+        by_lang: dict[str, int] = {}
         for client in self.viewers.values():
             counts["total"] += 1
             counts[client.role] = counts.get(client.role, 0) + 1
+            by_lang[client.lang] = by_lang.get(client.lang, 0) + 1
+        counts["by_language"] = by_lang
         return counts
 
     def snapshot(self) -> dict:

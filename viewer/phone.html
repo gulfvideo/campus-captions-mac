@@ -79,6 +79,19 @@
 
   /* Size cycler. One 44px target, low contrast, bottom right - the only
      control on the page. */
+  #lang {
+    position: fixed;
+    right: calc(env(safe-area-inset-right) + 66px);
+    bottom: calc(env(safe-area-inset-bottom) + 14px);
+    z-index: 6;
+    height: 44px; padding: 0 14px; border-radius: 22px;
+    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.55);
+    border: 0; font-family: inherit; font-size: 15px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+    display: none;
+  }
+  #lang.on { display: block; }
+
   #size {
     position: fixed;
     right: calc(env(safe-area-inset-right) + 14px);
@@ -106,17 +119,30 @@
   <div id="interim"></div>
 </div>
 <button id="latest" type="button">Jump to latest</button>
+<button id="lang" type="button" aria-label="Language"></button>
 <button id="size" type="button" aria-label="Text size">A</button>
 <div id="dbg"></div>
 <script>
 (function () {
   'use strict';
 
-  var P, cfg, elScroll, elLines, elInterim, elLatest, elSize, elLink, elDbg;
+  var P, cfg, elScroll, elLines, elInterim, elLatest, elSize, elLang, elLink, elDbg;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, lastMsgAt = 0, startedAt = 0;
   var seenIds = Object.create(null), seenOrder = [], pinned = true, lineCount = 0;
   var SIZES = [19, 22, 26, 31, 37];
+  var chosenLang = '', available = [];
+
+  // Endonyms: someone looking for their language should see it written the way
+  // they write it, not translated into English.
+  var LANG_NAMES = {
+    'en': 'English', 'es': 'Espanol', 'pt': 'Portugues', 'fr': 'Francais',
+    'de': 'Deutsch', 'it': 'Italiano', 'ko': '한국어',
+    'ja': '日本語', 'ar': 'العربية',
+    'zh': '中文', 'zh-Hans': '简体中文',
+    'zh-Hant': '繁體中文', 'vi': 'Tieng Viet', 'ru': 'Русский'
+  };
+  function langLabel(code) { return LANG_NAMES[code] || code; }
 
   function now() { return Date.now(); }
   function log() {
@@ -144,7 +170,8 @@
       bg:    hex('bg', '#000000'),
       lines: Math.round(num('lines', 200, 10, 2000)),  // scrollback cap, bounded DOM
       debug: flag('debug'),
-      relay: P.get('relay')
+      relay: P.get('relay'),
+      lang: P.get('lang') || ''
     };
   }
 
@@ -169,6 +196,45 @@
     var wasPinned = pinned;
     setSize(SIZES[(best + 1) % SIZES.length]);
     if (wasPinned) scrollToBottom();
+  }
+
+  // ---- language ----------------------------------------------------------
+
+  function loadLang() {
+    if (cfg.lang) return cfg.lang;
+    try { return localStorage.getItem('cc.lang') || ''; } catch (e) { return ''; }
+  }
+
+  function setLang(code) {
+    if (code === chosenLang) return;
+    chosenLang = code;
+    try { localStorage.setItem('cc.lang', code); } catch (e) {}
+    elLang.textContent = langLabel(code);
+    // A different language is a different stream, so start clean and let the
+    // relay replay that language's history on reconnect.
+    resetAll();
+    teardown();
+  }
+
+  function cycleLang() {
+    if (available.length < 2) return;
+    var i = available.indexOf(chosenLang);
+    setLang(available[(i + 1) % available.length]);
+  }
+
+  function loadLanguages() {
+    fetch('/api/site')
+      .then(function (r) { return r.json(); })
+      .then(function (site) {
+        available = site.available || [];
+        if (!chosenLang || available.indexOf(chosenLang) < 0) {
+          chosenLang = site.source || 'en';
+        }
+        elLang.textContent = langLabel(chosenLang);
+        // Only show the control when there is a real choice. One language means
+        // the button would do nothing, so it stays hidden.
+        elLang.className = available.length > 1 ? 'on' : '';
+      })['catch'](function () {});
   }
 
   // ---- scroll ------------------------------------------------------------
@@ -235,7 +301,9 @@
     var host = cfg.relay || location.host;
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (!host) { host = 'localhost:8000'; proto = 'ws:'; }
-    return proto + '//' + host + '/ws/viewer?role=phone';
+    var url = proto + '//' + host + '/ws/viewer?role=phone';
+    if (chosenLang) url += '&lang=' + encodeURIComponent(chosenLang);
+    return url;
   }
 
   function setLink(up) {
@@ -375,6 +443,7 @@
     elInterim = document.getElementById('interim');
     elLatest = document.getElementById('latest');
     elSize = document.getElementById('size');
+    elLang = document.getElementById('lang');
     elLink = document.getElementById('link');
     elDbg = document.getElementById('dbg');
 
@@ -386,11 +455,14 @@
     elScroll.addEventListener('scroll', onScroll, { passive: true });
     elLatest.addEventListener('click', scrollToBottom);
     elSize.addEventListener('click', cycleSize);
+    elLang.addEventListener('click', cycleLang);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { requestWake(); if (pinned) scrollToBottom(); }
     });
 
     startedAt = lastMsgAt = now();
+    chosenLang = loadLang();
+    loadLanguages();
     setLink(false);
     requestWake();
     connect();

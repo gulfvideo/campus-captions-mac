@@ -9,6 +9,31 @@ port = 8000
 # lives in the environment only, never in this file.
 source_token = ""
 
+# How the site is reached. Host-agnostic: the same relay works behind a
+# Cloudflare Tunnel, an internal DNS name, or a VM, depending only on what you
+# put in public_url.
+[site]
+# The address phones should use. Empty = advertise this machine's LAN IP.
+# e.g. "https://captions.school.edu"
+public_url = ""
+
+# "lan"    - trusted booth network. No passwords; the operator just clicks.
+# "public" - reachable from the internet. /status, /tune, /api/status and
+#            /api/control then require the admin token below, because otherwise
+#            a stranger could open the ASR stream and spend your money.
+mode = "lan"
+
+# Only used when mode = "public". Leave empty and one is generated per run and
+# printed at startup; set it here to keep it stable across restarts.
+admin_token = ""
+
+[languages]
+source = "en"
+# Offered in the phone view's picker once translation is configured. The relay
+# advertises only languages it can actually deliver, so listing one here before
+# a translator exists does not put a dead option in front of the audience.
+offer = []
+
 # --- stage 3, not read by the relay ---------------------------------------
 
 [capture]

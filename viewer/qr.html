@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Captions QR</title>
+<style>
+  :root {
+    --bg: #000000;
+    --fg: #ffffff;
+    --card: #ffffff;
+    --size: 46;              /* QR height, vh */
+    --title: 5.2;            /* headline size, vh */
+    --sub: 2.6;              /* URL size, vh */
+  }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); overflow: hidden;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    color: var(--fg); cursor: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  #wrap {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 3.2vh; text-align: center;
+    opacity: 0; transition: opacity 500ms linear;
+  }
+  #wrap.on { opacity: 1; }
+
+  #title {
+    font-size: calc(var(--title) * 1vh);
+    font-weight: 650; letter-spacing: 0.005em; line-height: 1.15;
+    max-width: 88vw;
+  }
+  #card {
+    background: var(--card);
+    padding: 2.2vh;
+    border-radius: 2vh;
+    line-height: 0;
+  }
+  #card svg, #card img {
+    height: calc(var(--size) * 1vh);
+    width: calc(var(--size) * 1vh);
+    display: block;
+  }
+  #url {
+    font-size: calc(var(--sub) * 1vh);
+    font-weight: 500; opacity: 0.86; letter-spacing: 0.01em;
+    word-break: break-all; max-width: 88vw;
+  }
+  #note {
+    font-size: calc(var(--sub) * 0.82vh);
+    opacity: 0.6; max-width: 70vw;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="title">Live captions</div>
+  <div id="card"><img id="qr" alt=""></div>
+  <div id="url"></div>
+  <div id="note"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  // Same discipline as the wall view: this can be on a screen in front of an
+  // audience, so it never renders an error, a spinner or a placeholder. If the
+  // URL cannot be determined the page simply stays black.
+
+  var P = new URLSearchParams(location.search);
+
+  function num(key, dflt, lo, hi) {
+    var v = parseFloat(P.get(key));
+    if (!isFinite(v)) return dflt;
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+  function hex(key, dflt) {
+    var v = (P.get(key) || '').replace(/^#/, '');
+    return /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v) ? ('#' + v) : dflt;
+  }
+
+  function apply() {
+    var r = document.documentElement.style;
+    r.setProperty('--bg', hex('bg', '#000000'));
+    r.setProperty('--fg', hex('color', '#ffffff'));
+    r.setProperty('--card', hex('card', '#ffffff'));
+    r.setProperty('--size', String(num('size', 46, 10, 90)));
+    r.setProperty('--title', String(num('titlesize', 5.2, 1, 20)));
+    r.setProperty('--sub', String(num('subsize', 2.6, 1, 12)));
+  }
+
+  function show(url) {
+    var pretty = url.replace(/^https?:\/\//, '');
+    document.getElementById('title').textContent =
+      P.get('title') !== null ? P.get('title') : 'Live captions';
+    document.getElementById('url').textContent =
+      P.get('showurl') === '0' ? '' : pretty;
+    document.getElementById('note').textContent = P.get('note') || '';
+    // The QR itself is rendered by the relay as SVG, so it stays crisp at any
+    // LED resolution and the page needs no QR library.
+    var img = document.getElementById('qr');
+    img.onload = function () { document.getElementById('wrap').className = 'on'; };
+    img.src = '/api/qr.svg?url=' + encodeURIComponent(url)
+            + '&dark=' + encodeURIComponent(hex('qrdark', '#000000'))
+            + '&light=' + encodeURIComponent(hex('qrlight', '#ffffff'));
+  }
+
+  function boot() {
+    apply();
+    var explicit = P.get('url');
+    if (explicit) { show(explicit); return; }
+
+    // Ask the relay what address to advertise: the public URL when one is
+    // configured, otherwise this machine's LAN address. Never "localhost",
+    // which would be useless on a phone.
+    fetch('/api/site')
+      .then(function (r) { return r.json(); })
+      .then(function (s) { show((s.base_url || '') + '/phone'); })
+      ['catch'](function () {
+        // Last resort: this page's own origin. Correct whenever the viewer
+        // reached it by the same address a phone would use.
+        if (location.host) show(location.origin + '/phone');
+      });
+  }
+
+  try { boot(); } catch (e) { try { console.error('[qr]', e); } catch (e2) {} }
+})();
+</script>
+</body>
+</html>
