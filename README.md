@@ -136,7 +136,7 @@ appears in a config file — that stays in the environment.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /wall` `/phone` `/status` | the three pages, served `no-store` |
+| `GET /wall` `/phone` `/status` `/tune` | the four pages, served `no-store` |
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
 | `WS /ws/source?token=…` | capture client, bidirectional |
 | `WS /ws/status` | full status snapshot ~2.5×/second |
@@ -299,6 +299,7 @@ capture/backends/registry.py  name -> class; add a backend here
 viewer/wall.html              broadcast graphic for ProPresenter
 viewer/phone.html             audience view with scrollback
 viewer/status.html            the operator's page
+viewer/tune.html              slider-driven builder for the wall-view URL
 
 tools/mock_relay.py           stdlib-only relay, for viewer work with nothing installed
 tools/mock_source.py          source-protocol stand-in, for relay work

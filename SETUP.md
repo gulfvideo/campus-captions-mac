@@ -228,8 +228,26 @@ Because the page is transparent, the prop can sit enabled for the whole event.
 
 ### Framing and sizing
 
-Before anything else is running, use `?text=` to put sample text on the wall so
-you can size and position it against the physical LED:
+**The easy way: the tuner.** Open `http://<relay-ip>:8000/tune` (there is a link
+on the status page). Sliders for text size, position, bar width, opacity and
+colours, with a live preview of the wall over a choice of backgrounds, and the
+finished URL in a box to copy straight into the ProPresenter Prop.
+
+Because every size is a percentage of the output, the preview is accurate at any
+window size — pick your wall's shape from the **Output shape** menu and what you
+see is what the LED gets. It warns you when a line is too long to fit, and the
+**Width ruler** button fills the sample with the widest possible characters so
+you can check the worst case.
+
+The tuner also saves named presets — `Chapel`, `Auditorium` — in that browser,
+so you can flip between venues. The URL itself is the portable version: that is
+what you paste into ProPresenter, and the Prop is what stores it for good.
+
+The tuner only builds a URL. It never touches the live wall, so it is safe to
+use during an event.
+
+**The manual way.** Use `?text=` to put sample text on the wall so you can size
+and position it against the physical LED:
 
 ```
 http://<relay-ip>:8000/wall?text=The quick brown fox jumps over the lazy dog

@@ -3,6 +3,7 @@
 Endpoints (see docs/MESSAGES.md):
 
     GET  /wall /phone /status      the three pages
+    GET  /tune                     build a wall-view URL with sliders
     WS   /ws/viewer?role=wall      caption feed
     WS   /ws/source?token=...      capture client, bidirectional
     WS   /ws/status                status page feed
@@ -27,7 +28,8 @@ from .hub import CONTROL_ACTIONS, Client, Hub
 HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
 
-PAGES = {"wall": "wall.html", "phone": "phone.html", "status": "status.html"}
+PAGES = {"wall": "wall.html", "phone": "phone.html",
+         "status": "status.html", "tune": "tune.html"}
 
 # Never cached: ProPresenter can hold a page for the length of an event, and an
 # operator editing query params must always get the current file.
@@ -79,6 +81,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         print(f"[relay] wall    http://{ip}:{cfg.port}/wall")
         print(f"[relay] phone   http://{ip}:{cfg.port}/phone")
         print(f"[relay] status  http://{ip}:{cfg.port}/status")
+        print(f"[relay] tune    http://{ip}:{cfg.port}/tune")
         if cfg.token_required:
             print("[relay] source token required")
         try:
@@ -116,6 +119,10 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.get("/status")
     async def status_page() -> FileResponse:
         return page("status")
+
+    @app.get("/tune")
+    async def tune_page() -> FileResponse:
+        return page("tune")
 
     # -- operator API ----------------------------------------------------
 

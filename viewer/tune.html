@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tune the wall view</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1e2127; --edge: #2c313a;
+    --text: #eceff4; --dim: #939bab; --accent: #5aa2f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); padding: 20px;
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 3px; font-weight: 600; }
+  .lede { color: var(--dim); font-size: 13.5px; margin: 0 0 18px; }
+
+  .layout { display: grid; gap: 18px; grid-template-columns: 1fr; }
+  @media (min-width: 1080px) { .layout { grid-template-columns: 1.35fr 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .card h2 {
+    font-size: 11px; font-weight: 700; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--dim); margin: 0 0 13px;
+  }
+
+  /* preview */
+  #stage {
+    width: 100%; position: relative; border-radius: 8px; overflow: hidden;
+    border: 1px solid #000;
+  }
+  #stage.dark  { background: #0b0b0c; }
+  #stage.light { background: linear-gradient(160deg, #cfd6dd, #8e9aa6); }
+  #stage.check {
+    background-image:
+      linear-gradient(45deg, #3a3f46 25%, transparent 25%, transparent 75%, #3a3f46 75%),
+      linear-gradient(45deg, #3a3f46 25%, #23262b 25%, #23262b 75%, #3a3f46 75%);
+    background-size: 34px 34px; background-position: 0 0, 17px 17px;
+  }
+  #stage.stage {
+    background:
+      radial-gradient(120% 90% at 50% 0%, #4a5a72 0%, #232c3a 55%, #12161d 100%);
+  }
+  #stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+  .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
+  .row label { color: var(--dim); font-size: 12.5px; }
+  select, input[type=text] {
+    font: inherit; font-size: 14px; background: #262b33; color: var(--text);
+    border: 1px solid var(--edge); border-radius: 7px; padding: 7px 9px;
+  }
+
+  /* controls */
+  .ctl { margin-bottom: 14px; }
+  .ctl .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .ctl .name { font-size: 13.5px; }
+  .ctl .val { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 13px; }
+  .ctl .hint { color: var(--dim); font-size: 11.5px; margin-top: 1px; }
+  input[type=range] { width: 100%; margin: 6px 0 0; accent-color: var(--accent); }
+  input[type=color] {
+    width: 46px; height: 30px; padding: 0; border: 1px solid var(--edge);
+    border-radius: 6px; background: #262b33;
+  }
+
+  .swatches { display: flex; gap: 14px; }
+  .swatch { flex: 1; }
+  .swatch .name { font-size: 13.5px; margin-bottom: 5px; display: block; }
+
+  /* output */
+  #url {
+    width: 100%; font: 13px/1.5 Menlo, Consolas, monospace; word-break: break-all;
+    background: #0f1216; color: #d7e3f4; border: 1px solid var(--edge);
+    border-radius: 8px; padding: 11px 12px; min-height: 74px; resize: vertical;
+  }
+  .buttons { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 11px; }
+  button {
+    font: inherit; font-weight: 600; font-size: 14px; padding: 10px 16px;
+    border-radius: 8px; border: 1px solid var(--edge);
+    background: #262b33; color: var(--text);
+  }
+  button:hover { background: #2f353f; }
+  button.primary { background: #1f5a99; border-color: #2c74c0; }
+  button.primary:hover { background: #24699f; }
+
+  #warn {
+    display: none; margin-top: 11px; padding: 9px 12px; border-radius: 8px;
+    background: #4a2222; border: 1px solid #7a3535; font-size: 13.5px;
+  }
+  #warn.on { display: block; }
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px;
+    background: #2f353f; border: 1px solid var(--edge); padding: 10px 18px;
+    border-radius: 8px; opacity: 0; transition: opacity 200ms; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+  .note { color: var(--dim); font-size: 12.5px; margin-top: 12px; }
+  .note code { color: var(--text); }
+</style>
+</head>
+<body>
+<h1>Tune the wall view</h1>
+<p class="lede">Drag until it looks right, then copy the URL into the ProPresenter Prop.
+  Nothing here changes the live wall — it only builds a URL.</p>
+
+<div class="layout">
+  <div>
+    <div class="card">
+      <h2>Preview</h2>
+      <div class="row">
+        <label for="aspect">Output shape</label>
+        <select id="aspect">
+          <option value="1.7778">16:9 &mdash; most walls</option>
+          <option value="1.6">16:10</option>
+          <option value="1.3333">4:3</option>
+          <option value="2.3333">21:9 &mdash; wide</option>
+          <option value="3.5">3.5:1 &mdash; very wide LED</option>
+          <option value="1">1:1 &mdash; square</option>
+        </select>
+        <label for="bgmode">Behind it</label>
+        <select id="bgmode">
+          <option value="stage">Stage light</option>
+          <option value="dark">Black</option>
+          <option value="light">Bright slide</option>
+          <option value="check">Checkerboard</option>
+        </select>
+      </div>
+      <div id="stage" class="stage"><iframe id="frame" title="wall preview"></iframe></div>
+      <div class="row" style="margin-top:12px">
+        <label for="sample">Sample text</label>
+        <input type="text" id="sample" style="flex:1;min-width:220px"
+               value="Our next speaker is Doctor Amara Vasquez">
+        <button id="ruler" title="Fill with the widest character to check the line length">Width ruler</button>
+      </div>
+      <div id="warn">Text is being clipped — lower <b>Characters per line</b> or
+        <b>Text size</b>, or raise <b>Bar width</b>.</div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h2>URL for ProPresenter</h2>
+      <textarea id="url" readonly spellcheck="false"></textarea>
+      <div class="buttons">
+        <button class="primary" id="copy">Copy URL</button>
+        <button id="open">Open in a tab</button>
+        <button id="reset">Reset to defaults</button>
+      </div>
+      <p class="note">Only settings you changed appear in the URL — everything else
+        uses its default. Paste this into the Prop's web fill and save the Prop;
+        that is what stores your settings.</p>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Presets</h2>
+      <div class="row">
+        <select id="presets" style="flex:1;min-width:150px"><option value="">— none saved —</option></select>
+        <button id="load">Load</button>
+        <button id="save">Save as…</button>
+        <button id="delete">Delete</button>
+      </div>
+      <p class="note">Saved in this browser on this machine. The URL itself is the
+        portable version — that is what travels to ProPresenter.</p>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h2>Size and position</h2>
+      <div id="controls"></div>
+      <div class="swatches">
+        <div class="swatch">
+          <span class="name">Text colour</span>
+          <input type="color" id="color" value="#ffffff">
+        </div>
+        <div class="swatch">
+          <span class="name">Bar colour</span>
+          <input type="color" id="bar" value="#000000">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Defaults must match wall.html. Anything equal to these is left out of the
+  // URL, so the result stays short and readable.
+  var SPEC = [
+    { key: 'size',     label: 'Text size',           def: 6.5,  min: 2,  max: 20, step: 0.1,
+      hint: 'percent of output height — the main one' },
+    { key: 'bottom',   label: 'Distance from bottom', def: 9,   min: 0,  max: 40, step: 0.5,
+      hint: 'percent of output height' },
+    { key: 'width',    label: 'Bar width',           def: 86,   min: 20, max: 100, step: 1,
+      hint: 'percent of output width' },
+    { key: 'maxchars', label: 'Characters per line', def: 42,   min: 10, max: 90, step: 1,
+      hint: 'longer lines need a wider bar or smaller text' },
+    { key: 'opacity',  label: 'Bar opacity',         def: 0.85, min: 0,  max: 1,  step: 0.01,
+      hint: '1 is solid; lower lets video show through' },
+    { key: 'pad',      label: 'Bar padding',         def: 2,    min: 0,  max: 8,  step: 0.1,
+      hint: 'space inside the bar' },
+    { key: 'radius',   label: 'Corner radius',       def: 1.5,  min: 0,  max: 8,  step: 0.1,
+      hint: '0 for square corners' },
+    { key: 'idle',     label: 'Fade out after',      def: 5,    min: 0,  max: 60, step: 1,
+      hint: 'seconds of no new text; 0 never fades' }
+  ];
+  var COLORS = { color: '#ffffff', bar: '#000000' };
+  var STORE_KEY = 'cc.tune.state';
+  var PRESET_KEY = 'cc.tune.presets';
+
+  var state = {};
+  var relayBase = location.protocol + '//' + location.host;
+  var frame, stage, warnBox, urlBox, sampleBox, rebuildTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg; t.className = 'on';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = ''; }, 2400);
+  }
+
+  // ---- state -----------------------------------------------------------
+
+  function defaults() {
+    var out = {};
+    SPEC.forEach(function (s) { out[s.key] = s.def; });
+    out.color = COLORS.color;
+    out.bar = COLORS.bar;
+    return out;
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function restore() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return defaults();
+      var parsed = JSON.parse(raw), base = defaults(), k;
+      for (k in base) if (parsed[k] !== undefined) base[k] = parsed[k];
+      return base;
+    } catch (e) { return defaults(); }
+  }
+
+  // ---- url -------------------------------------------------------------
+
+  function paramString(includeSample) {
+    var parts = [];
+    SPEC.forEach(function (s) {
+      if (Number(state[s.key]) !== s.def) parts.push(s.key + '=' + state[s.key]);
+    });
+    if (state.color.toLowerCase() !== COLORS.color) {
+      parts.push('color=' + state.color.replace('#', ''));
+    }
+    if (state.bar.toLowerCase() !== COLORS.bar) {
+      parts.push('bar=' + state.bar.replace('#', ''));
+    }
+    if (includeSample) {
+      parts.push('text=' + encodeURIComponent(sampleBox.value || ' '));
+    }
+    return parts.join('&');
+  }
+
+  function finalUrl() {
+    var q = paramString(false);
+    return relayBase + '/wall' + (q ? '?' + q : '');
+  }
+
+  function rebuild() {
+    urlBox.value = finalUrl();
+    var q = paramString(true);
+    frame.src = '/wall?' + q;
+  }
+
+  function scheduleRebuild() {
+    if (rebuildTimer) clearTimeout(rebuildTimer);
+    rebuildTimer = setTimeout(function () { rebuildTimer = null; rebuild(); }, 140);
+  }
+
+  // ---- clipping check --------------------------------------------------
+  // The preview is same-origin, so we can look inside it and tell the user
+  // their line does not fit rather than making them squint at the wall.
+
+  function checkClipping() {
+    try {
+      var doc = frame.contentDocument;
+      if (!doc) return;
+      var clipped = false;
+      ['l0', 'l1'].forEach(function (id) {
+        var el = doc.getElementById(id);
+        if (el && el.scrollWidth > el.clientWidth + 1) clipped = true;
+      });
+      warnBox.className = clipped ? 'on' : '';
+    } catch (e) { /* cross-origin: skip silently */ }
+  }
+
+  // ---- controls --------------------------------------------------------
+
+  function buildControls() {
+    var host = $('controls');
+    SPEC.forEach(function (s) {
+      var wrap = document.createElement('div');
+      wrap.className = 'ctl';
+      wrap.innerHTML =
+        '<div class="top"><span class="name"></span><span class="val"></span></div>' +
+        '<div class="hint"></div>' +
+        '<input type="range">';
+      wrap.querySelector('.name').textContent = s.label;
+      wrap.querySelector('.hint').textContent = s.hint;
+      var slider = wrap.querySelector('input');
+      slider.min = s.min; slider.max = s.max; slider.step = s.step;
+      slider.value = state[s.key];
+      var valEl = wrap.querySelector('.val');
+
+      function show() {
+        var unit = (s.key === 'idle') ? ' s'
+                 : (s.key === 'maxchars') ? ' chars'
+                 : (s.key === 'opacity') ? ''
+                 : (s.key === 'width') ? ' vw' : ' vh';
+        valEl.textContent = state[s.key] + unit +
+          (Number(state[s.key]) === s.def ? '  (default)' : '');
+      }
+      slider.addEventListener('input', function () {
+        state[s.key] = parseFloat(slider.value);
+        show(); save(); scheduleRebuild();
+      });
+      show();
+      host.appendChild(wrap);
+      s._slider = slider;
+      s._show = show;
+    });
+  }
+
+  function syncControls() {
+    SPEC.forEach(function (s) {
+      if (s._slider) { s._slider.value = state[s.key]; s._show(); }
+    });
+    $('color').value = state.color;
+    $('bar').value = state.bar;
+  }
+
+  // ---- presets ---------------------------------------------------------
+
+  function readPresets() {
+    try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function writePresets(all) {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  function refreshPresetList() {
+    var sel = $('presets'), all = readPresets(), names = Object.keys(all).sort();
+    sel.innerHTML = '';
+    if (!names.length) {
+      sel.appendChild(new Option('— none saved —', ''));
+      return;
+    }
+    names.forEach(function (n) { sel.appendChild(new Option(n, n)); });
+  }
+
+  // ---- aspect ----------------------------------------------------------
+
+  function applyAspect() {
+    var ratio = parseFloat($('aspect').value) || 1.7778;
+    stage.style.aspectRatio = String(ratio);
+  }
+
+  // ---- boot ------------------------------------------------------------
+
+  function boot() {
+    frame = $('frame'); stage = $('stage'); warnBox = $('warn');
+    urlBox = $('url'); sampleBox = $('sample');
+    state = restore();
+
+    buildControls();
+    applyAspect();
+
+    $('aspect').addEventListener('change', function () { applyAspect(); checkClipping(); });
+    $('bgmode').addEventListener('change', function () { stage.className = this.value; });
+    sampleBox.addEventListener('input', scheduleRebuild);
+
+    ['color', 'bar'].forEach(function (key) {
+      $(key).addEventListener('input', function () {
+        state[key] = this.value; save(); scheduleRebuild();
+      });
+    });
+
+    $('ruler').addEventListener('click', function () {
+      var n = Math.round(state.maxchars);
+      sampleBox.value = new Array(n + 1).join('W');
+      scheduleRebuild();
+      toast(n + ' W characters — the widest case for this line length');
+    });
+
+    $('copy').addEventListener('click', function () {
+      var text = urlBox.value;
+      function fallback() {
+        urlBox.removeAttribute('readonly');
+        urlBox.select();
+        try { document.execCommand('copy'); toast('URL copied'); }
+        catch (e) { toast('Select the URL and copy it manually'); }
+        urlBox.setAttribute('readonly', 'readonly');
+      }
+      // navigator.clipboard needs a secure context; on a plain LAN address
+      // over http it does not exist, which is exactly where this page runs.
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () {
+          toast('URL copied');
+        })['catch'](fallback);
+      } else {
+        fallback();
+      }
+    });
+
+    $('open').addEventListener('click', function () {
+      window.open(finalUrl(), '_blank');
+    });
+
+    $('reset').addEventListener('click', function () {
+      state = defaults(); syncControls(); save(); rebuild();
+      toast('Back to defaults');
+    });
+
+    $('save').addEventListener('click', function () {
+      var name = prompt('Name this preset (for example: Chapel, Auditorium)');
+      if (!name) return;
+      var all = readPresets();
+      all[name] = JSON.parse(JSON.stringify(state));
+      writePresets(all); refreshPresetList();
+      $('presets').value = name;
+      toast('Saved "' + name + '"');
+    });
+    $('load').addEventListener('click', function () {
+      var name = $('presets').value;
+      if (!name) return;
+      var all = readPresets();
+      if (!all[name]) return;
+      var base = defaults(), k;
+      for (k in base) if (all[name][k] !== undefined) base[k] = all[name][k];
+      state = base; syncControls(); save(); rebuild();
+      toast('Loaded "' + name + '"');
+    });
+    $('delete').addEventListener('click', function () {
+      var name = $('presets').value;
+      if (!name) return;
+      var all = readPresets();
+      delete all[name];
+      writePresets(all); refreshPresetList();
+      toast('Deleted "' + name + '"');
+    });
+
+    frame.addEventListener('load', function () {
+      // Give the wall page a moment to lay the text out before measuring.
+      setTimeout(checkClipping, 120);
+    });
+
+    refreshPresetList();
+    rebuild();
+
+    // The URL must point at the address ProPresenter will use, not at
+    // localhost, whenever the relay knows its own LAN address.
+    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
+      if (s && s.relay && s.relay.ip) {
+        relayBase = 'http://' + s.relay.ip + ':' + s.relay.port;
+        urlBox.value = finalUrl();
+      }
+    })['catch'](function () {});
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
