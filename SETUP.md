@@ -12,9 +12,26 @@ On the machine that will run the captions (the "relay host" — usually the same
 booth machine that runs the capture, and it may be the ProPresenter machine or
 a separate one):
 
+**macOS** (the booth machine):
+
+1. Install **Python 3.11 or newer**. The Python that ships with macOS is too
+   old. Either the installer from [python.org](https://www.python.org/downloads/)
+   or `brew install python@3.12`.
+2. Get the project onto the machine with **`git clone`**, not by downloading a
+   zip. A downloaded folder is quarantined by Gatekeeper and macOS will refuse
+   to run the launcher. (If it is already quarantined:
+   `xattr -dr com.apple.quarantine /path/to/campus-captions`.)
+3. Double-click **`Start Captions.command`**.
+
+The first time you run it, macOS will ask for **Microphone** permission — the
+prompt names Terminal, since that is what launches it. Say yes. If you miss it,
+see the microphone note in section 5.
+
+**Windows:**
+
 1. Install **Python 3.11 or newer** from python.org. During setup, tick
    **"Add Python to PATH"**. Tested on 3.14.6.
-2. Copy the whole `campus-captions` folder onto the machine.
+2. Copy or clone the `campus-captions` folder onto the machine.
 3. Double-click **`Start Captions.bat`**.
 
 The first run creates a virtual environment and installs dependencies — about a
@@ -92,9 +109,16 @@ is wrong.
 campus network — a DHCP reservation for its MAC address, arranged with IT. Do
 this once and write the address down.
 
-**Open the port inbound.** Windows Firewall blocks it by default, which shows up
-as: the status page works on the booth machine, but phones and ProPresenter on
-another machine cannot connect. In an **Administrator** PowerShell, once:
+**Open the port inbound.** The symptom of not doing this: the status page works
+on the booth machine itself, but phones and other machines cannot connect.
+
+On **macOS**, the firewall prompts the first time the relay starts — a dialog
+asking whether `python` may accept incoming network connections. Click **Allow**.
+If it was denied, fix it in System Settings > Network > Firewall > Options: find
+the Python entry and set it to allow incoming connections, or remove the entry
+so the prompt comes back.
+
+On **Windows**, in an Administrator PowerShell, once:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Campus Captions relay" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Domain,Private
@@ -117,13 +141,20 @@ images from the internet.
 
 ## 5. Audio input device
 
-Device indices are **not** stable between machines. Windows lists the same
-physical microphone several times, once per host API (MME, DirectSound, WASAPI,
-WDM-KS), so index 3 on your laptop is something else entirely in the booth.
+Device indices are **not** stable. Windows lists the same physical microphone
+several times, once per host API (MME, DirectSound, WASAPI, WDM-KS), so index 3
+on your laptop is something else entirely in the booth — and they renumber when
+hardware is plugged or unplugged, on the *same* machine. macOS has one host API
+(Core Audio) so the list is shorter, but the numbering still shifts with USB
+devices.
 
 See what a machine actually has:
 
 ```
+# macOS
+.venv/bin/python -m capture --list-devices
+
+# Windows
 .venv\Scripts\python.exe -m capture --list-devices
 ```
 
@@ -154,6 +185,23 @@ empty uses the system default input.
 The sample rate is whatever the device opens at — 16 kHz if it supports it,
 otherwise its own rate, typically 48 kHz. There is no resampling; the real rate
 is reported to the ASR service.
+
+### macOS microphone permission
+
+macOS gates microphone access per application. When permission is missing the
+process is not given an error — it is handed **a stream of perfect silence**,
+which looks exactly like a muted microphone or a dead cable.
+
+The status page tells these apart. Real silence still carries a noise floor, so
+if every sample is exactly zero for five seconds the Audio tile says:
+
+> no signal at all from this device — on macOS grant Microphone access in
+> System Settings > Privacy & Security > Microphone, then restart
+
+Fix it in **System Settings > Privacy & Security > Microphone** and enable the
+app that launches the system — **Terminal** if you use `Start Captions.command`.
+The warning clears itself as soon as real audio arrives; no restart of the
+capture client is needed once permission is granted.
 
 **For a live event, take the feed from the sound desk**, not from a laptop's
 built-in microphone: a mix-minus or matrix output into a USB interface. Room
@@ -352,7 +400,8 @@ Roughly 30 minutes before doors.
 **Setup**
 
 - [ ] Relay host is on, on the network, at its expected IP address
-- [ ] `Start Captions.bat` run — window shows `--- ready ---`
+- [ ] Launcher run (`Start Captions.command` on Mac, `.bat` on Windows) —
+      window shows `--- ready ---`
 - [ ] Status page open in the booth: `http://<relay-ip>:8000/status`
 - [ ] `config/event.toml` has `backend = "deepgram"` for a real event
 - [ ] `.env` has the Deepgram key — the capture client says

@@ -3,8 +3,14 @@
 Device selection is by index *or* name substring, because the show machine's
 device list does not match a laptop's. Windows lists the same physical input
 several times - once per host API (MME, DirectSound, WASAPI) - so an index that
-is right on one machine is wrong on another. A name match is stable across
-machines; when a name matches several entries, WASAPI wins.
+is right on one machine is wrong on another, and they renumber when hardware is
+plugged in. A name match is stable; when a name matches several entries the
+best host API for the platform wins.
+
+macOS has one host API (Core Audio) so there is nothing to disambiguate, but it
+has a hazard Windows does not: without Microphone permission the process is
+handed a stream of digital silence rather than an error. That looks exactly like
+a muted mic, so it is detected and reported separately.
 
 Audio is captured as mono 16-bit PCM. No resampling: whatever rate the device
 opens at is reported to the backend, which tells the ASR service. That avoids a
@@ -16,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import math
 import queue
+import sys
 import time
 from dataclasses import dataclass
 
@@ -32,9 +39,25 @@ except Exception as exc:                       # no PortAudio, headless box, ...
 # device's own rate when it cannot do 16k.
 PREFERRED_RATE = 16000
 BLOCK_MS = 100                                  # 100 ms blocks
-HOSTAPI_PREFERENCE = ("Windows WASAPI", "Windows DirectSound", "MME")
+
+# Best host API first, per platform. On macOS there is only one.
+HOSTAPI_PREFERENCE = {
+    "darwin": ("Core Audio",),
+    "win32": ("Windows WASAPI", "Windows DirectSound", "MME"),
+}.get(sys.platform, ("ALSA", "PulseAudio", "JACK"))
+
 # A transient glitch should disappear from the status page on its own.
 ERROR_TTL = 6.0
+
+# Real hardware always has a noise floor. Sustained, perfectly zero samples mean
+# the OS is feeding us silence - on macOS, almost always a missing Microphone
+# permission.
+DIGITAL_SILENCE_AFTER = 5.0
+
+MIC_PERMISSION_HINT = (
+    "no signal at all from this device - on macOS grant Microphone access in "
+    "System Settings > Privacy & Security > Microphone, then restart"
+)
 
 
 @dataclass
@@ -171,10 +194,12 @@ class AudioInput:
         self.blocks_dropped = 0
         self.blocks_read = 0
         self.overflows = 0
+        self.nonzero_blocks = 0
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=32)
         self._stream = None
         self._error: str | None = None
         self._error_at = 0.0
+        self._started_at: float | None = None
 
     def _note_error(self, message: str) -> None:
         self._error = message
@@ -191,6 +216,10 @@ class AudioInput:
             self._note_error(f"audio: {status}")
         try:
             mono = indata[:, 0] if indata.ndim > 1 else indata
+            # Any sample at all being non-zero proves the OS is really giving us
+            # this device, as opposed to silence in place of it.
+            if mono.any():
+                self.nonzero_blocks += 1
             # RMS of int16 normalised to 0..1, for the status page meter.
             samples = mono.astype(np.float32) / 32768.0
             self.level = float(math.sqrt(float(np.mean(samples * samples)) + 1e-12))
@@ -202,6 +231,7 @@ class AudioInput:
             self._note_error(f"{exc.__class__.__name__}: {exc}")
 
     def start(self) -> None:
+        self._started_at = time.monotonic()
         self._stream = sd.InputStream(
             device=self.device.index,
             channels=1,
@@ -241,10 +271,26 @@ class AudioInput:
         except queue.Empty:
             return None
 
+    def receiving_digital_silence(self) -> bool:
+        """Every sample exactly zero since the stream opened.
+
+        Real hardware has a noise floor, so this never happens to a working
+        input - it means the OS handed us silence instead of the device.
+        """
+        if self.nonzero_blocks or self._started_at is None:
+            return False
+        if self.blocks_read < 5:
+            return False                       # too early to conclude anything
+        return (time.monotonic() - self._started_at) > DIGITAL_SILENCE_AFTER
+
     @property
     def error(self) -> str | None:
         if self._error and (time.monotonic() - self._error_at) > ERROR_TTL:
             self._error = None
+        # Re-evaluated every read, so it clears itself the moment real audio
+        # arrives - no restart needed once permission is granted.
+        if self.receiving_digital_silence():
+            return MIC_PERMISSION_HINT
         return self._error
 
 

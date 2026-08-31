@@ -23,10 +23,15 @@ This README is for working on the code.
 
 ## Operating it: the short version
 
-Double-click **`Start Captions.bat`**. It creates the virtual environment on
-first run, starts the relay and the capture client, opens the status page, and
+Double-click the launcher — **`Start Captions.command`** on macOS,
+**`Start Captions.bat`** on Windows. It creates the virtual environment on first
+run, starts the relay and the capture client, opens the status page, and
 supervises both until the window is closed. Everything an operator needs is on
 the status page.
+
+The booth runs macOS; development here has been on Windows. Both are supported,
+and `.gitattributes` pins the launchers' line endings so neither breaks when
+committed from the other platform.
 
 ---
 
@@ -279,7 +284,8 @@ this page with no change to the relay, the status page or the viewers.
 ## Layout
 
 ```
-Start Captions.bat            double-click this
+Start Captions.command        double-click this (macOS)
+Start Captions.bat            double-click this (Windows)
 launcher/launch.py            venv, both processes, browser, supervision
 SETUP.md                      the operator and technician document
 docs/MESSAGES.md              the message contract

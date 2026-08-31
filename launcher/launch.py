@@ -1,4 +1,5 @@
-"""Start everything. Run by "Start Captions.bat"; no terminal knowledge needed.
+"""Start everything. Run by "Start Captions.command" (macOS) or
+"Start Captions.bat" (Windows); no terminal knowledge needed.
 
 Creates the virtual environment on first run, installs pinned dependencies,
 starts the relay, waits for it to answer, starts the capture client, opens the
@@ -122,19 +123,28 @@ def existing_relay(port: int) -> dict | None:
 
 def port_owner(port: int) -> str:
     """Best effort name of whatever holds the port, for the error message."""
-    if os.name != "nt":
-        return ""
     try:
-        out = subprocess.run(["netstat", "-ano"], capture_output=True,
-                             text=True, timeout=5).stdout
-        for line in out.splitlines():
-            if f":{port} " in line and "LISTENING" in line:
-                pid = line.split()[-1]
-                task = subprocess.run(
-                    ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                    capture_output=True, text=True, timeout=5).stdout.strip()
-                name = task.split(",")[0].strip('"') if task else "unknown"
-                return f"{name} (PID {pid})"
+        if os.name == "nt":
+            out = subprocess.run(["netstat", "-ano"], capture_output=True,
+                                 text=True, timeout=5).stdout
+            for line in out.splitlines():
+                if f":{port} " in line and "LISTENING" in line:
+                    pid = line.split()[-1]
+                    task = subprocess.run(
+                        ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                        capture_output=True, text=True, timeout=5).stdout.strip()
+                    name = task.split(",")[0].strip('"') if task else "unknown"
+                    return f"{name} (PID {pid})"
+            return ""
+
+        # macOS and Linux: lsof prints COMMAND and PID in the first two columns.
+        out = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 2:
+                return f"{parts[0]} (PID {parts[1]})"
     except Exception:
         pass
     return ""
@@ -176,6 +186,11 @@ def main() -> int:
     except subprocess.CalledProcessError as exc:
         say(f"\nsetup failed: {exc}")
         say("check that this machine has Python 3.11 or newer installed.")
+        if sys.platform == "darwin":
+            say("on macOS, install it from python.org or run "
+                "'brew install python@3.12'.")
+            say("the Python that ships with macOS is too old.")
+        input("\npress Enter to close ")
         return 1
 
     port = read_port()
