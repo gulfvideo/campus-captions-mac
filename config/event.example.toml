@@ -48,6 +48,18 @@ offer = []
 # twenty and produce text that rewrites itself faster than anyone can read.
 provider = "none"
 
+# YouTube. Both paths are optional and independent.
+#
+# LIVE captions during a broadcast: set the broadcast's caption source to
+# "POST captions to URL" in YouTube Studio, then put the ingestion URL in .env
+# as YOUTUBE_CAPTION_URL. It is a secret - anyone holding it can write captions
+# onto your stream - so it never goes in this file. A translated track can go to
+# its own broadcast with YOUTUBE_CAPTION_URL_ES, YOUTUBE_CAPTION_URL_ZH_HANS...
+#
+# AFTER the event: the relay records every committed line with timings. Press
+# "Mark video start" on the status page when the stream begins, download the
+# .srt afterwards, and upload it with tools/youtube_upload.py.
+
 # --- stage 3, not read by the relay ---------------------------------------
 
 [capture]

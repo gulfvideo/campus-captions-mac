@@ -32,6 +32,8 @@ CLIENT_QUEUE_MAX = 256
 MAX_TEXT_CHARS = 2000
 SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
 CONTROL_ACTIONS = {"open_stream", "close_stream", "clear", "reload_keyterms"}
+# Handled by the relay itself, not forwarded to a capture client.
+RELAY_ACTIONS = {"mark_video_start", "reset_transcript"}
 
 _counter = itertools.count(1)
 
@@ -96,6 +98,10 @@ class Hub:
         # nothing about translation; the server contributes that here so the
         # websocket feed and the HTTP endpoint cannot drift apart.
         self.snapshot_extra = None
+        # When the current utterance began: the first interim after the last
+        # commit. A final only tells you when it landed, and an .srt needs to
+        # know how long the line was actually being spoken.
+        self._utterance_started: float | None = None
 
     # -- outbound --------------------------------------------------------
 
@@ -127,6 +133,7 @@ class Hub:
         if kind == "final":
             msg["id"] = f"{self.session_id}:{msg['seq']}"
             msg.setdefault("utterance", msg["id"])
+            msg.setdefault("t0", msg["t"])
             self._buffer_for(lang).append(msg)
         elif kind == "clear":
             for buffer in self.finals.values():
@@ -198,11 +205,18 @@ class Hub:
         if not text:
             return
         if kind == "interim":
+            if self._utterance_started is None:
+                self._utterance_started = time.time()
             self.state.note_interim()
             self.broadcast({"type": "interim", "text": text})
         elif kind == "final":
+            started = self._utterance_started
+            self._utterance_started = None
             self.state.note_final(text)
-            self.broadcast({"type": "final", "text": text})
+            payload = {"type": "final", "text": text}
+            if started is not None:
+                payload["t0"] = round(started, 3)
+            self.broadcast(payload)
 
     # -- membership ------------------------------------------------------
 

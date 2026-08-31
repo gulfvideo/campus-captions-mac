@@ -12,6 +12,12 @@ config/*.local.*
 *.key
 *.pem
 
+# Google OAuth for the YouTube caption upload: the client secret and the
+# cached token both grant access to the channel.
+config/google_client_secret.json
+config/google_token.json
+captions-*.srt
+
 # ---- python ------------------------------------------------------------
 __pycache__/
 *.py[cod]

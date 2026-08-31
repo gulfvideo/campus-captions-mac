@@ -1,0 +1,26 @@
+# Optional: uploading a finished .srt to a YouTube video with
+# tools/youtube_upload.py. The relay never imports these - only that one
+# after-the-event script does, so they are not in requirements.txt.
+#
+#   python -m pip install -r requirements-youtube.txt
+#
+# Live captions during a broadcast need NONE of this: that path posts to the
+# ingestion URL with the standard library and is built into the relay.
+#
+# Verified importable on Python 3.14.6.
+
+google-api-python-client==2.199.0
+google-auth-oauthlib==1.4.1
+
+# --- pulled in by the above ------------------------------------------------
+google-api-core==2.34.0
+google-auth==2.57.0
+google-auth-httplib2==0.4.2
+googleapis-common-protos==1.75.2
+httplib2==0.32.0
+oauthlib==3.3.1
+protobuf==7.36.1
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
+requests-oauthlib==2.0.0
+uritemplate==4.2.0

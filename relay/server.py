@@ -28,8 +28,10 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import config as config_module
+from . import transcript as transcript_module
 from . import translate as translate_module
-from .hub import CONTROL_ACTIONS, Client, Hub
+from . import youtube_live as youtube_module
+from .hub import CONTROL_ACTIONS, RELAY_ACTIONS, Client, Hub
 
 HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
@@ -97,10 +99,25 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     # One definition of the translation block, used by both the websocket feed
     # and /api/status. Adding it to only one is exactly the bug this avoids.
+    recorder = transcript_module.TranscriptRecorder()
+    live = youtube_module.LiveCaptions(
+        youtube_module.urls_from_env(cfg.source_language, list(targets)))
+
+    def on_broadcast(msg: dict) -> None:
+        recorder.observe(msg)
+        if msg.get("type") == "final" and live.active:
+            live.submit(msg.get("lang") or cfg.source_language,
+                        msg.get("text", ""),
+                        float(msg.get("t0") or msg.get("t") or time.time()))
+
+    hub.on_event = on_broadcast
+
     hub.snapshot_extra = lambda: {
         "translation": (worker.stats() if worker is not None
                         else {"provider": "none", "targets": []}),
         "languages": available_languages(),
+        "transcript": recorder.stats(),
+        "youtube_live": live.stats(),
     }
 
     async def heartbeat_loop() -> None:
@@ -121,6 +138,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         ]
         if worker is not None:
             worker.start()
+        if live.active:
+            live.start()
         ip = local_ip()
         print(f"[relay] session {hub.session_id}")
         print(f"[relay] wall    http://{ip}:{cfg.port}/wall")
@@ -137,6 +156,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                   f"{', '.join(worker.targets)} via {translator.name}")
         elif targets:
             print("[relay] translation NOT active - source language only")
+        if live.active:
+            print(f"[relay] youtube live captions -> "
+                  f"{', '.join(sorted(live.senders))}")
         if cfg.token_required:
             print("[relay] source token required")
         try:
@@ -147,6 +169,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             await asyncio.gather(*tasks, return_exceptions=True)
             if worker is not None:
                 await worker.stop()
+            await live.stop()
 
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan)
     app.state.hub = hub
@@ -240,6 +263,24 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "offered": list(cfg.offer_languages),
         }, headers=NO_STORE)
 
+    @app.get("/api/transcript.srt")
+    async def transcript_srt(request: Request, lang: str = "") -> Response:
+        """The event as a SubRip file, ready to upload to the video."""
+        require_admin(request)
+        lang = lang or cfg.source_language
+        if not transcript_module.SAFE_LANG.match(lang):
+            raise HTTPException(status_code=400, detail="bad language code")
+        body = recorder.to_srt(lang)
+        if not body:
+            raise HTTPException(status_code=404,
+                                detail=f"nothing recorded for {lang!r}")
+        stamp = time.strftime("%Y%m%d-%H%M", time.localtime(recorder.started_at))
+        filename = f"captions-{stamp}-{lang}.srt"
+        return Response(
+            content=body, media_type="application/x-subrip; charset=utf-8",
+            headers={**NO_STORE,
+                     "Content-Disposition": f'attachment; filename="{filename}"'})
+
     @app.get("/api/languages")
     async def api_languages() -> JSONResponse:
         """What the phone picker offers.
@@ -308,10 +349,21 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         except Exception:
             body = {}
         action = (body or {}).get("action")
+        if action in RELAY_ACTIONS:
+            if action == "mark_video_start":
+                when = recorder.mark_start()
+                print("[relay] video start marked")
+                return JSONResponse({"ok": True, "action": action,
+                                     "zero_time": when}, headers=NO_STORE)
+            recorder.clear()
+            print("[relay] transcript reset")
+            return JSONResponse({"ok": True, "action": action},
+                                headers=NO_STORE)
         if action not in CONTROL_ACTIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"action must be one of {sorted(CONTROL_ACTIONS)}",
+                detail=f"action must be one of "
+                       f"{sorted(CONTROL_ACTIONS | RELAY_ACTIONS)}",
             )
         delivered = hub.send_control(action)
         print(f"[relay] control {action} -> {delivered} capture client(s)")
