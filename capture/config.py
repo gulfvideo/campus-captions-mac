@@ -88,6 +88,12 @@ def load(path: Path | None = None) -> CaptureConfig:
         "mock_loop": section.get("mock_loop", True),
     })
     backend_config.update(data.get("deepgram", {}) or {})
+    # [local] keys are prefixed so they cannot collide with [deepgram] - both
+    # sections have a "model", and everything lands in one flat dict.
+    backend_config.update({
+        f"local_{key}": value
+        for key, value in (data.get("local", {}) or {}).items()
+    })
     cfg.backend_config = backend_config
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)

@@ -77,6 +77,19 @@ endpointing = 300
 `backend = "mock"` is the safe default — it plays a scripted transcript and
 costs nothing. Switch to `"deepgram"` when you want real captions.
 
+Three backends are available:
+
+| `backend` | What it does | Needs |
+|---|---|---|
+| `mock` | plays a scripted transcript | nothing |
+| `deepgram` | live cloud ASR, best quality | API key, internet |
+| `local` | on-device Whisper, no network, no spend | `requirements-local.txt` |
+
+`local` is the one to use for a **demo** or a venue with no internet. Install the
+extras once, set `backend = "local"`, and everything else — the status page, the
+open/close button, keyterms, the viewers — behaves identically. Expect about a
+second more latency than Deepgram and interim text that revises itself more.
+
 ---
 
 ## 3. The Deepgram API key

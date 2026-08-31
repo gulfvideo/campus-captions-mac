@@ -12,7 +12,7 @@ source_token = ""
 # --- stage 3, not read by the relay ---------------------------------------
 
 [capture]
-backend = "mock"                                   # mock | deepgram
+backend = "mock"                                   # mock | deepgram | local
 device = ""                                        # index or name substring
 relay_url = "ws://127.0.0.1:8000/ws/source"
 mock_script = "config/mock_script.txt"
@@ -21,3 +21,16 @@ mock_script = "config/mock_script.txt"
 model = "nova-3"
 language = "en-US"
 keyterms_file = "config/keyterms.txt"
+
+# On-device Whisper. No network, no API key, no spend - good for demos and for
+# a venue with no internet. Needs the optional extras:
+#     python -m pip install -r requirements-local.txt
+# The model downloads on first use and is then cached.
+[local]
+model = "base.en"        # tiny.en | base.en | small.en | medium.en, or a
+                         # multilingual name like "small" for non-English audio
+compute_type = "int8"    # int8 is fastest on CPU; float16 needs a GPU
+device = "cpu"           # leave as cpu unless you have verified a GPU works
+interim_interval = 0.9   # seconds between interim re-decodes
+silence_commit = 0.7     # seconds of quiet that commits a line
+# model_dir = "models"   # pre-downloaded models, for a machine with no internet

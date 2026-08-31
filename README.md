@@ -102,10 +102,35 @@ await backend.close()                   # and stops HERE
 |---|---|---|
 | `mock` | `capture/backends/mock.py` | replays `config/mock_script.txt`, ignores audio, costs nothing |
 | `deepgram` | `capture/backends/deepgram.py` | Nova-3 streaming, keyterm prompting, key from `.env` |
+| `local` | `capture/backends/local.py` | on-device Whisper, no network, no key, no spend |
 
-**Adding a local on-device backend later** is one new file next to those two and
-one line in `capture/backends/registry.py`. Nothing in the relay or the viewers
-changes.
+Adding the local backend cost exactly what the design promised: one new file and
+one line in `capture/backends/registry.py`. The relay, the viewers and the
+status page were not touched.
+
+### The local backend
+
+```bash
+python -m pip install -r requirements-local.txt     # optional extras, ~200 MB
+```
+
+Then set `backend = "local"` in `config/event.toml`. The model downloads on
+first use and is cached; `[local] model_dir` points at a pre-downloaded cache
+for a machine with no internet at all.
+
+Whisper is not a streaming model, so streaming is simulated: audio accumulates,
+the buffer is re-decoded every `interim_interval` seconds and emitted as an
+interim, and a pause longer than `silence_commit` commits the line as a final.
+Lines therefore break at natural pauses, which is where a caption wants to break
+anyway.
+
+Two things to know before trusting it live. Interims are less stable than
+Deepgram's — the whole window is re-decoded each pass, so early words can change
+under you. And latency runs roughly a second behind. It is excellent for demos,
+rehearsal and venues with no internet.
+
+`config/keyterms.txt` is reused as Whisper's `initial_prompt`, so the same file
+and the same **Reload keyterms** button bias spelling on this backend too.
 
 The mock backend is first-class, not a stub: it obeys the same open/close
 lifecycle, so the whole operator flow can be rehearsed without hardware, an API

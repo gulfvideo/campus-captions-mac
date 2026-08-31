@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from .base import ASRBackend
 from .deepgram import DeepgramBackend
+from .local import LocalWhisperBackend
 from .mock import MockBackend
 
 BACKENDS: dict[str, type[ASRBackend]] = {
     "mock": MockBackend,
     "deepgram": DeepgramBackend,
-    # "local": LocalBackend,
+    "local": LocalWhisperBackend,
 }
 
 
