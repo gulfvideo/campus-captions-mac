@@ -16,12 +16,14 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import sys
 import threading
 import time
 import types
 import urllib.error
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 import rumps
 import uvicorn
@@ -32,8 +34,21 @@ from relay import config as relay_config
 from relay.server import create_app
 
 RELAY_READY_TIMEOUT = 25.0
-TITLE = "\U0001F393"          # graduation cap
-TITLE_ERROR = "⚠️"  # warning sign
+STATUS_POLL_INTERVAL = 3.0
+
+
+def _icons_dir() -> Path:
+    """Where the menu bar PNGs live - inside the frozen bundle's Resources
+    when packaged, next to this file when run from source."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "macapp" / "icons"
+    return Path(__file__).resolve().parent / "icons"
+
+
+_ICONS = _icons_dir()
+ICON_IDLE = str(_ICONS / "menubar_idle.png")
+ICON_STREAMING = str(_ICONS / "menubar_streaming.png")
+ICON_INACTIVE = str(_ICONS / "menubar_inactive.png")
 
 
 class _SilentServer(uvicorn.Server):
@@ -87,10 +102,34 @@ def run_capture() -> None:
     asyncio.run(CaptureApp(cfg, args).run())
 
 
+def poll_status(app: "CampusCaptionsApp", port: int) -> None:
+    """Keeps the menu bar icon honest about what's actually happening:
+    a plain graduation cap while idle, filled-in while captions are
+    flowing, and the warning glyph the moment the source reports trouble
+    or the relay stops answering."""
+    url = f"http://127.0.0.1:{port}/api/status"
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                data = json.load(r)
+            source = data.get("source", {})
+            asr = data.get("asr", {})
+            if source.get("error"):
+                app.set_icon_state("inactive")
+            elif asr.get("stream_open"):
+                app.set_icon_state("streaming")
+            else:
+                app.set_icon_state("idle")
+        except Exception:
+            app.set_icon_state("inactive")
+        time.sleep(STATUS_POLL_INTERVAL)
+
+
 class CampusCaptionsApp(rumps.App):
     def __init__(self, port: int):
-        super().__init__("Campus Captions", title=TITLE, quit_button=None)
+        super().__init__("Campus Captions", icon=ICON_IDLE, template=True, quit_button=None)
         self.port = port
+        self._icon_state = "idle"
         self.menu = [
             rumps.MenuItem("Open Status Page", callback=self.open_status),
             rumps.MenuItem("Open Wall View", callback=self.open_wall),
@@ -98,6 +137,18 @@ class CampusCaptionsApp(rumps.App):
             rumps.separator,
             rumps.MenuItem("Quit Campus Captions", callback=self.quit_app),
         ]
+
+    def set_icon_state(self, state: str) -> None:
+        """idle / streaming / inactive - a no-op if already showing that
+        icon, so the menu bar doesn't flicker on every poll."""
+        if state == self._icon_state:
+            return
+        self._icon_state = state
+        self.icon = {
+            "idle": ICON_IDLE,
+            "streaming": ICON_STREAMING,
+            "inactive": ICON_INACTIVE,
+        }[state]
 
     def open_status(self, _sender) -> None:
         webbrowser.open(f"http://127.0.0.1:{self.port}/status")
@@ -136,9 +187,10 @@ def main() -> None:
     def wait_then_start_capture() -> None:
         if wait_ready(rcfg.port, time.time() + RELAY_READY_TIMEOUT):
             threading.Thread(target=run_capture, daemon=True).start()
+            threading.Thread(target=poll_status, args=(app, rcfg.port), daemon=True).start()
             webbrowser.open(f"http://127.0.0.1:{rcfg.port}/status")
         else:
-            app.title = TITLE_ERROR  # rumps allows title updates off the main thread
+            app.set_icon_state("inactive")  # rumps allows icon updates off the main thread
 
     threading.Thread(target=wait_then_start_capture, daemon=True).start()
     app.run()
