@@ -75,6 +75,10 @@ class DeviceChoice:
 def list_input_devices() -> list[dict]:
     if not AUDIO_AVAILABLE:
         return []
+    try:
+        default_index = sd.default.device[0]
+    except Exception:
+        default_index = None
     out = []
     for index, dev in enumerate(sd.query_devices()):
         if dev["max_input_channels"] < 1:
@@ -85,6 +89,7 @@ def list_input_devices() -> list[dict]:
             "hostapi": sd.query_hostapis(dev["hostapi"])["name"],
             "channels": dev["max_input_channels"],
             "default_samplerate": int(dev["default_samplerate"]),
+            "is_default": index == default_index,
         })
     return out
 
@@ -95,14 +100,10 @@ def print_devices() -> None:
         print("no input devices found"
               + (f" ({AUDIO_IMPORT_ERROR})" if not AUDIO_AVAILABLE else ""))
         return
-    try:
-        default_index = sd.default.device[0]
-    except Exception:
-        default_index = None
     print(f"{'idx':>4}  {'name':<44} {'host api':<22} {'in':>3}  {'rate':>6}")
     print("-" * 86)
     for dev in devices:
-        mark = " *" if dev["index"] == default_index else "  "
+        mark = " *" if dev["is_default"] else "  "
         print(f"{dev['index']:>4}{mark}{dev['name'][:44]:<44} "
               f"{dev['hostapi'][:22]:<22} {dev['channels']:>3}  "
               f"{dev['default_samplerate']:>6}")
@@ -197,6 +198,7 @@ class AudioInput:
         self.nonzero_blocks = 0
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=32)
         self._stream = None
+        self._running = False
         self._error: str | None = None
         self._error_at = 0.0
         self._started_at: float | None = None
@@ -245,8 +247,14 @@ class AudioInput:
             callback=self._callback,
         )
         self._stream.start()
+        self._running = True
 
     def stop(self) -> None:
+        # Set this before closing PortAudio so blocks() exits even when the
+        # stopped device has no queued frame left to yield. Runtime device
+        # switching relies on that iterator ending so pump_audio can attach to
+        # the replacement input.
+        self._running = False
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -258,8 +266,10 @@ class AudioInput:
     async def blocks(self):
         """Async iterator of PCM blocks."""
         loop = asyncio.get_running_loop()
-        while True:
+        while self._running:
             block = await loop.run_in_executor(None, self._get_block)
+            if not self._running:
+                break
             if block is None:
                 await asyncio.sleep(0.05)
                 continue
@@ -307,14 +317,15 @@ class SilentInput:
         self.blocks_dropped = 0
         self.blocks_read = 0
         self.error = None
+        self._running = True
 
     def start(self) -> None:
-        return None
+        self._running = True
 
     def stop(self) -> None:
-        return None
+        self._running = False
 
     async def blocks(self):
-        while True:
+        while self._running:
             await asyncio.sleep(0.1)
             yield b""

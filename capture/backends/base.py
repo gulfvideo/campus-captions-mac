@@ -96,5 +96,14 @@ class ASRBackend(ABC):
         return self._open
 
     @property
+    def wants_open(self) -> bool:
+        """Whether the operator intends the stream to be open.
+
+        Usually this equals ``stream_open``. Network backends may temporarily
+        disconnect while still trying to satisfy the operator's request.
+        """
+        return self._open
+
+    @property
     def error(self) -> str | None:
         return self._error

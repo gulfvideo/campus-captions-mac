@@ -1,5 +1,4 @@
-"""Start everything. Run by "Start Captions.command" (macOS) or
-"Start Captions.bat" (Windows); no terminal knowledge needed.
+"""Start everything. Run by "Start Captions.bat"; no terminal knowledge needed.
 
 Creates the virtual environment on first run, installs pinned dependencies,
 starts the relay, waits for it to answer, starts the capture client, opens the

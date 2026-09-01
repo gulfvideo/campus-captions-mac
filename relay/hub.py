@@ -31,7 +31,11 @@ CLIENT_QUEUE_MAX = 256
 
 MAX_TEXT_CHARS = 2000
 SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
-CONTROL_ACTIONS = {"open_stream", "close_stream", "clear", "reload_keyterms"}
+CONTROL_ACTIONS = {
+    "open_stream", "close_stream", "clear", "reload_keyterms",
+    "select_audio_device", "refresh_audio_devices", "select_backend",
+    "set_deepgram_key",
+}
 # Handled by the relay itself, not forwarded to a capture client.
 RELAY_ACTIONS = {"mark_video_start", "reset_transcript"}
 
@@ -76,8 +80,7 @@ class Client:
 
 
 class Hub:
-    def __init__(self, session_id: str | None = None,
-                 source_language: str = "en"):
+    def __init__(self, session_id: str | None = None, source_language: str = "en"):
         self.session_id = session_id or uuid.uuid4().hex[:8]
         self.source_language = source_language
         self.seq = 0
@@ -90,13 +93,15 @@ class Hub:
         self.finals: dict[str, deque[dict]] = {}
         self.state = RelayState(session_id=self.session_id)
         self.on_event = None          # optional callback(msg) for logging
+        self.youtube = None           # optional YouTubeCaptionPusher; set by server.py
         # Called with each committed source-language line. The server uses it to
         # queue translation; the hub itself stays transport-only and knows
         # nothing about translation providers.
         self.on_source_final = None
         # Extra blocks to merge into every status snapshot. The hub knows
-        # nothing about translation; the server contributes that here so the
-        # websocket feed and the HTTP endpoint cannot drift apart.
+        # nothing about translation or YouTube stats beyond what it owns
+        # itself; the server contributes the rest here so the websocket feed
+        # and the HTTP endpoint cannot drift apart.
         self.snapshot_extra = None
         # When the current utterance began: the first interim after the last
         # commit. A final only tells you when it landed, and an .srt needs to
@@ -160,15 +165,18 @@ class Hub:
             if not client.send(payload):
                 self.status_clients.pop(client.cid, None)
 
-    def send_control(self, action: str) -> int:
+    def send_control(self, action: str, fields: dict | None = None) -> int:
         """Forward an operator action to every connected capture client."""
         if action not in CONTROL_ACTIONS:
             raise ValueError(f"unknown control action: {action}")
-        payload = json.dumps({
+        message = {
             "type": "control",
             "action": action,
             "t": round(time.time(), 3),
-        })
+        }
+        if fields:
+            message.update(fields)
+        payload = json.dumps(message)
         sent = 0
         for client in list(self.sources.values()):
             if client.send(payload):
@@ -217,6 +225,8 @@ class Hub:
             if started is not None:
                 payload["t0"] = round(started, 3)
             self.broadcast(payload)
+            if self.youtube is not None and self.youtube.enabled:
+                asyncio.create_task(self.youtube.push(text))
 
     # -- membership ------------------------------------------------------
 
@@ -274,6 +284,9 @@ class Hub:
 
     def snapshot(self) -> dict:
         snap = self.state.snapshot(self.viewer_counts(), self.seq)
+        snap["youtube"] = self.youtube.status() if self.youtube else {
+            "configured": False, "enabled": False, "pushed": 0, "error": None,
+        }
         if self.snapshot_extra:
             snap.update(self.snapshot_extra())
         return snap

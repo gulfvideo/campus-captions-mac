@@ -1,20 +1,22 @@
 """Backend name -> class.
 
-Adding a local on-device backend later is one import and one dict entry here.
-Nothing in the relay or the viewers changes.
+Adding a backend is one import and one dict entry here. Nothing in the relay
+or the viewers changes.
 """
 
 from __future__ import annotations
 
+from .apple_speech import AppleSpeechBackend
 from .base import ASRBackend
 from .deepgram import DeepgramBackend
-from .local import LocalWhisperBackend
 from .mock import MockBackend
+from .whisper import LocalWhisperBackend
 
 BACKENDS: dict[str, type[ASRBackend]] = {
     "mock": MockBackend,
     "deepgram": DeepgramBackend,
-    "local": LocalWhisperBackend,
+    "apple_speech": AppleSpeechBackend,
+    "whisper": LocalWhisperBackend,
 }
 
 

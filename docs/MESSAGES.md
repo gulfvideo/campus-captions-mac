@@ -20,20 +20,19 @@ Unknown `type` values MUST be ignored silently. Unknown fields MUST be ignored.
 
 | Path | Peer | Direction |
 |---|---|---|
-| `/ws/viewer?role=wall\|phone` | wall view, phone view | relay → viewer |
+| `/ws/viewer?role=wall\|phone&lang=xx` | wall view, phone view | relay → viewer |
 | `/ws/source` | capture client | both ways |
 | `/ws/status` | status page | relay → status |
 
 `role` affects only how many committed lines are replayed on connect
-(`wall` → 2, `phone` → 30). It changes nothing else.
+(`wall` → 2, `phone` → 30). `lang` selects which language stream to join
+(default: the source language) - each language is an independent stream with
+its own replay buffer, so joining `lang=es` replays Spanish history, not
+English translated on the fly. It changes nothing else.
 
-`/ws/viewer` also takes **`lang`**. Each language is an independent stream with
-its own replay buffer, so a viewer that asks for `lang=es` receives only Spanish
-finals and replays Spanish history on reconnect. Omitting it means the source
-language. A viewer never receives a language it did not ask for.
-
-HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /api/status`,
-`POST /api/control`.
+HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
+`GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.srt`,
+`POST /api/control`, `POST /api/youtube-captions`.
 
 ---
 
@@ -54,12 +53,8 @@ HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /api/status`,
 Sent once, first frame after the socket opens.
 
 ```json
-{"type":"hello","seq":0,"session_id":"7f3a1c9e","server_time":1756590000.12,
- "protocol":1,"lang":"en"}
+{"type":"hello","seq":0,"session_id":"7f3a1c9e","server_time":1756590000.12,"protocol":1,"lang":"en"}
 ```
-
-`lang` echoes back the stream this viewer was actually joined to, which may
-differ from what it asked for if the language is not available.
 
 `hello` always carries `seq: 0` — it is the one exception to monotonic `seq`,
 because the replay burst that follows carries the *original* sequence numbers of
@@ -67,21 +62,28 @@ those lines. On `hello` a viewer resets its dedupe state and, if `session_id`
 differs from the one it last saw, clears the display: a new `session_id` means
 the relay restarted and any text still on screen is stale.
 
+`lang` is which language stream this connection is subscribed to - see
+`WS /ws/viewer?lang=` below. It echoes back whatever the viewer asked for (or
+the source language, if it asked for nothing), so the viewer knows which
+stream it actually got.
+
 ### `interim`
 
 ```json
-{"type":"interim","seq":42,"t":1756590001.9,"text":"our next speaker is doctor"}
+{"type":"interim","seq":42,"t":1756590001.9,"text":"our next speaker is doctor","lang":"en"}
 ```
 
 Replaces the current uncommitted line in place. Superseded by the next `interim`
 or `final`. Never breaks a line, never reflows, never enters phone scrollback as
-its own entry. Interims are not replayed to late joiners.
+its own entry. Interims are not replayed to late joiners. Interims only ever
+carry the source language - translation only ever applies to committed lines.
 
 ### `final`
 
 ```json
-{"type":"final","seq":43,"t":1756590003.4,"id":"7f3a1c9e:43",
- "lang":"en","text":"Our next speaker is Dr. Vasquez."}
+{"type":"final","seq":43,"t":1756590003.4,"t0":1756590002.1,"id":"7f3a1c9e:43",
+ "utterance":"7f3a1c9e:43","lang":"en",
+ "text":"Our next speaker is Dr. Vasquez."}
 ```
 
 Commits a line. A `final` replaces the in-progress line if one is showing,
@@ -90,13 +92,12 @@ characters-per-line setting the viewer splits it on word boundaries and commits
 each piece as its own line — this is the only place a line break happens.
 
 `id` is `{session_id}:{seq}` and is stable across replays, so the phone view can
-dedupe when it reconnects.
-
-`lang` is always present on `interim` and `final`. Translations arrive as their
-own `final` messages on their own language stream, after the source line - so a
-Spanish viewer sees committed lines only, and never interims. That is
-deliberate: interims change several times a second, and translating them would
-multiply cost by roughly twenty while making the text unreadable.
+dedupe when it reconnects. `t0` is when the utterance actually started being
+spoken (the first `interim` after the previous commit) - `t` is only when it
+landed, which an exported `.srt` needs the difference between to time the cue
+correctly. `lang` is which language this line is in; a translated final shares
+its `utterance` id with the source line it came from, but gets its own `seq`
+and `id` and its own place in that language's replay buffer.
 
 ### replayed `final`
 
@@ -138,7 +139,11 @@ relay assigns those on the way out. Plus:
 
 ```json
 {"type":"status","t":1756590001.0,"audio_level":0.34,"stream_open":true,
- "backend":"deepgram","device":"Scarlett 2i2 (in 1)",
+ "backend":"deepgram","available_backends":["apple_speech","deepgram","mock"],
+ "has_deepgram_key":true,
+ "device":"Scarlett 2i2 (in 1)","device_index":3,
+ "audio_devices":[{"index":3,"name":"Scarlett 2i2","hostapi":"Core Audio",
+   "channels":2,"default_samplerate":48000,"is_default":true}],
  "last_final_t":1756589994.5,"error":null}
 ```
 
@@ -146,6 +151,11 @@ Roughly 4× per second. `audio_level` is 0–1 RMS over the last frame and is
 reported whether or not the ASR stream is open, so the booth can confirm the
 microphone before any billable connection exists. `error` is a short human
 string for the status page only — it never reaches a viewer.
+`audio_devices` is the capture machine's current input list; `device_index`
+identifies the active one. `available_backends` is `capture/backends/registry.py`'s
+name list. `has_deepgram_key` is whether `DEEPGRAM_API_KEY` is currently set in
+the environment - never the key itself. They let the status page change
+inputs, backends, and the Deepgram key at runtime.
 
 ---
 
@@ -161,8 +171,24 @@ string for the status page only — it never reaches a viewer.
 | `close_stream` | disconnect the backend, keep capturing audio levels |
 | `clear` | emit a `clear` to viewers |
 | `reload_keyterms` | re-read `config/keyterms.txt` and reopen the stream with the new list |
+| `select_audio_device` | switch to the integer `device` index; reopen ASR automatically if needed |
+| `refresh_audio_devices` | query the capture machine's current input list again |
+| `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, or is `deepgram` with no API key set |
+| `set_deepgram_key` | set `DEEPGRAM_API_KEY` (the `key` field) in the environment and save it into `.env` on disk; takes effect on the next `open_stream`, no restart needed |
 
-Originates from the status page via `POST /api/control`.
+Originates from the status page via `POST /api/control`. `set_deepgram_key` is
+the one action whose field is a credential: `hub.py`'s own logging and the
+console prints in `capture/__main__.py` never include it, only that the
+action happened.
+
+Two further actions go through the same `POST /api/control` endpoint but are
+**handled by the relay itself and never reach the capture client** -
+`hub.RELAY_ACTIONS`, checked before `CONTROL_ACTIONS`:
+
+| `action` | Effect |
+|---|---|
+| `mark_video_start` | set the transcript recorder's zero point to now; returns `{"zero_time": ...}` |
+| `reset_transcript` | clear the recorded transcript (all languages); does not touch live captions |
 
 ---
 
@@ -200,7 +226,13 @@ object once, plus a `relay` block.
     "connected": true,
     "peer": "127.0.0.1:51544",
     "backend": "deepgram",
+    "available_backends": ["apple_speech", "deepgram", "mock"],
+    "has_deepgram_key": true,
     "device": "Scarlett 2i2 (in 1)",
+    "device_index": 3,
+    "audio_devices": [{"index": 3, "name": "Scarlett 2i2",
+                       "hostapi": "Core Audio", "channels": 2,
+                       "default_samplerate": 48000, "is_default": true}],
     "status_age": 0.21,
     "error": null
   },
@@ -208,9 +240,18 @@ object once, plus a `relay` block.
   "asr":     {"stream_open": true, "state": "producing", "finals": 412,
               "interims": 5133, "last_final_age": 1.8,
               "last_final_text": "Our next speaker is Dr. Vasquez."},
-  "viewers": {"total": 34, "wall": 2, "phone": 31, "status": 1}
+  "viewers": {"total": 34, "wall": 2, "phone": 31, "status": 1},
+  "youtube": {"configured": true, "enabled": false, "pushed": 118, "error": null,
+              "url": "http://upload.youtube.com/closedcaption?cid=...", "lang": "en-US"}
 }
 ```
+
+`youtube` is relay-local state, not reported by the capture client - see
+"Pushing captions to YouTube Live" below. `configured` is whether a `url` is
+set at all; `enabled` is the operator's toggle, which can only be turned on
+when `configured` is true. `url` is echoed back so the status page can show
+what's currently saved (masked by default, since it does grant caption-posting
+capability to whoever has it) without needing a config file open next to it.
 
 The relay decides what the words mean, so every status display agrees:
 
@@ -235,35 +276,20 @@ sentences.
 `ip` is the relay's LAN address, which is what the status page prints for
 phones and for the ProPresenter URL.
 
-## Public and operator routes
-
-The relay serves two audiences, and `[site] mode` decides whether that
-distinction is enforced.
-
-| Route | `mode = "lan"` | `mode = "public"` |
-|---|---|---|
-| `/phone`, `/qr`, `/wall` | open | open |
-| `/ws/viewer`, `/api/site`, `/api/qr.svg`, `/robots.txt` | open | open |
-| `/status`, `/tune`, `/api/status`, `/ws/status`, `POST /api/control` | open | **admin token required** |
-
-In public mode the operator routes answer **404**, not 403 — a visitor who does
-not have the token should not learn they exist. The token is supplied as
-`?admin=…` or an `X-Admin-Token` header, and the operator pages forward whatever
-token they were opened with to their own API and websocket calls.
-
-The rule is default-deny: any page not explicitly public is operator-only,
-including one reached by filename through the catch-all route. A page added to
-`viewer/` later is protected before anyone remembers to protect it.
-
-`/robots.txt` disallows everything in both modes. A live transcript of a room
-should never end up in a search engine.
-
 ## Control API
 
 ```
 POST /api/control    {"action": "open_stream"}
   ->  200 {"ok": true, "action": "open_stream", "delivered_to": 1}
-  ->  400 if the action is not one of the four in the control table above
+POST /api/control    {"action": "select_audio_device", "device": 3}
+  ->  200 {"ok": true, "action": "select_audio_device", "delivered_to": 1}
+  ->  400 if the action is unknown or the device index is invalid
+POST /api/control    {"action": "select_backend", "backend": "apple_speech"}
+  ->  200 {"ok": true, "action": "select_backend", "delivered_to": 1}
+  ->  400 if the action is unknown or backend is not a short string
+POST /api/control    {"action": "set_deepgram_key", "key": "..."}
+  ->  200 {"ok": true, "action": "set_deepgram_key", "delivered_to": 1}
+  ->  400 if the action is unknown or key is not a short string
 ```
 
 `delivered_to` is the number of capture clients that received it — `0` means
@@ -272,6 +298,48 @@ action worked.
 
 `clear` is the exception: the relay applies it to viewers itself, in addition to
 forwarding it, so the wall blanks even when no capture client is connected.
+
+## Exposing the relay publicly (a tunnel)
+
+If `[relay] public_hostname` (config/event.toml) is set - typically to a
+Cloudflare Tunnel or similar domain that makes this relay reachable from
+outside the booth LAN - every request is checked against its `Host` header.
+Only `/`, `/wall`, `/phone`, `/tune`, other `viewer/*.html` files, and
+`/ws/viewer` work when the `Host` matches `public_hostname`; `/status`,
+`GET /api/status`, `POST /api/control`, `POST /api/youtube-captions`,
+`/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
+refusal (WebSocket) - never a redirect to a login, just as if the route did
+not exist. `/` itself serves the phone page rather than the operator
+dashboard for a public `Host`. Requests arriving as `localhost` or the LAN IP
+are completely unaffected regardless of this setting - the gate only ever
+triggers on the exact configured hostname.
+
+## Pushing captions to YouTube Live
+
+```
+POST /api/youtube-captions    {"url": "http://upload.youtube.com/closedcaption?cid=..."}
+  ->  200 {"ok": true, "configured": true, "enabled": false, "pushed": 0, "error": null, "url": "...", "lang": "en-US"}
+  ->  400 if url doesn't start with http:// or https://
+POST /api/youtube-captions    {"enabled": true}
+  ->  200 {"ok": true, ...same shape}
+  ->  400 if enabled is not a boolean, or true with no url configured yet
+```
+
+Either field may be sent alone or together in one request - the status page's
+Save button sends `url`, its Enable/Disable buttons send `enabled`. Unlike
+`/api/control`, none of this touches the capture client: `{"url": ...}` calls
+`relay/youtube.py`'s `configure()` and also writes it into `config/event.toml`
+(`relay/config.py`'s `save_youtube_url`, a targeted text patch of just the
+`[youtube]` section - no config file needs to be opened by hand), and
+`{"enabled": ...}` toggles a background task that POSTs every `final` line it
+sees to that URL, in the same wire format professional captioning vendors
+already use to feed YouTube Live (`?seq=N&lang=xx` query params, `text/plain`
+body, one request per line, `seq` starting at 1 and incrementing, reset
+whenever the URL changes). `interim` lines are never sent - YouTube's endpoint
+has no delete/backspace mechanism to correct them with, so only committed text
+goes out. Expect YouTube's own pipeline to add substantial further delay
+(their documentation for other captioning vendors cites 15+ seconds) on top of
+whatever latency the ASR backend itself has.
 
 ## What the relay rejects
 
