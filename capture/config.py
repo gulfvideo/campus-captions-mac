@@ -6,10 +6,12 @@ command line. The Deepgram key only ever comes from .env or the environment.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import tomllib
 from dataclasses import dataclass, field
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
@@ -18,6 +20,76 @@ ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).r
 DEFAULT_CONFIG = ROOT / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 ENV_FILE = ROOT / ".env"
+
+
+def _log_dir() -> Path:
+    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
+    temp directory that's gone by the next launch, so its logs go in the
+    standard per-user macOS location instead - Console.app finds
+    ~/Library/Logs/* on its own. Running from source, next to the code."""
+    if getattr(sys, "frozen", False):
+        return Path.home() / "Library" / "Logs" / "Campus Captions"
+    return ROOT / "logs"
+
+
+class _Tee:
+    """Mirrors stdout/stderr into a logger while leaving the original stream
+    untouched, so a terminal run still shows live output exactly as before."""
+
+    def __init__(self, stream, logger: logging.Logger):
+        self._stream = stream
+        self._logger = logger
+
+    def write(self, data: str) -> int:
+        try:
+            n = self._stream.write(data)
+        except Exception:
+            n = len(data)
+        text = data.strip()
+        if text:
+            self._logger.info(text)
+        return n
+
+    def flush(self) -> None:
+        try:
+            self._stream.flush()
+        except Exception:
+            pass
+
+    def isatty(self) -> bool:
+        try:
+            return self._stream.isatty()
+        except Exception:
+            return False
+
+
+_logging_ready = False
+
+
+def setup_logging(name: str = "capture") -> None:
+    """Mirror this process's stdout/stderr into a rotating log file - see
+    relay/config.py's copy of this function for why it's duplicated rather
+    than shared. Idempotent: safe to call every time load() runs.
+    """
+    global _logging_ready
+    if _logging_ready:
+        return
+    _logging_ready = True
+    try:
+        log_dir = _log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_dir / f"{name}.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+    except OSError:
+        return  # best-effort - a missing log must never stop the app
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S"))
+    logger = logging.getLogger(f"campus-captions.{name}")
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    logger.propagate = False
+    sys.stdout = _Tee(sys.stdout, logger)
+    sys.stderr = _Tee(sys.stderr, logger)
+    logger.info(f"----- {name} starting, pid={os.getpid()} -----")
 
 
 def load_env_file(path: Path = ENV_FILE) -> int:
@@ -78,6 +150,7 @@ class CaptureConfig:
 
 
 def load(path: Path | None = None) -> CaptureConfig:
+    setup_logging()
     load_env_file()
     cfg = CaptureConfig()
     chosen = path or (DEFAULT_CONFIG if DEFAULT_CONFIG.exists() else EXAMPLE_CONFIG)

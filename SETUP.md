@@ -204,11 +204,17 @@ per-machine setup outside this app; ask if you need it walked through again.
 
 `backend = "whisper"` runs recognition entirely on-device via faster-whisper -
 no API key, no per-minute cost, works on Windows/Linux too (not just macOS
-26+ like `apple_speech`). Install its extras once:
+26+ like `apple_speech`). Already bundled and ready to pick from the status
+page in the packaged macOS app. Running from source, install its extras once:
 
 ```bash
 .venv/bin/python -m pip install -r requirements-whisper.txt
 ```
+
+If you pick Whisper on the status page and "Open ASR stream" never actually
+opens (the ASR STREAM card stays on "Closed"), this is almost always it -
+check the error banner at the top of the page, or `logs/capture.log` (see
+Troubleshooting), for `ModuleNotFoundError: No module named 'faster_whisper'`.
 
 The model (`[whisper] model`, default `base.en`, ~150MB) downloads on first
 use and is cached; for a machine with no internet at all, download it
@@ -651,6 +657,24 @@ Roughly 30 minutes before doors.
 | Captions stop mid-event | The backend reconnects on its own with backoff. The wall holds the last line, then fades. If the **ASR stream** tile went red, look at the error text on the status page. |
 | Wrong names in the transcript | Add them to `config/keyterms.txt` and press **Reload keyterms**. |
 | Everything is fine but text is clipped | `maxchars` too high for `size`. Add `&debug=1` to the wall URL to confirm. |
+| **Open ASR stream** never actually opens | The backend hit an error trying to start — a red banner appears at the top of the status page with the reason (e.g. a missing dependency, a bad audio device). If it isn't obvious, check the log files below. |
+
+### Log files
+
+Both the relay and the capture client mirror everything they print into a log
+file, so a crash or a silent failure still leaves something to look at after
+the fact — useful for exactly the kind of "it says it's starting but never
+does" problem that has no visible cause on the status page itself.
+
+- **Packaged macOS app:** `~/Library/Logs/Campus Captions/relay.log` and
+  `capture.log`. Console.app (Applications → Utilities) lists these under
+  "Log Reports" automatically, or open the folder directly with
+  `open ~/Library/Logs/"Campus Captions"`.
+- **Running from source:** `logs/relay.log` and `logs/capture.log` in the
+  project folder (gitignored — these are local, per-machine files).
+
+Each file rotates at 2MB with a few backups kept, so it is safe to leave
+running for a whole event without filling the disk.
 
 For the message format between the pieces, see `docs/MESSAGES.md`. For
 development against the mock backend, see `README.md`.

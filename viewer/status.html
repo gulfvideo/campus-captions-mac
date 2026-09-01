@@ -29,6 +29,21 @@
   }
   header .meta { color: var(--dim); font-size: 13px; }
 
+  /* The capture client's own error, if any - e.g. a backend whose optional
+     dependency isn't installed. This used to be a clause tacked onto the
+     small meta line up top, easy to miss entirely; a backend that silently
+     never opens deserves something you can't scroll past. */
+  #error-banner {
+    display: none; align-items: center; gap: 10px; margin-bottom: 18px;
+    background: #3a2620; border: 1px solid var(--bad); border-radius: 10px;
+    padding: 12px 16px; color: var(--text); font-size: 14.5px;
+  }
+  #error-banner.on { display: flex; }
+  #error-banner .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--bad);
+    flex: none;
+  }
+
   .grid {
     display: grid; gap: 14px; margin-bottom: 18px;
     grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
@@ -174,6 +189,8 @@
   <h1>Campus Captions</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
 </header>
+
+<div id="error-banner"><span class="dot"></span><span id="error-banner-text"></span></div>
 
 <div class="grid">
   <div class="card" id="c-audio">
@@ -598,8 +615,11 @@
 
     var err = s.source.error;
     $('meta').textContent = 'session ' + s.session_id +
-      '  ·  up ' + Math.round(s.uptime / 60) + 'm' +
-      (err ? '  ·  capture reports: ' + err : '');
+      '  ·  up ' + Math.round(s.uptime / 60) + 'm';
+
+    var banner = $('error-banner');
+    banner.classList.toggle('on', !!err);
+    if (err) $('error-banner-text').textContent = err;
   }
 
   function renderOffline() {
@@ -611,6 +631,7 @@
     $('stream-state').textContent = '—';
     $('viewers-count').textContent = '—';
     $('meta').textContent = 'relay unreachable — retrying';
+    $('error-banner').classList.remove('on');
     $('btn-open').disabled = $('btn-close').disabled = $('btn-keyterms').disabled = true;
     $('audio-device').disabled = $('btn-refresh-devices').disabled = true;
     $('btn-youtube-enable').disabled = $('btn-youtube-disable').disabled = true;
