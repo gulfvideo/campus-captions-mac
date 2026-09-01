@@ -50,6 +50,23 @@ ICON_IDLE = str(_ICONS / "menubar_idle.png")
 ICON_STREAMING = str(_ICONS / "menubar_streaming.png")
 ICON_INACTIVE = str(_ICONS / "menubar_inactive.png")
 
+FALLBACK_VERSION = "0.1.0"  # kept in sync with CampusCaptions.spec's CFBundleShortVersionString
+
+
+def app_version() -> str:
+    """`NSBundle.mainBundle()` only reflects *this* app once PyInstaller has
+    actually built a real .app around it; running from source it reports the
+    Python.framework's own bundle instead, so the fallback covers dev runs."""
+    if getattr(sys, "frozen", False):
+        try:
+            from Foundation import NSBundle
+            version = NSBundle.mainBundle().infoDictionary().get("CFBundleShortVersionString")
+            if version:
+                return str(version)
+        except Exception:
+            pass
+    return FALLBACK_VERSION
+
 
 class _SilentServer(uvicorn.Server):
     """uvicorn.Server.run() installs SIGINT/SIGTERM handlers, which only the
@@ -131,11 +148,19 @@ class CampusCaptionsApp(rumps.App):
         self.port = port
         self._icon_state = "idle"
         self.menu = [
-            rumps.MenuItem("Open Status Page", callback=self.open_status),
+            rumps.MenuItem("About Campus Captions", callback=self.show_about),
+            rumps.separator,
+            # Cmd-, is the conventional Settings/Preferences shortcut; the
+            # status page is where every setting in this app actually lives
+            # (backend, audio device, API keys, YouTube, translation), so it
+            # gets that shortcut even though the item reads "Open", not
+            # "Preferences" - clearer for an operator who isn't a Mac power
+            # user, while still landing habit-driven Cmd-, in the right place.
+            rumps.MenuItem("Open Status Page", callback=self.open_status, key=","),
             rumps.MenuItem("Open Wall View", callback=self.open_wall),
             rumps.MenuItem("Open Phone View", callback=self.open_phone),
             rumps.separator,
-            rumps.MenuItem("Quit Campus Captions", callback=self.quit_app),
+            rumps.MenuItem("Quit Campus Captions", callback=self.quit_app, key="q"),
         ]
 
     def set_icon_state(self, state: str) -> None:
@@ -149,6 +174,16 @@ class CampusCaptionsApp(rumps.App):
             "streaming": ICON_STREAMING,
             "inactive": ICON_INACTIVE,
         }[state]
+
+    def show_about(self, _sender) -> None:
+        rumps.alert(
+            "Campus Captions",
+            f"Version {app_version()}\n\n"
+            "Live captioning for campus events. Runs the relay and capture "
+            "client in this one menu bar app - see Open Status Page for "
+            "everything else.\n\n"
+            "github.com/koakley3/campus-captions",
+        )
 
     def open_status(self, _sender) -> None:
         webbrowser.open(f"http://127.0.0.1:{self.port}/status")
