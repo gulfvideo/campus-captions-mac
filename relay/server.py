@@ -15,6 +15,7 @@ Endpoints (see docs/MESSAGES.md):
     GET  /api/transcript.srt       recorded captions as SubRip (operator-only)
     POST /api/control              {"action": "open_stream"} etc.
     POST /api/youtube-captions     {"enabled": true} - relay-local, not forwarded
+    POST /api/tunnel               {"token": "...", "enabled": true} - relay-local
 
 Everything operator-only (marked above, plus /status, /tune, and any other
 viewer page not explicitly public) is walled off from `public_hostname` - see
@@ -41,6 +42,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from . import config as config_module
 from . import transcript as transcript_module
 from . import translate as translate_module
+from . import tunnel as tunnel_module
 from .hub import CONTROL_ACTIONS, RELAY_ACTIONS, Client, Hub
 from .youtube import YouTubeCaptionPusher, urls_from_env
 
@@ -86,6 +88,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     cfg = cfg or config_module.load()
     hub = Hub(source_language=cfg.source_language)
     hub.youtube = YouTubeCaptionPusher(cfg.youtube_url, cfg.youtube_lang, cfg.youtube_start_enabled)
+    tunnel = tunnel_module.CloudflareTunnel(token=os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip())
 
     def is_public(headers) -> bool:
         """True when this request arrived addressed to `public_hostname`
@@ -181,6 +184,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         "languages": translation.languages(),
         "transcript": recorder.stats(),
         "youtube_live_extra": [p.status() for p in additional_youtube.values()],
+        "tunnel": tunnel.status(),
+        "public_hostname": cfg.public_hostname,
     }
 
     async def heartbeat_loop() -> None:
@@ -200,6 +205,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             asyncio.create_task(status_loop()),
         ]
         await translation.apply(cfg.translate_provider, translation.targets)
+        if cfg.tunnel_start_enabled and tunnel.configured:
+            await tunnel.start()
         ip = local_ip()
         print(f"[relay] session {hub.session_id}")
         print(f"[relay] wall    http://{ip}:{cfg.port}/wall")
@@ -224,6 +231,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if additional_youtube:
             print(f"[relay] youtube live captions, extra languages -> "
                   f"{', '.join(sorted(additional_youtube))}")
+        if tunnel.configured:
+            print(f"[relay] Cloudflare tunnel configured"
+                  f" ({'enabled' if tunnel.enabled else 'disabled'} at startup)")
         try:
             yield
         finally:
@@ -232,6 +242,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             await asyncio.gather(*tasks, return_exceptions=True)
             if translation.worker is not None:
                 await translation.worker.stop()
+            if tunnel.running:
+                await tunnel.stop()
 
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan)
     app.state.hub = hub
@@ -371,6 +383,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "ip": local_ip(),
             "token_required": cfg.token_required,
             "config": str(cfg.config_path) if cfg.config_path else None,
+            "public_hostname": cfg.public_hostname,
         }
         return JSONResponse(snap, headers=NO_STORE)
 
@@ -470,6 +483,70 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    @app.post("/api/tunnel")
+    async def api_tunnel(request: Request) -> JSONResponse:
+        """Relay-local, like /api/youtube-captions and /api/translation:
+        manages a `cloudflared tunnel run` subprocess instead of forwarding
+        to the capture client.
+
+        {"token": "...", "hostname": "...", "enabled": true} - any subset.
+        The token goes into .env (save_env_var, same mechanism as the
+        Deepgram key); the hostname becomes `public_hostname` immediately
+        (see is_public()/require_local() above) and is saved into
+        event.toml alongside the operator's on/off intent
+        (save_tunnel_settings). Create the tunnel and its Public Hostname
+        once at one.dash.cloudflare.com first - see SETUP.md 3c for the
+        walkthrough and where the token comes from.
+        """
+        require_local(request.headers)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        body = body or {}
+        if not any(k in body for k in ("token", "hostname", "enabled")):
+            raise HTTPException(status_code=400, detail="send token, hostname, and/or enabled")
+
+        if "token" in body:
+            token = body.get("token")
+            if not isinstance(token, str) or not (1 <= len(token.strip()) <= 4000):
+                raise HTTPException(status_code=400, detail="token must be a short string")
+            token = token.strip()
+            os.environ["CLOUDFLARE_TUNNEL_TOKEN"] = token
+            config_module.save_env_var("CLOUDFLARE_TUNNEL_TOKEN", token)
+            tunnel.configure(token=token)
+
+        if "hostname" in body:
+            hostname = body.get("hostname")
+            if not isinstance(hostname, str) or len(hostname) > 253:
+                raise HTTPException(status_code=400, detail="hostname must be a short string")
+            cfg.public_hostname = hostname.strip().lower()
+
+        if "enabled" in body:
+            enabled = body.get("enabled")
+            if not isinstance(enabled, bool):
+                raise HTTPException(status_code=400, detail="enabled must be a boolean")
+            if enabled:
+                if not tunnel.configured:
+                    raise HTTPException(status_code=400, detail="paste a tunnel token first")
+                if not cfg.public_hostname:
+                    raise HTTPException(status_code=400, detail="set the tunnel hostname first")
+                await tunnel.start()
+            else:
+                await tunnel.stop()
+
+        if "hostname" in body or "enabled" in body:
+            try:
+                config_module.save_tunnel_settings(
+                    cfg.config_path or config_module.DEFAULT_CONFIG,
+                    cfg.public_hostname, tunnel.enabled)
+            except OSError as exc:
+                print(f"[relay] could not save tunnel settings to disk: {exc}")
+
+        return JSONResponse(
+            {"ok": True, **tunnel.status(), "public_hostname": cfg.public_hostname},
+            headers=NO_STORE)
 
     @app.post("/api/translation")
     async def api_translation(request: Request) -> JSONResponse:

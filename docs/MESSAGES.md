@@ -32,7 +32,8 @@ English translated on the fly. It changes nothing else.
 
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
 `GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.srt`,
-`POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`.
+`POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`,
+`POST /api/tunnel`.
 
 ---
 
@@ -307,7 +308,7 @@ outside the booth LAN - every request is checked against its `Host` header.
 Only `/`, `/wall`, `/phone`, `/tune`, other `viewer/*.html` files, and
 `/ws/viewer` work when the `Host` matches `public_hostname`; `/status`,
 `GET /api/status`, `POST /api/control`, `POST /api/youtube-captions`,
-`POST /api/translation`, `/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
+`POST /api/translation`, `POST /api/tunnel`, `/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
 refusal (WebSocket) - never a redirect to a login, just as if the route did
 not exist. `/` itself serves the phone page rather than the operator
 dashboard for a public `Host`. Requests arriving as `localhost` or the LAN IP
@@ -364,6 +365,40 @@ mid-event takes effect on the next committed caption line, no restart.
 Response fields mirror `relay/translate.py`'s `TranslationWorker.stats()` -
 `provider` reads `"none"` when no key has been set yet, even if `languages`
 was saved.
+
+## Running a Cloudflare Tunnel live
+
+```
+POST /api/tunnel    {"hostname": "captions.example.com", "token": "..."}
+  ->  200 {"ok": true, "installed": true, "configured": true, "enabled": false, ...}
+POST /api/tunnel    {"enabled": true}
+  ->  200 {"ok": true, ..., "public_hostname": "captions.example.com"}
+  ->  400 if enabled: true with no token or no hostname set yet
+```
+
+`hostname`, `token`, and `enabled` may be sent alone or together. Like
+`/api/youtube-captions` and `/api/translation`, this never touches the
+capture client: `token` goes to `.env` as `CLOUDFLARE_TUNNEL_TOKEN`
+(`save_env_var`, same mechanism as the Deepgram key); `hostname` becomes
+`RelayConfig.public_hostname` immediately - see "Exposing the relay
+publicly" above - and both `hostname` and the operator's on/off intent are
+saved into `config/event.toml` (`save_tunnel_settings`) so a restart comes
+back the way it was left.
+
+`enabled: true` spawns `cloudflared tunnel run` (`relay/tunnel.py`) with the
+token passed via the `TUNNEL_TOKEN` environment variable rather than
+`--token`, so it never appears in `ps` output. `cloudflared` itself is
+located via `shutil.which()` plus the well-known Homebrew paths, since a
+GUI-launched app doesn't inherit a shell's PATH. Its output is mirrored into
+this process's own log (see "Log files" in SETUP.md) with a `[cloudflared]`
+prefix; `installed`/`configured`/`enabled`/`running`/`connected`/`error` in
+the response and in `/api/status`'s `tunnel` field reflect, respectively:
+whether the binary was found, whether a token has been saved, whether the
+operator wants it running, whether a subprocess is currently alive, and
+whether cloudflared has actually registered a connection to Cloudflare's
+edge. An unexpected exit retries automatically after a few seconds unless
+cloudflared reported the token itself as invalid, in which case retrying
+would never succeed and `enabled` is cleared instead.
 
 ## What the relay rejects
 

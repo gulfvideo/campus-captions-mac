@@ -141,6 +141,7 @@ class RelayConfig:
     port: int = 8000
     source_token: str = ""
     public_hostname: str = ""
+    tunnel_start_enabled: bool = False
     youtube_url: str = ""
     youtube_lang: str = "en-US"
     youtube_start_enabled: bool = False
@@ -189,6 +190,8 @@ def load(path: Path | None = None) -> RelayConfig:
             cfg.port = int(section.get("port", cfg.port))
             cfg.source_token = str(section.get("source_token", cfg.source_token))
             cfg.public_hostname = str(section.get("public_hostname", cfg.public_hostname)).lower().strip()
+            cfg.tunnel_start_enabled = bool(
+                (data.get("tunnel", {}) or {}).get("start_enabled", cfg.tunnel_start_enabled))
             youtube = data.get("youtube", {}) or {}
             cfg.youtube_url = str(youtube.get("url", cfg.youtube_url))
             cfg.youtube_lang = str(youtube.get("lang", cfg.youtube_lang))
@@ -298,6 +301,45 @@ def save_translate_settings(path: Path, provider: str, offer_languages: list[str
 
     upsert("[translate]", {"provider": _quote(provider)})
     upsert("[languages]", {"offer": _quote_list(offer_languages)})
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None:
+    """Write hostname into [relay] public_hostname and the operator's
+    on/off intent into [tunnel] start_enabled, in place - mirrors
+    save_youtube_url above. The tunnel token itself never comes near this
+    file; it lives in .env via save_env_var, same as the Deepgram key.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+
+    def upsert(header: str, wanted: dict[str, str]) -> None:
+        nonlocal lines
+        start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+        end = len(lines)
+        if start is not None:
+            end = next(
+                (i for i in range(start + 1, len(lines))
+                 if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+                len(lines),
+            )
+            for i in range(start + 1, end):
+                key = lines[i].split("=", 1)[0].strip()
+                if key in wanted:
+                    lines[i] = f"{key} = {wanted.pop(key)}"
+            if wanted:
+                insertion = [f"{key} = {value}" for key, value in wanted.items()]
+                lines[start + 1:start + 1] = insertion
+        else:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(header)
+            lines.extend(f"{key} = {value}" for key, value in wanted.items())
+
+    upsert("[relay]", {"public_hostname": _quote(hostname)})
+    upsert("[tunnel]", {"start_enabled": "true" if start_enabled else "false"})
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

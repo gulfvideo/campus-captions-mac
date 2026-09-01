@@ -316,6 +316,39 @@
   </div></div>
 </div>
 
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="tunnel-toggle" aria-expanded="false" aria-controls="tunnel-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Public tunnel (Cloudflare)</span>
+    <span class="badge" id="tunnel-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="tunnel-body">
+      <div class="row">
+        <input id="tunnel-hostname" type="text" autocomplete="off" spellcheck="false"
+               placeholder="captions.yourdomain.com">
+      </div>
+      <div class="row">
+        <input id="tunnel-token" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Tunnel token from the Cloudflare dashboard">
+        <button id="btn-tunnel-show" type="button">Show</button>
+        <button id="btn-tunnel-save" type="button">Save</button>
+        <button id="btn-tunnel-enable" class="go">Enable</button>
+        <button id="btn-tunnel-disable" class="stop">Disable</button>
+      </div>
+      <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
+      <div class="disclosure-sub" id="tunnel-hint">
+        One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
+        Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
+        this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
+        the install command. Paste the hostname and token above, then Enable &mdash; no restart
+        needed. Needs the domain on Cloudflare's DNS and <code>cloudflared</code> installed
+        (<code>brew install cloudflared</code>) &mdash; see SETUP.md 3c.
+      </div>
+    </div>
+  </div></div>
+</div>
+
 <div class="controls">
   <button id="btn-open" class="go">Open ASR stream</button>
   <button id="btn-close" class="stop">Close ASR stream</button>
@@ -381,6 +414,7 @@
   var backendSignature = null, pendingBackend = null, pendingBackendTimer = null;
   var youtubeUrlDirty = false;
   var azureLangsDirty = false;
+  var tunnelHostnameDirty = false;
   var BACKEND_LABELS = {
     apple_speech: 'Apple on-device (local, free)',
     deepgram: 'Deepgram (cloud, paid)',
@@ -561,6 +595,48 @@
     }
   }
 
+  function renderTunnel(hostname, tunnel) {
+    tunnel = tunnel || {};
+    var badge = $('tunnel-badge');
+    var sub;
+    if (!tunnel.installed) {
+      sub = 'cloudflared not found on this Mac — install it (brew install cloudflared), then reload this page.';
+      badge.textContent = 'Not installed';
+      badge.className = 'badge';
+    } else if (!tunnel.configured) {
+      sub = 'Paste a hostname and tunnel token above, then press Save.';
+      badge.textContent = 'Not set up';
+      badge.className = 'badge';
+    } else if (tunnel.error) {
+      sub = 'Error: ' + tunnel.error;
+      badge.textContent = 'Error';
+      badge.className = 'badge';
+    } else if (tunnel.connected) {
+      sub = 'Connected — https://' + (hostname || '?') + ' reaches this relay.';
+      badge.textContent = 'Connected';
+      badge.className = 'badge live';
+    } else if (tunnel.running) {
+      sub = 'Starting…';
+      badge.textContent = 'Connecting';
+      badge.className = 'badge';
+    } else {
+      sub = 'Saved, not running' + (hostname ? ' (' + hostname + ')' : '');
+      badge.textContent = 'Saved, off';
+      badge.className = 'badge';
+    }
+    $('tunnel-sub').textContent = sub;
+    $('btn-tunnel-enable').disabled = !tunnel.configured || !tunnel.installed || tunnel.enabled;
+    $('btn-tunnel-disable').disabled = !tunnel.enabled;
+    // Relay-local, like the YouTube panel above - no capture client needed,
+    // so only renderOffline() should ever disable these.
+    $('tunnel-hostname').disabled = $('tunnel-token').disabled = $('btn-tunnel-save').disabled = false;
+
+    var hostBox = $('tunnel-hostname');
+    if (document.activeElement !== hostBox && !tunnelHostnameDirty) {
+      hostBox.value = hostname || '';
+    }
+  }
+
   function render(s) {
     lastSnap = s;
     renderBackends(s.source || {});
@@ -568,6 +644,7 @@
     renderYoutube(s.youtube);
     renderDeepgram(s.source || {});
     renderTranscript(s);
+    renderTunnel(s.public_hostname, s.tunnel);
 
     var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
     setCard('c-audio', a[0],
@@ -640,6 +717,9 @@
     $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = true;
     $('btn-azure-save').disabled = $('azure-key').disabled =
       $('azure-region').disabled = $('azure-langs').disabled = true;
+    $('btn-tunnel-save').disabled = $('btn-tunnel-enable').disabled =
+      $('btn-tunnel-disable').disabled = $('tunnel-hostname').disabled =
+      $('tunnel-token').disabled = true;
   }
 
   // ---- transport -------------------------------------------------------
@@ -767,6 +847,43 @@
     })['catch'](function (e) { toast('Azure Translator — ' + e.message); });
   }
 
+  function saveTunnelSettings() {
+    var hostname = $('tunnel-hostname').value.trim();
+    var token = $('tunnel-token').value.trim();
+    if (!hostname && !token) {
+      toast('Tunnel — enter a hostname and/or token first');
+      return;
+    }
+    var body = {};
+    if (hostname) body.hostname = hostname;
+    if (token) body.token = token;
+    fetch('/api/tunnel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      tunnelHostnameDirty = false;
+      $('tunnel-token').value = '';   // write-only: never redisplayed once saved
+      toast('Tunnel settings saved');
+    })['catch'](function (e) { toast('Tunnel — ' + e.message); });
+  }
+
+  function setTunnelEnabled(enabled) {
+    fetch('/api/tunnel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      toast(enabled ? 'Tunnel — enabling…' : 'Tunnel — disabled');
+    })['catch'](function (e) { toast('Tunnel — ' + e.message); });
+  }
+
   // A disclosure remembers its own open/closed state across reloads - the
   // same reason Finder and Mail remember which sidebar groups you collapsed.
   function setupDisclosure(headerId, storageKey) {
@@ -789,6 +906,7 @@
     setupDisclosure('youtube-toggle', 'youtube-expanded');
     setupDisclosure('deepgram-toggle', 'deepgram-expanded');
     setupDisclosure('transcript-toggle', 'transcript-expanded');
+    setupDisclosure('tunnel-toggle', 'tunnel-expanded');
     $('btn-mark-start').onclick = function () {
       relayAction('mark_video_start', 'Video start marked');
     };
@@ -830,6 +948,18 @@
     };
     $('azure-key').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
     $('azure-region').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('btn-tunnel-enable').onclick = function () { setTunnelEnabled(true); };
+    $('btn-tunnel-disable').onclick = function () { setTunnelEnabled(false); };
+    $('btn-tunnel-save').onclick = saveTunnelSettings;
+    $('btn-tunnel-show').onclick = function () {
+      var box = $('tunnel-token');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('tunnel-hostname').oninput = function () { tunnelHostnameDirty = true; };
+    $('tunnel-hostname').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
+    $('tunnel-token').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
     $('azure-langs').oninput = function () { azureLangsDirty = true; };
     $('azure-langs').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
     $('audio-device').onchange = function () {

@@ -181,22 +181,39 @@ than `.env` is fine.
 
 The phone view normally only works on the venue's own wifi, because the relay
 is only reachable at a LAN IP. To let someone outside that network view
-captions on a domain you own, run a tunnel (e.g. Cloudflare Tunnel) that
-exposes the relay's port to the internet under that domain, and set:
+captions on a domain you own, expose the relay through a Cloudflare Tunnel -
+set up once on the Cloudflare side, then pasted into the status page here.
 
-```toml
-[relay]
-public_hostname = "captions.yourdomain.example"
-```
+**One-time Cloudflare setup** (needs a free Cloudflare account with your
+domain's nameservers pointed at Cloudflare - if the domain isn't on
+Cloudflare yet, add it there first):
 
-With this set, anyone reaching the relay through that exact hostname only
-ever gets the phone view - `/status` and everything that can change what's
-happening (opening/closing the stream, switching backends, the Deepgram key
-field, the YouTube toggle) reject them with a plain 404, as if those routes
-didn't exist. The operator dashboard stays fully usable from the booth LAN or
-localhost, unaffected by this setting entirely. Setting up the tunnel itself
-(Cloudflare account, DNS, the `cloudflared` service) is a one-time,
-per-machine setup outside this app; ask if you need it walked through again.
+1. Install `cloudflared`: `brew install cloudflared` (or download it from
+   [github.com/cloudflare/cloudflared/releases](https://github.com/cloudflare/cloudflared/releases)
+   if you're not using Homebrew).
+2. Go to [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks
+   → Tunnels → Create a tunnel** → choose **Cloudflared** → give it a name
+   (e.g. "campus-captions").
+3. On the **Public Hostname** tab, add the subdomain you want to use (e.g.
+   `captions.yourdomain.example`), type **HTTP**, and URL `localhost:8000`.
+4. Copy the **token** shown in the install command on the next screen (a long
+   string after `--token`) - that's the only thing to bring back to this app.
+
+**In this app**, open `/status`, expand **Public tunnel (Cloudflare)**, paste
+the hostname from step 3 and the token from step 4, press Save, then Enable.
+That's it - no restart, no editing `config/event.toml` by hand, no
+`cloudflared login` or `tunnel route dns`. The panel shows Connected once the
+tunnel is actually up; if `cloudflared` isn't installed it says so instead of
+just hanging. This is `POST /api/tunnel` under the hood - see
+`docs/MESSAGES.md` if you'd rather script it.
+
+Enabling this sets `public_hostname` to whatever you entered, which is what
+actually changes the relay's behavior: anyone reaching the relay through that
+exact hostname only ever gets the phone view - `/status` and everything that
+can change what's happening (opening/closing the stream, switching backends,
+the Deepgram key field, the YouTube toggle) reject them with a plain 404, as
+if those routes didn't exist. The operator dashboard stays fully usable from
+the booth LAN or localhost, unaffected by this setting entirely.
 
 ---
 
