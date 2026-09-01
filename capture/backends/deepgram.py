@@ -227,3 +227,7 @@ class DeepgramBackend(ASRBackend):
     def connection_seconds(self) -> float:
         """What Deepgram is billing for, so the operator can see the meter run."""
         return 0.0 if self._opened_at is None else time.time() - self._opened_at
+
+    @property
+    def wants_open(self) -> bool:
+        return self._want_open

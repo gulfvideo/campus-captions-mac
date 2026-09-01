@@ -33,7 +33,11 @@ class RelayState:
     source_connected: bool = False
     source_peer: str | None = None
     backend: str | None = None
+    available_backends: list[str] = field(default_factory=list)
+    has_deepgram_key: bool = False
     device: str | None = None
+    device_index: int | None = None
+    audio_devices: list[dict] = field(default_factory=list)
     stream_open: bool = False
     audio_level: float = 0.0
     audio_ema: float = 0.0
@@ -63,10 +67,40 @@ class RelayState:
             if self.audio_ema >= AUDIO_SILENT_BELOW:
                 self.last_audio_at = now
         self.stream_open = bool(msg.get("stream_open"))
+        self.has_deepgram_key = bool(msg.get("has_deepgram_key"))
         for key in ("backend", "device"):
             val = msg.get(key)
             if isinstance(val, str):
                 setattr(self, key, val)
+        backends = msg.get("available_backends")
+        if isinstance(backends, list):
+            self.available_backends = [str(b)[:32] for b in backends[:16] if isinstance(b, str)]
+        device_index = msg.get("device_index")
+        if isinstance(device_index, int) and not isinstance(device_index, bool):
+            self.device_index = device_index
+        devices = msg.get("audio_devices")
+        if isinstance(devices, list):
+            cleaned = []
+            def safe_int(value: object) -> int:
+                try:
+                    return int(value)
+                except (TypeError, ValueError, OverflowError):
+                    return 0
+            for item in devices[:64]:
+                if not isinstance(item, dict):
+                    continue
+                index = item.get("index")
+                if isinstance(index, bool) or not isinstance(index, int):
+                    continue
+                cleaned.append({
+                    "index": index,
+                    "name": str(item.get("name", ""))[:160],
+                    "hostapi": str(item.get("hostapi", ""))[:80],
+                    "channels": safe_int(item.get("channels", 0)),
+                    "default_samplerate": safe_int(item.get("default_samplerate", 0)),
+                    "is_default": bool(item.get("is_default", False)),
+                })
+            self.audio_devices = cleaned
         err = msg.get("error")
         self.error = err if isinstance(err, str) and err else None
 
@@ -126,7 +160,11 @@ class RelayState:
                 "connected": self.source_connected,
                 "peer": self.source_peer,
                 "backend": self.backend,
+                "available_backends": self.available_backends,
+                "has_deepgram_key": self.has_deepgram_key,
                 "device": self.device,
+                "device_index": self.device_index,
+                "audio_devices": self.audio_devices,
                 "status_age": self._age(self.last_status_at, now),
                 "error": self.error,
             },

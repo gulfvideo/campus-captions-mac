@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- com.apple.developer.speech-recognition is a restricted entitlement:
+         only Apple-provisioned binaries may hold it. An ad-hoc signed CLI
+         that declares it gets SIGKILLed by AMFI at launch. Plain TCC
+         authorization (Info.plist usage string + the system consent prompt)
+         is what a third-party command-line tool actually uses. -->
+    <!-- Lets a hardened CLI load Apple's private Speech dylibs -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

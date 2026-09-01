@@ -7,11 +7,14 @@ command line. The Deepgram key only ever comes from .env or the environment.
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# Repo root when run from source; the PyInstaller bundle's resource directory
+# (where the .spec's `datas` land) when frozen into the macOS app.
+ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 ENV_FILE = ROOT / ".env"
@@ -37,6 +40,26 @@ def load_env_file(path: Path = ENV_FILE) -> int:
             os.environ[key] = value
             loaded += 1
     return loaded
+
+
+def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
+    """Write key=value into .env, in place, preserving every other line.
+
+    Lets the status page's "add your Deepgram key" field work without anyone
+    opening a text editor. Mirrors load_env_file's hand-rolled parsing rather
+    than pulling in python-dotenv's writer for one line.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.split("=", 1)[0].strip() == key:
+            lines[i] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 @dataclass
@@ -88,11 +111,12 @@ def load(path: Path | None = None) -> CaptureConfig:
         "mock_loop": section.get("mock_loop", True),
     })
     backend_config.update(data.get("deepgram", {}) or {})
-    # [local] keys are prefixed so they cannot collide with [deepgram] - both
+    backend_config.update(data.get("apple_speech", {}) or {})
+    # [whisper] keys are prefixed so they cannot collide with [deepgram] - both
     # sections have a "model", and everything lands in one flat dict.
     backend_config.update({
-        f"local_{key}": value
-        for key, value in (data.get("local", {}) or {}).items()
+        f"whisper_{key}": value
+        for key, value in (data.get("whisper", {}) or {}).items()
     })
     cfg.backend_config = backend_config
 

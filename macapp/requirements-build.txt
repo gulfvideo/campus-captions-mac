@@ -1,0 +1,9 @@
+# Build-only dependencies for packaging the macOS .app. Not needed to run
+# Campus Captions from source - see requirements.txt for that.
+#
+#   .venv/bin/python3 -m pip install -r requirements.txt -r macapp/requirements-build.txt
+#   macapp/build.sh
+
+pyinstaller==6.22.2
+pyinstaller-hooks-contrib==2026.7
+rumps==0.4.0

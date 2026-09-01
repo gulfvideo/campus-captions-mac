@@ -12,27 +12,15 @@ On the machine that will run the captions (the "relay host" — usually the same
 booth machine that runs the capture, and it may be the ProPresenter machine or
 a separate one):
 
-**macOS** (the booth machine):
+1. Install **Python 3.11 or newer** from python.org. On Windows, tick
+   **"Add Python to PATH"** during setup. Tested on 3.14.6.
+2. Copy the whole `campus-captions` folder onto the machine.
+3. Double-click **`Start Captions.bat`** on Windows or
+   **`Start Captions.command`** on macOS.
 
-1. Install **Python 3.11 or newer**. The Python that ships with macOS is too
-   old. Either the installer from [python.org](https://www.python.org/downloads/)
-   or `brew install python@3.12`.
-2. Get the project onto the machine with **`git clone`**, not by downloading a
-   zip. A downloaded folder is quarantined by Gatekeeper and macOS will refuse
-   to run the launcher. (If it is already quarantined:
-   `xattr -dr com.apple.quarantine /path/to/campus-captions`.)
-3. Double-click **`Start Captions.command`**.
-
-The first time you run it, macOS will ask for **Microphone** permission — the
-prompt names Terminal, since that is what launches it. Say yes. If you miss it,
-see the microphone note in section 5.
-
-**Windows:**
-
-1. Install **Python 3.11 or newer** from python.org. During setup, tick
-   **"Add Python to PATH"**. Tested on 3.14.6.
-2. Copy or clone the `campus-captions` folder onto the machine.
-3. Double-click **`Start Captions.bat`**.
+On first launch, macOS may ask for microphone access. Allow it for Terminal so
+the capture client can hear the selected input. If macOS blocks the launcher
+because it was downloaded, Control-click it, choose **Open**, then confirm.
 
 The first run creates a virtual environment and installs dependencies — about a
 minute, once. Every later run starts in a couple of seconds.
@@ -62,7 +50,7 @@ port = 8000
 source_token = ""     # optional shared secret; empty is fine on a booth LAN
 
 [capture]
-backend = "mock"                                   # mock | deepgram
+backend = "mock"                        # mock | deepgram | apple_speech
 device = ""                                        # index or part of a name
 relay_url = "ws://127.0.0.1:8000/ws/source"
 start_open = false                                 # leave false: see section 6
@@ -72,23 +60,14 @@ model = "nova-3"
 language = "en-US"
 keyterms_file = "config/keyterms.txt"
 endpointing = 300
+
+[apple_speech]
+locale = "en-US"
 ```
 
 `backend = "mock"` is the safe default — it plays a scripted transcript and
-costs nothing. Switch to `"deepgram"` when you want real captions.
-
-Three backends are available:
-
-| `backend` | What it does | Needs |
-|---|---|---|
-| `mock` | plays a scripted transcript | nothing |
-| `deepgram` | live cloud ASR, best quality | API key, internet |
-| `local` | on-device Whisper, no network, no spend | `requirements-local.txt` |
-
-`local` is the one to use for a **demo** or a venue with no internet. Install the
-extras once, set `backend = "local"`, and everything else — the status page, the
-open/close button, keyterms, the viewers — behaves identically. Expect about a
-second more latency than Deepgram and interim text that revises itself more.
+costs nothing. Switch to `"deepgram"` for cloud captions with keyterm boosting,
+or `"apple_speech"` to run entirely on-device — see section 3a.
 
 ---
 
@@ -97,6 +76,13 @@ second more latency than Deepgram and interim text that revises itself more.
 The key lives in **`.env`** in the project folder, and nowhere else. It is
 gitignored, never written to a config file, never logged, and never sent to the
 relay or to any viewer.
+
+**From the status page (no text editor needed):** open the collapsed
+**Deepgram API key** section (click the row to expand it), paste the key, and
+press **Save**. This works while the capture client is already running — no
+restart needed — and writes it into `.env` for next time too.
+
+**By hand, if you'd rather:**
 
 1. Copy `.env.example` to `.env`.
 2. Put the key on the `DEEPGRAM_API_KEY` line:
@@ -107,8 +93,197 @@ DEEPGRAM_API_KEY=your_key_here
 
 3. Save. The capture client picks it up at startup.
 
-If the key is missing, the capture client refuses to start on the Deepgram
-backend and tells you exactly this. It does not fall back silently.
+Either way, if the key is missing when the capture client starts up already
+pointed at the Deepgram backend, it refuses to start and tells you exactly
+that rather than falling back silently. Switching to Deepgram from the status
+page's backend dropdown mid-session is gentler: it just refuses the switch
+with the same message, leaving whatever was running untouched.
+
+---
+
+## 3a. The Apple on-device backend (macOS only)
+
+`backend = "apple_speech"` runs recognition entirely on the Mac using Apple's
+SpeechAnalyzer, the framework behind system dictation. No API key, no
+per-minute cost, and after the first run, no network at all.
+
+Requirements:
+
+- **macOS 26 or newer.** On an older Mac, the capture client logs why and the
+  ASR stream refuses to open — it does not silently fall back to another
+  backend.
+- **Xcode command line tools**, so `swiftc` and `codesign` exist. If they're
+  missing, run `xcode-select --install` once.
+
+The first time you open the ASR stream, two things happen automatically:
+
+1. `capture/backends/native/speech_helper.swift` is compiled and ad-hoc signed
+   (a few seconds). Later runs skip this unless the source changes.
+2. macOS downloads the on-device speech model for `locale` in
+   `[apple_speech]` if it isn't already installed — the one moment this
+   backend needs internet. The status page shows this as it happens.
+
+There is no keyterm/vocabulary boosting on this backend — that's a Deepgram-
+only feature for now. Pick `deepgram` instead if the event has a lot of names
+the model would otherwise get wrong.
+
+---
+
+## 3b. Pushing captions to YouTube Live
+
+If the event is also being streamed to YouTube, Campus Captions can push the
+same finalized captions there in real time, on top of everything else.
+
+1. In YouTube Studio, on the live stream's page, open **Closed captions** and
+   turn it on. Set **Captions source** to **POST captions to URL**. Copy the
+   **Captions ingestion URL** it shows you (it looks like
+   `http://upload.youtube.com/closedcaption?cid=xxxx-xxxx-xxxx-xxxx`).
+2. On the status page, click the collapsed **YouTube Live captions** row to
+   open it, paste the URL into the box, and press **Save**. No config file to
+   open or edit — Save writes it into `config/event.toml` for you, so it's
+   still there next time the relay starts. Collapsing it back afterward is
+   fine: the badge next to its name keeps showing whether it's live and how
+   many captions have been sent, even while closed.
+3. Press **Enable** when the stream is live, **Disable** when it's not. The
+   box is masked by default (press **Show** to check it) since whoever has
+   that URL can post captions to the stream.
+
+If a config-driven default is wanted instead — the same URL every event, or
+starting enabled automatically — `[youtube]` in `config/event.toml` still
+works by hand:
+
+```toml
+[youtube]
+url = "http://upload.youtube.com/closedcaption?cid=xxxx-xxxx-xxxx-xxxx"
+lang = "en-US"
+start_enabled = false     # true = start pushing as soon as the relay starts
+```
+
+Two things about this that are YouTube's behavior, not this app's:
+
+- **YouTube's captions don't support corrections.** Only finished lines are
+  ever sent — never the interim, still-being-corrected text the wall and
+  phone views show. This is automatic; there is nothing to configure.
+- **Expect real delay**, beyond whatever the ASR backend itself adds. YouTube
+  documents 15+ seconds of latency in its own captioning pipeline for other
+  vendors. If you watch the stream through YouTube itself, the captions will
+  look badly behind — that's expected, not a sign something is broken.
+
+The ingestion URL is tied to that one stream and resets if you end and restart
+it, so don't expect to reuse an old URL. It's not a secret the way the
+Deepgram key is (there's no cost if someone else has it, just the ability to
+post junk captions to the stream), so keeping it in `config/event.toml` rather
+than `.env` is fine.
+
+---
+
+## 3c. Letting remote viewers connect (a tunnel)
+
+The phone view normally only works on the venue's own wifi, because the relay
+is only reachable at a LAN IP. To let someone outside that network view
+captions on a domain you own, run a tunnel (e.g. Cloudflare Tunnel) that
+exposes the relay's port to the internet under that domain, and set:
+
+```toml
+[relay]
+public_hostname = "captions.yourdomain.example"
+```
+
+With this set, anyone reaching the relay through that exact hostname only
+ever gets the phone view - `/status` and everything that can change what's
+happening (opening/closing the stream, switching backends, the Deepgram key
+field, the YouTube toggle) reject them with a plain 404, as if those routes
+didn't exist. The operator dashboard stays fully usable from the booth LAN or
+localhost, unaffected by this setting entirely. Setting up the tunnel itself
+(Cloudflare account, DNS, the `cloudflared` service) is a one-time,
+per-machine setup outside this app; ask if you need it walked through again.
+
+---
+
+## 3d. The Whisper backend (any OS)
+
+`backend = "whisper"` runs recognition entirely on-device via faster-whisper -
+no API key, no per-minute cost, works on Windows/Linux too (not just macOS
+26+ like `apple_speech`). Install its extras once:
+
+```bash
+.venv/bin/python -m pip install -r requirements-whisper.txt
+```
+
+The model (`[whisper] model`, default `base.en`, ~150MB) downloads on first
+use and is cached; for a machine with no internet at all, download it
+elsewhere and point `model_dir` at the cache. Expect roughly a second more
+latency than Deepgram, and less stable interim text - it's a good fit for
+demos, rehearsal, or a venue with no internet, not a first choice when
+Deepgram or Apple on-device are both available.
+
+---
+
+## 3e. Multiple languages and live translation
+
+Optional. In `config/event.toml`:
+
+```toml
+[languages]
+source = "en"
+offer = ["es", "fr"]     # languages to translate into
+
+[translate]
+provider = "azure"       # or "none"
+```
+
+Then put your key in `.env`:
+
+```
+AZURE_TRANSLATOR_KEY=your_key_here
+AZURE_TRANSLATOR_REGION=eastus     # only for a regional resource
+```
+
+Every **finished** caption line gets translated into each offered language
+(never in-progress lines - they'd multiply the bill roughly twentyfold for
+text that rewrites itself faster than anyone can read). The phone view grows
+a language button once there are two or more working languages; each is an
+independent stream, so someone who picks Spanish partway through still sees
+Spanish history on reconnect, not English. If Azure is unreachable or the key
+is wrong, captions keep working in the source language only - translation
+failing never takes down the event.
+
+---
+
+## 3f. QR code and public site info
+
+`http://<relay-ip>:8000/qr` is a full-screen QR code pointing at the phone
+view - put it in a ProPresenter slide or on a lobby screen. It automatically
+points at your Cloudflare Tunnel domain if `public_hostname` is set (section
+3c), or the LAN IP otherwise, so the same page works whether or not you're
+running a tunnel.
+
+---
+
+## 3g. Recording a transcript and exporting to YouTube
+
+The relay quietly records every finished caption line with timing, regardless
+of whether live YouTube pushing (3b) is set up. On the status page, under
+**Transcript & translation**:
+
+1. Press **Mark video start** the moment the actual recording or stream
+   begins - captions are timed from there, not from whenever the relay
+   happened to start.
+2. After the event, download the `.srt` for each language that was recorded.
+3. Optionally upload it to a YouTube video's caption track:
+
+   ```bash
+   .venv/bin/python -m pip install -r requirements-youtube.txt
+   .venv/bin/python tools/youtube_upload.py --video VIDEO_ID --from-relay --lang en
+   ```
+
+   First run opens a browser for a one-time Google sign-in; the token is
+   cached at `config/google_token.json` (gitignored) after that. Uploads as a
+   draft by default - add `--publish` to publish immediately.
+
+**Reset transcript** clears the recorded record (for a rehearsal you don't
+want mixed into the real event's export) - it does not affect the live
+captions on the wall or phone views at all.
 
 ---
 
@@ -122,20 +297,18 @@ is wrong.
 campus network — a DHCP reservation for its MAC address, arranged with IT. Do
 this once and write the address down.
 
-**Open the port inbound.** The symptom of not doing this: the status page works
-on the booth machine itself, but phones and other machines cannot connect.
-
-On **macOS**, the firewall prompts the first time the relay starts — a dialog
-asking whether `python` may accept incoming network connections. Click **Allow**.
-If it was denied, fix it in System Settings > Network > Firewall > Options: find
-the Python entry and set it to allow incoming connections, or remove the entry
-so the prompt comes back.
-
-On **Windows**, in an Administrator PowerShell, once:
+**Open the port inbound.** A firewall may block it, which shows up
+as: the status page works on the booth machine, but phones and ProPresenter on
+another machine cannot connect. On Windows, run this once in an
+**Administrator** PowerShell:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Campus Captions relay" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Domain,Private
 ```
+
+On macOS, if prompted to allow incoming connections for Python, choose
+**Allow**. You can review this later under **System Settings > Network >
+Firewall > Options**.
 
 Requirements to give IT if you need to ask:
 
@@ -154,21 +327,20 @@ images from the internet.
 
 ## 5. Audio input device
 
-Device indices are **not** stable. Windows lists the same physical microphone
-several times, once per host API (MME, DirectSound, WASAPI, WDM-KS), so index 3
-on your laptop is something else entirely in the booth — and they renumber when
-hardware is plugged or unplugged, on the *same* machine. macOS has one host API
-(Core Audio) so the list is shorter, but the numbering still shifts with USB
-devices.
+Device indices are **not** stable between machines. Windows may list the same
+physical microphone several times, once per host API (MME, DirectSound, WASAPI,
+WDM-KS), so index 3 on your laptop is something else entirely in the booth.
 
 See what a machine actually has:
 
 ```
-# macOS
-.venv/bin/python -m capture --list-devices
-
-# Windows
 .venv\Scripts\python.exe -m capture --list-devices
+```
+
+On macOS, the equivalent command is:
+
+```bash
+.venv/bin/python -m capture --list-devices
 ```
 
 ```
@@ -195,26 +367,25 @@ and what the alternatives were:
 An index still works if you want one specific entry: `device = "78"`. Leaving it
 empty uses the system default input.
 
+You can also change the input after startup. Open the status page and choose an
+input under **Audio input device**. The capture client briefly pauses an open
+ASR stream, changes devices, and reopens the stream automatically with the new
+sample rate. If an interface is connected after startup, press **Refresh
+devices** first. This runtime choice lasts until the program is closed; put the
+device name in `event.toml` if it should also be the default next time.
+
+The same status page has a **Transcription backend** dropdown, next to the
+device picker, for swapping between the local Apple backend and cloud Deepgram
+without restarting anything. Switching pauses an open stream and reopens it on
+the new backend, the same way changing the audio device does. Deepgram only
+appears usable if `DEEPGRAM_API_KEY` is set — picking it without a key is
+refused and the running backend is left untouched. This runtime choice also
+lasts until the program is closed; put `backend = "..."` in `event.toml` if it
+should be the default next time.
+
 The sample rate is whatever the device opens at — 16 kHz if it supports it,
 otherwise its own rate, typically 48 kHz. There is no resampling; the real rate
 is reported to the ASR service.
-
-### macOS microphone permission
-
-macOS gates microphone access per application. When permission is missing the
-process is not given an error — it is handed **a stream of perfect silence**,
-which looks exactly like a muted microphone or a dead cable.
-
-The status page tells these apart. Real silence still carries a noise floor, so
-if every sample is exactly zero for five seconds the Audio tile says:
-
-> no signal at all from this device — on macOS grant Microphone access in
-> System Settings > Privacy & Security > Microphone, then restart
-
-Fix it in **System Settings > Privacy & Security > Microphone** and enable the
-app that launches the system — **Terminal** if you use `Start Captions.command`.
-The warning clears itself as soon as real audio arrives; no restart of the
-capture client is needed once permission is granted.
 
 **For a live event, take the feed from the sound desk**, not from a laptop's
 built-in microphone: a mix-minus or matrix output into a USB interface. Room
@@ -406,57 +577,6 @@ as keyword boosting instead, automatically.
 
 ---
 
-## 8b. Languages
-
-Captions can be delivered in more than one language at once. The audience picks
-a language on the phone view; the wall view always shows the source language.
-
-**Set it up once:**
-
-1. Create a **Translator** resource in the Azure portal. The free tier covers
-   2M characters a month, which is far more than a normal event schedule needs.
-2. Put the key in `.env`:
-
-```
-AZURE_TRANSLATOR_KEY=your_key_here
-AZURE_TRANSLATOR_REGION=eastus
-```
-
-`AZURE_TRANSLATOR_REGION` is required for a regional resource and ignored for a
-global one. If the key is missing the relay says so at startup and runs in the
-source language only — it does not fail to start.
-
-3. List the languages in `config/event.toml`:
-
-```toml
-[languages]
-source = "en"
-offer = ["es", "pt", "zh-Hans"]
-
-[translate]
-provider = "azure"
-```
-
-Common codes: `es` Spanish, `pt` Portuguese, `zh-Hans` Simplified Chinese,
-`zh-Hant` Traditional Chinese, `ko` Korean, `vi` Vietnamese, `fr` French.
-Chinese needs the specific variant, not plain `zh`.
-
-**What it costs.** An hour-long event is roughly 45,000 characters. Azure bills
-per *source* character once, no matter how many languages ride along on the same
-request — so three languages costs the same as one. The `offer` list is the
-lever: remove a language and you stop paying for it.
-
-**What the audience sees.** Only committed lines are translated, so a viewer on
-Spanish sees finished sentences rather than words appearing one at a time. That
-is deliberate — translating in-progress text would multiply the bill by about
-twenty and produce text that rewrites itself faster than anyone can read.
-
-**If translation fails mid-event**, captions keep working in the source
-language. The English line is already delivered before translation is attempted.
-The **Languages** tile on the status page turns red and shows the error.
-
----
-
 ## 9. Pre-event checklist
 
 Roughly 30 minutes before doors.
@@ -464,8 +584,7 @@ Roughly 30 minutes before doors.
 **Setup**
 
 - [ ] Relay host is on, on the network, at its expected IP address
-- [ ] Launcher run (`Start Captions.command` on Mac, `.bat` on Windows) —
-      window shows `--- ready ---`
+- [ ] `Start Captions.bat` run — window shows `--- ready ---`
 - [ ] Status page open in the booth: `http://<relay-ip>:8000/status`
 - [ ] `config/event.toml` has `backend = "deepgram"` for a real event
 - [ ] `.env` has the Deepgram key — the capture client says
@@ -473,7 +592,7 @@ Roughly 30 minutes before doors.
 
 **Audio**
 
-- [ ] Correct device in the log line: `[capture] input: ...`
+- [ ] Correct device selected under **Audio input device** on the status page
 - [ ] Someone talks into the mic — **Audio input** tile goes green
 - [ ] Meter sits mid-range on normal speech, not pinned at either end
 
@@ -489,16 +608,13 @@ Roughly 30 minutes before doors.
 - [ ] `http://<relay-ip>:8000/phone` opens on a phone on the venue wifi
 - [ ] URL is printed / on a slide / on a QR card where the audience can see it
 
-**Languages** (only if you offer them)
-
-- [ ] **Languages** tile on the status page is green and lists the right ones
-- [ ] Open the phone view, tap the language button, confirm text appears in each
-
 **Go live**
 
 - [ ] Press **Open ASR stream** about a minute before the start
 - [ ] **Captions** tile goes green and text appears on the wall
 - [ ] Watch the **Viewers** count climb as the audience joins
+- [ ] If also streaming to YouTube: press **Enable** under **YouTube Live
+      captions** once that stream is live (see section 3b)
 
 **Afterwards**
 
@@ -513,7 +629,7 @@ Roughly 30 minutes before doors.
 |---|---|
 | Wall is blank, everything else fine | The relay is unreachable from ProPresenter, or the prop is not triggered. Check the viewer count on the status page — if it is 0, ProPresenter never connected. Open the URL in a browser on that machine. |
 | Status page: **No capture client** | The capture client is not running or cannot reach the relay. The launcher restarts it automatically; check its window for an error. |
-| Status page: **Silent** with the mic live | Wrong input device, or the device is muted in Windows. Run `--list-devices` and set `device` by name. |
+| Status page: **Silent** with the mic live | Wrong input device, or the device is muted. Choose another input on the status page; use **Refresh devices** if it was just connected. |
 | Status page: **Open, no text yet** | The stream is connected but nothing is being transcribed — usually silence, wrong input, or a mic that is muted at the desk. |
 | Phones cannot connect, booth machine can | Firewall (section 4) or wifi client isolation. |
 | Captions stop mid-event | The backend reconnects on its own with backoff. The wall holds the last line, then fades. If the **ASR stream** tile went red, look at the error text on the status page. |

@@ -75,6 +75,22 @@
     font-size: 11px; color: var(--dim); margin-top: 5px;
   }
 
+  .device-control {
+    display: flex; align-items: end; gap: 11px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
+  }
+  .device-control label { flex: 1 1 420px; }
+  .device-control label span {
+    display: block; color: var(--dim); font-size: 11.5px; font-weight: 700;
+    letter-spacing: .13em; text-transform: uppercase; margin-bottom: 7px;
+  }
+  select {
+    width: 100%; min-height: 48px; font: inherit; color: var(--text);
+    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 38px 10px 12px;
+  }
+  select:disabled { opacity: .45; }
   .controls { display: flex; gap: 11px; flex-wrap: wrap; margin-bottom: 18px; }
   button {
     font: inherit; font-weight: 600; font-size: 15px;
@@ -87,6 +103,48 @@
   button.go:hover:not(:disabled) { background: #248049; }
   button.stop { background: #7a2f2f; border-color: #9a3d3d; }
   button.stop:hover:not(:disabled) { background: #8d3737; }
+
+  /* Disclosure sections - collapsed state is remembered per-section in
+     localStorage, so a booth operator who tucks these away doesn't have to
+     redo it on every page load. */
+  .disclosure-panel {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+  }
+  button.disclosure-header {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; border-radius: 0; color: var(--text);
+    font: inherit; text-align: left; padding: 14px 16px; cursor: pointer;
+  }
+  button.disclosure-header:hover { background: #262b33; }
+  .disclosure-header .chevron {
+    display: inline-block; transition: transform 160ms ease;
+    color: var(--dim); font-size: 12px; width: 1em; flex: none;
+  }
+  .disclosure-header[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
+  .disclosure-header .title {
+    color: var(--dim); font-size: 11.5px; font-weight: 700;
+    letter-spacing: .13em; text-transform: uppercase; flex: 1;
+  }
+  .disclosure-header .badge { font-size: 13.5px; color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .disclosure-header .badge.live { color: var(--ok); }
+  .disclosure-body-wrap {
+    display: grid; grid-template-rows: 1fr;
+    transition: grid-template-rows 200ms ease;
+  }
+  .disclosure-header[aria-expanded="false"] + .disclosure-body-wrap { grid-template-rows: 0fr; }
+  .disclosure-body-wrap > div { overflow: hidden; min-height: 0; }
+  .disclosure-body {
+    display: flex; gap: 11px; flex-wrap: wrap; align-items: end;
+    padding: 0 16px 16px;
+  }
+  .disclosure-body .row { display: flex; gap: 11px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; }
+  .disclosure-body input[type=text], .disclosure-body input[type=password] {
+    flex: 1 1 340px; min-height: 48px; font: inherit; color: var(--text);
+    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 12px;
+  }
+  .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
 
   .links { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
   .link {
@@ -143,12 +201,84 @@
     <div class="big"><span class="dot"></span><span id="viewers-count">&mdash;</span></div>
     <div class="sub" id="viewers-sub">&nbsp;</div>
   </div>
+</div>
 
-  <div class="card" id="c-lang">
-    <h2>Languages</h2>
-    <div class="big"><span class="dot"></span><span id="lang-state">&mdash;</span></div>
-    <div class="sub" id="lang-sub">&nbsp;</div>
-  </div>
+<div class="device-control">
+  <label for="backend-select">
+    <span>Transcription backend</span>
+    <select id="backend-select" disabled>
+      <option value="">Waiting for capture client&hellip;</option>
+    </select>
+  </label>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="deepgram-toggle" aria-expanded="false" aria-controls="deepgram-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Deepgram API key</span>
+    <span class="badge" id="deepgram-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="deepgram-body">
+      <div class="row">
+        <input id="deepgram-key" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Paste your Deepgram API key">
+        <button id="btn-deepgram-show" type="button">Show</button>
+        <button id="btn-deepgram-save" type="button">Save</button>
+      </div>
+      <div class="disclosure-sub" id="deepgram-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
+<div class="device-control">
+  <label for="audio-device">
+    <span>Audio input device</span>
+    <select id="audio-device" disabled>
+      <option value="">Waiting for capture client&hellip;</option>
+    </select>
+  </label>
+  <button id="btn-refresh-devices">Refresh devices</button>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="youtube-toggle" aria-expanded="false" aria-controls="youtube-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">YouTube Live captions</span>
+    <span class="badge" id="youtube-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="youtube-body">
+      <div class="row">
+        <input id="youtube-url" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Paste the Captions ingestion URL from YouTube Studio">
+        <button id="btn-youtube-show" type="button">Show</button>
+        <button id="btn-youtube-save" type="button">Save</button>
+        <button id="btn-youtube-enable" class="go">Enable</button>
+        <button id="btn-youtube-disable" class="stop">Disable</button>
+      </div>
+      <div class="disclosure-sub" id="youtube-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="transcript-toggle" aria-expanded="false" aria-controls="transcript-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Transcript &amp; translation</span>
+    <span class="badge" id="transcript-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="transcript-body">
+      <div class="row">
+        <button id="btn-mark-start" type="button">Mark video start</button>
+        <button id="btn-reset-transcript" class="stop" type="button">Reset transcript</button>
+      </div>
+      <div class="disclosure-sub" id="transcript-sub">&mdash;</div>
+      <div class="disclosure-sub" id="translation-sub">&mdash;</div>
+      <div class="row" id="srt-links"></div>
+    </div>
+  </div></div>
 </div>
 
 <div class="controls">
@@ -156,14 +286,6 @@
   <button id="btn-close" class="stop">Close ASR stream</button>
   <button id="btn-clear">Clear captions</button>
   <button id="btn-keyterms">Reload keyterms</button>
-  <button id="btn-mark">Mark video start</button>
-</div>
-
-<div class="card" id="c-rec" style="margin-bottom:18px">
-  <h2>Transcript</h2>
-  <div class="big" style="font-size:22px"><span class="dot"></span><span id="rec-state">&mdash;</span></div>
-  <div class="sub" id="rec-sub">&nbsp;</div>
-  <div class="buttons" id="rec-links" style="margin-top:12px"></div>
 </div>
 
 <div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
@@ -181,16 +303,8 @@
 (function () {
   'use strict';
 
-  // When the relay is public the operator opens this page with ?admin=TOKEN.
-  // Carry that token on every request the page makes, or the page loads and
-  // then silently fails to fetch anything.
-  var ADMIN = new URLSearchParams(location.search).get('admin') || '';
-  function withAdmin(url) {
-    if (!ADMIN) return url;
-    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'admin=' + encodeURIComponent(ADMIN);
-  }
-
   var sock = null, reconnTimer = null, attempts = 0, lastSnap = null, lastMsgAt = 0;
+  var deviceSignature = null, pendingDevice = null, pendingTimer = null;
 
   function $(id) { return document.getElementById(id); }
   function setCard(id, cls, big, sub) {
@@ -229,9 +343,183 @@
   };
 
   var peakHold = 0, peakAt = 0;
+  var backendSignature = null, pendingBackend = null, pendingBackendTimer = null;
+  var youtubeUrlDirty = false;
+  var BACKEND_LABELS = {
+    apple_speech: 'Apple on-device (local, free)',
+    deepgram: 'Deepgram (cloud, paid)',
+    whisper: 'Whisper (local, offline, any OS)',
+    mock: 'Mock (scripted test transcript)'
+  };
+
+  function renderBackends(source) {
+    var select = $('backend-select');
+    var backends = Array.isArray(source.available_backends) ? source.available_backends : [];
+    var signature = backends.join('|');
+
+    if (signature !== backendSignature) {
+      backendSignature = signature;
+      select.textContent = '';
+      if (!backends.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = source.connected ? 'No backends reported' : 'Waiting for capture client…';
+        select.appendChild(empty);
+      } else {
+        backends.forEach(function (name) {
+          var option = document.createElement('option');
+          option.value = name;
+          option.textContent = BACKEND_LABELS[name] || name;
+          select.appendChild(option);
+        });
+      }
+    }
+
+    select.disabled = !source.connected || !backends.length;
+    if (pendingBackend !== null) {
+      select.value = pendingBackend;
+      if (source.backend === pendingBackend) {
+        pendingBackend = null;
+        clearTimeout(pendingBackendTimer);
+      }
+    } else if (source.backend) {
+      select.value = source.backend;
+    }
+  }
+
+  function renderDevices(source) {
+    var select = $('audio-device');
+    var devices = Array.isArray(source.audio_devices) ? source.audio_devices : [];
+    var signature = devices.map(function (d) {
+      return [d.index, d.name, d.hostapi, d.default_samplerate, d.is_default].join(':');
+    }).join('|');
+
+    if (signature !== deviceSignature) {
+      deviceSignature = signature;
+      select.textContent = '';
+      if (!devices.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = source.connected ? 'No audio inputs found' : 'Waiting for capture client…';
+        select.appendChild(empty);
+      } else {
+        devices.forEach(function (d) {
+          var option = document.createElement('option');
+          option.value = String(d.index);
+          option.textContent = d.name + ' — ' + d.hostapi + ' · ' +
+            d.default_samplerate + ' Hz' + (d.is_default ? ' (system default)' : '');
+          select.appendChild(option);
+        });
+      }
+    }
+
+    select.disabled = !source.connected || !devices.length;
+    $('btn-refresh-devices').disabled = !source.connected;
+    if (pendingDevice !== null) {
+      select.value = String(pendingDevice);
+      if (source.device_index === pendingDevice) {
+        pendingDevice = null;
+        clearTimeout(pendingTimer);
+      }
+    } else if (source.device_index !== null && source.device_index !== undefined) {
+      select.value = String(source.device_index);
+    }
+  }
+
+  function renderYoutube(youtube) {
+    youtube = youtube || {};
+    var badge = $('youtube-badge');
+    var sub;
+    if (!youtube.configured) {
+      sub = 'Paste a Captions ingestion URL above, then press Save.';
+      badge.textContent = 'Not set up';
+      badge.className = 'badge';
+    } else if (youtube.error) {
+      sub = 'Error: ' + youtube.error;
+      badge.textContent = 'Error';
+      badge.className = 'badge';
+    } else if (youtube.enabled) {
+      sub = 'Pushing to YouTube — ' + youtube.pushed + ' caption' + (youtube.pushed === 1 ? '' : 's') + ' sent';
+      badge.textContent = 'Pushing · ' + youtube.pushed + ' sent';
+      badge.className = 'badge live';
+    } else {
+      sub = 'Saved, not pushing yet' + (youtube.pushed ? ' (' + youtube.pushed + ' sent this session)' : '');
+      badge.textContent = 'Saved, off';
+      badge.className = 'badge';
+    }
+    $('youtube-sub').textContent = sub;
+    $('btn-youtube-enable').disabled = !youtube.configured || youtube.enabled;
+    $('btn-youtube-disable').disabled = !youtube.configured || !youtube.enabled;
+    // Relay-local, so unlike the audio/backend controls this needs no
+    // connected capture client - only renderOffline() should ever disable it.
+    $('youtube-url').disabled = false;
+    $('btn-youtube-save').disabled = false;
+
+    var urlBox = $('youtube-url');
+    if (document.activeElement !== urlBox && !youtubeUrlDirty) {
+      urlBox.value = youtube.url || '';
+    }
+  }
+
+  function renderDeepgram(source) {
+    source = source || {};
+    var hasKey = !!source.has_deepgram_key;
+    var badge = $('deepgram-badge');
+    badge.textContent = hasKey ? 'Key saved' : 'Not set';
+    badge.className = 'badge' + (hasKey ? ' live' : '');
+    $('deepgram-sub').textContent = hasKey
+      ? 'A key is saved on this machine — the Deepgram backend is ready to use.'
+      : 'Only needed if you pick Deepgram under Transcription backend above. Get a key at console.deepgram.com.';
+    $('deepgram-key').disabled = !source.connected;
+    $('btn-deepgram-save').disabled = !source.connected;
+  }
+
+  function renderTranscript(s) {
+    var t = s.transcript || {};
+    var translation = s.translation || { provider: 'none', targets: [] };
+    var badge = $('transcript-badge');
+    var lines = t.total || 0;
+    badge.textContent = lines ? lines + ' line' + (lines === 1 ? '' : 's') : 'No lines yet';
+    badge.className = 'badge' + (t.recording ? ' live' : '');
+
+    $('transcript-sub').textContent = t.zero_set
+      ? 'Video start marked ' + ago(t.zero_age) + ' — timing in the .srt is relative to that point.'
+      : 'Video start not marked yet — mark it right when the recording/stream actually begins, or exported timing will be off.';
+
+    $('translation-sub').textContent = (translation.provider && translation.provider !== 'none')
+      ? 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') + '.'
+      : 'No translation configured — see [translate] in config/event.toml.';
+
+    var langs = Object.keys((t.lines || {}));
+    var container = $('srt-links');
+    container.textContent = '';
+    if (!langs.length) {
+      var none = document.createElement('span');
+      none.className = 'disclosure-sub';
+      none.style.margin = '0';
+      none.textContent = 'Nothing recorded yet.';
+      container.appendChild(none);
+    } else {
+      langs.forEach(function (lang) {
+        var a = document.createElement('a');
+        a.href = '/api/transcript.srt?lang=' + encodeURIComponent(lang);
+        a.textContent = 'Download .srt (' + lang + ', ' + t.lines[lang] + ')';
+        a.style.color = '#7fb2f0';
+        a.style.fontSize = '14px';
+        a.style.textDecoration = 'none';
+        a.style.marginRight = '16px';
+        container.appendChild(a);
+      });
+    }
+  }
 
   function render(s) {
     lastSnap = s;
+    renderBackends(s.source || {});
+    renderDevices(s.source || {});
+    renderYoutube(s.youtube);
+    renderDeepgram(s.source || {});
+    renderTranscript(s);
 
     var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
     setCard('c-audio', a[0],
@@ -257,71 +545,17 @@
       { id: 'asr-sub', text: s.asr.finals + ' lines  ·  last ' + ago(s.asr.last_final_age) });
 
     var open = s.asr.stream_open;
+    var billed = s.source.backend === 'deepgram';
     setCard('c-stream', open ? 'ok' : 'idle',
       { id: 'stream-state', text: open ? 'OPEN' : 'Closed' },
       { id: 'stream-sub', text: (s.source.backend || 'no backend') +
-          (open ? '  ·  connection is billing' : '  ·  not billing') });
+          (billed ? (open ? '  ·  connection is billing' : '  ·  not billing') : '') });
 
     var v = s.viewers || {};
-    var byLang = v.by_language || {};
-    var langBits = [];
-    for (var code in byLang) {
-      if (byLang[code]) langBits.push(byLang[code] + ' ' + code);
-    }
     setCard('c-viewers', v.total > 0 ? 'ok' : 'idle',
       { id: 'viewers-count', text: String(v.total || 0) },
       { id: 'viewers-sub', text: (v.wall || 0) + ' wall  ·  ' + (v.phone || 0) +
-          ' phone  ·  ' + (v.status || 0) + ' status' +
-          (langBits.length ? '  ·  ' + langBits.join(', ') : '') });
-
-    var tr = s.translation || {};
-    var tgt = tr.targets || [];
-    var cls, headline;
-    if (!tgt.length) {
-      cls = 'idle'; headline = 'Source only';
-    } else if (tr.healthy === false) {
-      cls = 'bad'; headline = 'Translation failing';
-    } else {
-      cls = 'ok'; headline = tgt.length + ' extra';
-    }
-    setCard('c-lang', cls,
-      { id: 'lang-state', text: headline },
-      { id: 'lang-sub', text: tgt.length
-          ? (tgt.join(', ') + '  ·  ' + (tr.translated_lines || 0) + ' lines  ·  '
-             + (tr.characters || 0) + ' chars'
-             + (tr.error ? '  ·  ' + String(tr.error).slice(0, 60) : ''))
-          : 'no translation configured' });
-
-    var rec = s.transcript || {};
-    var yt = s.youtube_live || {};
-    var recorded = rec.total || 0;
-    var ytBit = yt.active
-      ? '  ·  YouTube live: ' + (yt.sent || 0) + ' sent'
-        + (yt.failures ? ', ' + yt.failures + ' failed' : '')
-      : '';
-    setCard('c-rec', recorded ? 'ok' : 'idle',
-      { id: 'rec-state', text: recorded
-          ? recorded + ' lines recorded' : 'Nothing recorded yet' },
-      { id: 'rec-sub', text: (rec.zero_set
-          ? 'video start marked ' + ago(rec.zero_age)
-          : 'video start not marked - the first line will be time zero')
-          + ytBit });
-
-    // One download per recorded language, rebuilt only when the set changes.
-    var langs = (rec.languages || []).join(',');
-    if (langs !== ($('rec-links').getAttribute('data-langs') || '')) {
-      $('rec-links').setAttribute('data-langs', langs);
-      $('rec-links').innerHTML = '';
-      (rec.languages || []).forEach(function (code) {
-        var a = document.createElement('a');
-        a.href = withAdmin('/api/transcript.srt?lang=' + encodeURIComponent(code));
-        a.textContent = 'Download .srt (' + code + ')';
-        a.style.cssText = 'font:inherit;font-weight:600;font-size:14px;' +
-          'padding:10px 16px;border-radius:8px;border:1px solid var(--edge);' +
-          'background:#262b33;color:var(--text);text-decoration:none';
-        $('rec-links').appendChild(a);
-      });
-    }
+          ' phone  ·  ' + (v.status || 0) + ' status' });
 
     $('btn-open').disabled = open || !s.source.connected;
     $('btn-close').disabled = !open || !s.source.connected;
@@ -347,6 +581,11 @@
     $('viewers-count').textContent = '—';
     $('meta').textContent = 'relay unreachable — retrying';
     $('btn-open').disabled = $('btn-close').disabled = $('btn-keyterms').disabled = true;
+    $('audio-device').disabled = $('btn-refresh-devices').disabled = true;
+    $('btn-youtube-enable').disabled = $('btn-youtube-disable').disabled = true;
+    $('btn-youtube-save').disabled = $('youtube-url').disabled = true;
+    $('btn-deepgram-save').disabled = $('deepgram-key').disabled = true;
+    $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = true;
   }
 
   // ---- transport -------------------------------------------------------
@@ -355,7 +594,7 @@
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var host = location.host || 'localhost:8000';
     try {
-      sock = new WebSocket(proto + '//' + host + withAdmin('/ws/status'));
+      sock = new WebSocket(proto + '//' + host + '/ws/status');
     } catch (e) {
       scheduleReconnect();
       return;
@@ -379,30 +618,141 @@
     reconnTimer = setTimeout(function () { reconnTimer = null; connect(); }, d);
   }
 
-  function control(action, label) {
-    fetch(withAdmin('/api/control'), {
+  function control(action, label, fields) {
+    var body = { action: action };
+    Object.keys(fields || {}).forEach(function (key) { body[key] = fields[key]; });
+    fetch('/api/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: action })
+      body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (out) {
-      if (out.delivered_to === undefined) {
-        toast(label + ' — done');          // handled by the relay itself
-      } else {
-        toast(out.delivered_to
-          ? label + ' — sent to capture client'
-          : label + ' — no capture client connected');
-      }
+      toast(out.delivered_to
+        ? label + ' — sent to capture client'
+        : label + ' — no capture client connected');
     })['catch'](function () { toast(label + ' — failed, relay unreachable'); });
   }
 
+  // mark_video_start / reset_transcript are handled by the relay itself, not
+  // forwarded to a capture client, so they never carry delivered_to.
+  function relayAction(action, label) {
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () { toast(label); })
+      ['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function setYoutubeEnabled(enabled) {
+    fetch('/api/youtube-captions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      toast(enabled ? 'YouTube captions — enabled' : 'YouTube captions — disabled');
+    })['catch'](function (e) { toast('YouTube captions — ' + e.message); });
+  }
+
+  function saveYoutubeUrl() {
+    var url = $('youtube-url').value.trim();
+    fetch('/api/youtube-captions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      youtubeUrlDirty = false;
+      toast(url ? 'YouTube ingestion URL saved' : 'YouTube ingestion URL cleared');
+    })['catch'](function (e) { toast('YouTube URL — ' + e.message); });
+  }
+
+  function saveDeepgramKey() {
+    var key = $('deepgram-key').value.trim();
+    if (!key) { toast('Deepgram key — paste a key first'); return; }
+    control('set_deepgram_key', 'Deepgram API key', { key: key });
+    $('deepgram-key').value = '';  // write-only: never redisplayed once saved
+  }
+
+  // A disclosure remembers its own open/closed state across reloads - the
+  // same reason Finder and Mail remember which sidebar groups you collapsed.
+  function setupDisclosure(headerId, storageKey) {
+    var header = $(headerId);
+    var key = 'campus-captions:' + storageKey;
+    var expanded = header.getAttribute('aria-expanded') === 'true';
+    try {
+      var saved = localStorage.getItem(key);
+      if (saved !== null) expanded = saved === '1';
+    } catch (e) { /* private browsing, etc. - just don't persist */ }
+    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    header.onclick = function () {
+      var next = header.getAttribute('aria-expanded') !== 'true';
+      header.setAttribute('aria-expanded', next ? 'true' : 'false');
+      try { localStorage.setItem(key, next ? '1' : '0'); } catch (e) {}
+    };
+  }
+
   function boot() {
+    setupDisclosure('youtube-toggle', 'youtube-expanded');
+    setupDisclosure('deepgram-toggle', 'deepgram-expanded');
+    setupDisclosure('transcript-toggle', 'transcript-expanded');
+    $('btn-mark-start').onclick = function () {
+      relayAction('mark_video_start', 'Video start marked');
+    };
+    $('btn-reset-transcript').onclick = function () {
+      relayAction('reset_transcript', 'Transcript reset');
+    };
     $('btn-open').onclick = function () { control('open_stream', 'Open stream'); };
     $('btn-close').onclick = function () { control('close_stream', 'Close stream'); };
     $('btn-clear').onclick = function () { control('clear', 'Clear'); };
     $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Reload keyterms'); };
-    $('btn-mark').onclick = function () { control('mark_video_start', 'Video start'); };
+    $('btn-refresh-devices').onclick = function () {
+      control('refresh_audio_devices', 'Refresh audio devices');
+    };
+    $('btn-youtube-enable').onclick = function () { setYoutubeEnabled(true); };
+    $('btn-youtube-disable').onclick = function () { setYoutubeEnabled(false); };
+    $('btn-youtube-save').onclick = saveYoutubeUrl;
+    $('btn-youtube-show').onclick = function () {
+      var box = $('youtube-url');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('youtube-url').oninput = function () { youtubeUrlDirty = true; };
+    $('youtube-url').onkeydown = function (e) { if (e.key === 'Enter') saveYoutubeUrl(); };
+    $('btn-deepgram-save').onclick = saveDeepgramKey;
+    $('btn-deepgram-show').onclick = function () {
+      var box = $('deepgram-key');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('deepgram-key').onkeydown = function (e) { if (e.key === 'Enter') saveDeepgramKey(); };
+    $('audio-device').onchange = function () {
+      var index = Number(this.value);
+      if (!Number.isInteger(index)) return;
+      pendingDevice = index;
+      clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(function () { pendingDevice = null; }, 6000);
+      control('select_audio_device', 'Change audio input', { device: index });
+    };
+    $('backend-select').onchange = function () {
+      var name = this.value;
+      if (!name) return;
+      pendingBackend = name;
+      clearTimeout(pendingBackendTimer);
+      pendingBackendTimer = setTimeout(function () { pendingBackend = null; }, 6000);
+      control('select_backend', 'Change transcription backend', { backend: name });
+    };
 
-    fetch(withAdmin('/api/status')).then(function (r) { return r.json(); }).then(function (s) {
+    fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
       if (s.relay) {
         var base = 'http://' + s.relay.ip + ':' + s.relay.port;
         $('url-wall').textContent = base + '/wall';

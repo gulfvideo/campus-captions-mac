@@ -14,13 +14,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import os
 import sys
 import time
 from pathlib import Path
 
 from . import audio as audio_mod
 from . import config as config_mod
-from .backends import create as create_backend
+from .backends import BACKENDS, create as create_backend
 from .relay_client import RelayClient
 
 STATUS_HZ = 4.0
@@ -36,17 +37,113 @@ class CaptureApp:
         self.input = None
         self.sample_rate = audio_mod.PREFERRED_RATE
         self.audio_error: str | None = None
-        self._pending: list[str] = []       # control actions, handled in the loop
+        self.audio_devices: list[dict] = []
+        self._pending: list[tuple[str, dict]] = []  # handled in the main loop
 
     # -- control ---------------------------------------------------------
 
-    def on_control(self, action: str) -> None:
+    def on_control(self, action: str, payload: dict | None = None) -> None:
         print(f"[capture] control: {action}")
-        self._pending.append(action)
+        self._pending.append((action, payload or {}))
+
+    def refresh_audio_devices(self) -> None:
+        self.audio_devices = audio_mod.list_input_devices()
+
+    async def switch_audio_device(self, spec: str | int) -> None:
+        """Change inputs without restarting the capture client.
+
+        A backend connection is tied to the input's sample rate. If it is open,
+        close it for the handoff and restore the operator's open intent after
+        the replacement input is live. On failure, restart the old input.
+        """
+        try:
+            device = audio_mod.resolve_device(spec)
+        except Exception as exc:
+            self.audio_error = f"cannot select audio input: {exc}"
+            print(f"[capture] {self.audio_error}")
+            self.refresh_audio_devices()
+            return
+
+        old_input = self.input
+        if old_input and old_input.device.index == device.index:
+            self.audio_error = None
+            self.refresh_audio_devices()
+            return
+
+        was_open = self.backend.wants_open
+        if was_open:
+            print("[capture] pausing ASR stream for audio input change")
+            await self.backend.close()
+
+        if old_input:
+            old_input.stop()
+
+        replacement = audio_mod.AudioInput(device)
+        try:
+            replacement.start()
+        except Exception as exc:
+            message = f"cannot open {device.name}: {exc}"
+            try:
+                if old_input:
+                    old_input.start()
+            except Exception as restore_exc:
+                old_input = audio_mod.SilentInput()
+                message += f"; previous input could not be restored: {restore_exc}"
+            self.input = old_input or audio_mod.SilentInput()
+            self.sample_rate = self.input.device.sample_rate
+            self.audio_error = message
+            print(f"[capture] {message}")
+            if was_open:
+                await self.backend.open(self.sample_rate)
+            self.refresh_audio_devices()
+            return
+
+        self.input = replacement
+        self.sample_rate = device.sample_rate
+        self.cfg.device = str(device.index)
+        self.audio_error = None
+        self.refresh_audio_devices()
+        print(f"[capture] input changed: {device}")
+        if was_open:
+            await self.backend.open(self.sample_rate)
+            print(f"[capture] {self.cfg.backend} stream reopened after input change")
+
+    async def switch_backend(self, name: str) -> None:
+        """Swap the ASR backend without restarting the capture client.
+
+        Mirrors switch_audio_device: validate first, only close the running
+        backend once the replacement is known to be creatable, and restore the
+        operator's open intent on the new backend afterward.
+        """
+        name = str(name).strip()
+        if not name or name == self.cfg.backend:
+            return
+        if name not in BACKENDS:
+            print(f"[capture] unknown backend {name!r}; available: {', '.join(sorted(BACKENDS))}")
+            return
+        if name == "deepgram":
+            if not os.environ.get("DEEPGRAM_API_KEY", "").strip():
+                print("[capture] cannot switch to deepgram: DEEPGRAM_API_KEY is not set")
+                return
+
+        was_open = self.backend.wants_open
+        if was_open:
+            print(f"[capture] closing {self.cfg.backend} stream to switch backend")
+            await self.backend.close()
+
+        self.backend = create_backend(name, self.cfg.backend_config)
+        self.cfg.backend = name
+        print(f"[capture] backend switched to {name}")
+        if was_open:
+            await self.backend.open(self.sample_rate)
+            if self.backend.error:
+                print(f"[capture] open failed: {self.backend.error}")
+            else:
+                print(f"[capture] {name} stream reopened after backend switch")
 
     async def _apply_control(self) -> None:
         while self._pending:
-            action = self._pending.pop(0)
+            action, payload = self._pending.pop(0)
             try:
                 if action == "open_stream":
                     await self.backend.open(self.sample_rate)
@@ -63,15 +160,34 @@ class CaptureApp:
                 elif action == "reload_keyterms":
                     await self.backend.reload_keyterms()
                     print("[capture] keyterms reloaded")
+                elif action == "select_audio_device":
+                    await self.switch_audio_device(payload.get("device", ""))
+                elif action == "refresh_audio_devices":
+                    self.refresh_audio_devices()
+                    print("[capture] audio device list refreshed")
+                elif action == "select_backend":
+                    await self.switch_backend(payload.get("backend", ""))
+                elif action == "set_deepgram_key":
+                    key = str(payload.get("key", "")).strip()
+                    if key:
+                        os.environ["DEEPGRAM_API_KEY"] = key
+                        config_mod.save_env_var("DEEPGRAM_API_KEY", key)
+                        print("[capture] Deepgram API key updated")  # never the key itself
             except Exception as exc:
                 print(f"[capture] control {action} failed: {exc!r}")
 
     # -- pumps -----------------------------------------------------------
 
     async def pump_audio(self) -> None:
-        async for block in self.input.blocks():
-            if block and self.backend.stream_open:
-                await self.backend.send_audio(block)
+        while True:
+            current = self.input
+            async for block in current.blocks():
+                # A runtime device change replaces self.input. Stop consuming
+                # the old iterator and pick up the new one on the next pass.
+                if current is not self.input:
+                    break
+                if block and self.backend.stream_open:
+                    await self.backend.send_audio(block)
 
     async def pump_events(self) -> None:
         async for event in self.backend.events():
@@ -92,13 +208,17 @@ class CaptureApp:
 
     async def pump_status(self) -> None:
         while True:
-            error = self.backend.error or self.audio_error or self.input.error
+            error = self.audio_error or self.backend.error or self.input.error
             self.relay.send({
                 "type": "status",
                 "audio_level": round(float(self.input.level), 4),
                 "stream_open": self.backend.stream_open,
                 "backend": self.cfg.backend,
+                "available_backends": sorted(BACKENDS),
+                "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
                 "device": str(self.input.device),
+                "device_index": self.input.device.index,
+                "audio_devices": self.audio_devices,
                 "error": error,
             })
             await self._apply_control()
@@ -110,12 +230,14 @@ class CaptureApp:
         if self.args.no_audio:
             self.input = audio_mod.SilentInput()
             print("[capture] --no-audio: running without an input device")
+            self.refresh_audio_devices()
             return
         try:
             device = audio_mod.resolve_device(self.cfg.device)
             self.input = audio_mod.AudioInput(device)
             self.input.start()
             self.sample_rate = device.sample_rate
+            self.audio_error = None
             print(f"[capture] input: {device}")
         except Exception as exc:
             self.audio_error = f"{exc}"
@@ -129,6 +251,7 @@ class CaptureApp:
             self.input = audio_mod.SilentInput()
             print(f"[capture] no audio input ({exc}); continuing for the "
                   f"{self.cfg.backend} backend")
+        self.refresh_audio_devices()
 
     async def run(self) -> None:
         self.open_input()
@@ -157,7 +280,7 @@ def main() -> None:
         description="Campus Captions capture client.")
     parser.add_argument("--list-devices", action="store_true",
                         help="print this machine's audio inputs and exit")
-    parser.add_argument("--backend", default=None, help="mock | deepgram")
+    parser.add_argument("--backend", default=None, help="mock | deepgram | apple_speech")
     parser.add_argument("--device", default=None,
                         help="input device index or part of its name")
     parser.add_argument("--relay", default=None, help="relay source websocket URL")
@@ -183,7 +306,6 @@ def main() -> None:
 
     print(f"[capture] backend={cfg.backend} relay={cfg.relay_url}")
     if cfg.needs_api_key:
-        import os
         if not os.environ.get("DEEPGRAM_API_KEY", "").strip():
             raise SystemExit(
                 "[capture] DEEPGRAM_API_KEY is not set.\n"

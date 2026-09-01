@@ -8,7 +8,7 @@ It runs Whisper through faster-whisper (CTranslate2). Those are *optional*
 dependencies - the booth install stays lean, and only a machine that actually
 wants offline ASR pays for them:
 
-    .venv/bin/python -m pip install -r requirements-local.txt
+    .venv/bin/python -m pip install -r requirements-whisper.txt
 
 ## Whisper is not a streaming model
 
@@ -66,8 +66,8 @@ QUIET_BLOCKS_FOR_SILENCE = 2
 JUNK_RESET_AFTER = 2.5          # silence with no real speech: drop the buffer
 
 MISSING_DEPS = (
-    "local backend needs faster-whisper: run "
-    "'python -m pip install -r requirements-local.txt'"
+    "whisper backend needs faster-whisper: run "
+    "'python -m pip install -r requirements-whisper.txt'"
 )
 
 
@@ -91,21 +91,21 @@ def resample_to_16k(samples: np.ndarray, src_rate: int) -> np.ndarray:
 
 
 class LocalWhisperBackend(ASRBackend):
-    name = "local"
+    name = "whisper"
 
     def __init__(self, config: dict | None = None):
         super().__init__(config)
         cfg = self.config
-        self.model_size = str(cfg.get("local_model", "base.en"))
-        self.compute_type = str(cfg.get("local_compute_type", "int8"))
+        self.model_size = str(cfg.get("whisper_model", "base.en"))
+        self.compute_type = str(cfg.get("whisper_compute_type", "int8"))
         # "cpu", not "auto". CTranslate2's auto-detect claims a GPU it cannot
         # actually use and then dies loading CUDA libraries that are not there.
         # CPU is also the only sensible default on the booth Mac.
-        self.device = str(cfg.get("local_device", "cpu"))
-        self.model_dir = cfg.get("local_model_dir") or None
-        self.language = str(cfg.get("local_language", "") or "") or None
-        self.interim_interval = float(cfg.get("local_interim_interval", 0.9))
-        self.silence_commit = float(cfg.get("local_silence_commit", 0.7))
+        self.device = str(cfg.get("whisper_device", "cpu"))
+        self.model_dir = cfg.get("whisper_model_dir") or None
+        self.language = str(cfg.get("whisper_language", "") or "") or None
+        self.interim_interval = float(cfg.get("whisper_interim_interval", 0.9))
+        self.silence_commit = float(cfg.get("whisper_silence_commit", 0.7))
         self.keyterms_file = Path(cfg.get("keyterms_file", "config/keyterms.txt"))
 
         self.sample_rate = WHISPER_RATE
@@ -226,7 +226,7 @@ class LocalWhisperBackend(ASRBackend):
                 raise
             # A configured GPU that does not load must not take the event down;
             # captions on the CPU beat no captions.
-            print(f"[local] device {self.device!r} unavailable ({exc.__class__.__name__}), "
+            print(f"[whisper] device {self.device!r} unavailable ({exc.__class__.__name__}), "
                   f"falling back to cpu")
             self.device = "cpu"
             self._model = WhisperModel(self.model_size, device="cpu", **kwargs)
@@ -259,10 +259,10 @@ class LocalWhisperBackend(ASRBackend):
         try:
             loop = asyncio.get_running_loop()
             if self._model is None:
-                print(f"[local] loading whisper model {self.model_size!r} "
+                print(f"[whisper] loading whisper model {self.model_size!r} "
                       f"({self.compute_type}) - first run downloads it")
                 await loop.run_in_executor(None, self._ensure_model)
-                print("[local] model ready")
+                print("[whisper] model ready")
 
             while self._open:
                 await asyncio.sleep(0.1)
@@ -308,5 +308,5 @@ class LocalWhisperBackend(ASRBackend):
         except asyncio.CancelledError:
             raise
         except Exception as exc:                  # never kill the capture app
-            self._error = f"local backend: {exc.__class__.__name__}: {exc}"
-            print(f"[local] {self._error}")
+            self._error = f"whisper backend: {exc.__class__.__name__}: {exc}"
+            print(f"[whisper] {self._error}")

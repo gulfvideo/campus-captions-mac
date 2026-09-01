@@ -20,7 +20,7 @@ RECONNECT_CAP = 10.0
 
 class RelayClient:
     def __init__(self, url: str, token: str = "",
-                 on_control: Callable[[str], None] | None = None):
+                 on_control: Callable[[str, dict], None] | None = None):
         if token:
             url += ("&" if "?" in url else "?") + "token=" + token
         self.url = url
@@ -90,4 +90,4 @@ class RelayClient:
             return
         action = msg.get("action")
         if isinstance(action, str) and self.on_control:
-            self.on_control(action)
+            self.on_control(action, msg)

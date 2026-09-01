@@ -11,7 +11,7 @@ phone page with scrollback.
 |---|---|
 | 1 | `viewer/wall.html`, `viewer/phone.html`, `tools/mock_relay.py` |
 | 2 | `relay/`, `viewer/status.html`, `tools/mock_source.py` |
-| 3 | `capture/`, both ASR backends, `launcher/`, `SETUP.md` |
+| 3 | `capture/`, its ASR backends, `launcher/`, `SETUP.md` |
 
 **Running an event? Read [SETUP.md](SETUP.md), not this file.** It covers
 ProPresenter, firewall and IP requirements, audio device selection, the query
@@ -23,15 +23,11 @@ This README is for working on the code.
 
 ## Operating it: the short version
 
-Double-click the launcher — **`Start Captions.command`** on macOS,
-**`Start Captions.bat`** on Windows. It creates the virtual environment on first
-run, starts the relay and the capture client, opens the status page, and
+Double-click **`Start Captions.bat`** on Windows or **`Start Captions.command`**
+on macOS. It creates the virtual environment on
+first run, starts the relay and the capture client, opens the status page, and
 supervises both until the window is closed. Everything an operator needs is on
 the status page.
-
-The booth runs macOS; development here has been on Windows. Both are supported,
-and `.gitattributes` pins the launchers' line endings so neither breaks when
-committed from the other platform.
 
 ---
 
@@ -39,7 +35,10 @@ committed from the other platform.
 
 ```bash
 python -m venv .venv
+# Windows
 .venv\Scripts\python.exe -m pip install -r requirements.txt
+# macOS / Linux
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 Pinned to the exact versions tested on Python 3.14.6 / Windows 11; every one has
@@ -51,10 +50,12 @@ Two processes. The relay, then the capture client:
 
 ```bash
 .venv\Scripts\python.exe -m relay
+# macOS / Linux: .venv/bin/python -m relay
 ```
 
 ```bash
 .venv\Scripts\python.exe -m capture
+# macOS / Linux: .venv/bin/python -m capture
 ```
 
 `-m capture` defaults to the mock backend, so it needs no audio hardware and no
@@ -102,35 +103,26 @@ await backend.close()                   # and stops HERE
 |---|---|---|
 | `mock` | `capture/backends/mock.py` | replays `config/mock_script.txt`, ignores audio, costs nothing |
 | `deepgram` | `capture/backends/deepgram.py` | Nova-3 streaming, keyterm prompting, key from `.env` |
-| `local` | `capture/backends/local.py` | on-device Whisper, no network, no key, no spend |
+| `apple_speech` | `capture/backends/apple_speech.py` | on-device SpeechAnalyzer, macOS 26+, free, no network after first model download |
+| `whisper` | `capture/backends/whisper.py` | on-device via faster-whisper, free, works on any OS, needs `requirements-whisper.txt` |
 
-Adding the local backend cost exactly what the design promised: one new file and
-one line in `capture/backends/registry.py`. The relay, the viewers and the
-status page were not touched.
+`apple_speech` is Swift-only under the hood - there's no Python or Objective-C
+bridge to Apple's SpeechAnalyzer/SpeechTranscriber APIs - so the class in
+`apple_speech.py` runs `capture/backends/native/speech_helper.swift` as a
+subprocess: raw PCM in on stdin, one JSON transcript line out on stdout per
+update. See `capture/backends/native/build.sh` for how that binary gets
+codesigned with just enough entitlement to pass the Speech Recognition TCC
+check without tripping AMFI.
 
-### The local backend
+`whisper` simulates streaming by re-decoding a buffer on a timer (Whisper
+itself transcribes whole clips, not a stream) - expect roughly a second more
+latency than Deepgram and less stable interims. Good for offline demos, a
+venue with no internet, or any machine `apple_speech` can't run on. Its
+dependencies are ~200MB and optional on purpose: `python -m pip install -r
+requirements-whisper.txt` only on a machine that actually uses it.
 
-```bash
-python -m pip install -r requirements-local.txt     # optional extras, ~200 MB
-```
-
-Then set `backend = "local"` in `config/event.toml`. The model downloads on
-first use and is cached; `[local] model_dir` points at a pre-downloaded cache
-for a machine with no internet at all.
-
-Whisper is not a streaming model, so streaming is simulated: audio accumulates,
-the buffer is re-decoded every `interim_interval` seconds and emitted as an
-interim, and a pause longer than `silence_commit` commits the line as a final.
-Lines therefore break at natural pauses, which is where a caption wants to break
-anyway.
-
-Two things to know before trusting it live. Interims are less stable than
-Deepgram's — the whole window is re-decoded each pass, so early words can change
-under you. And latency runs roughly a second behind. It is excellent for demos,
-rehearsal and venues with no internet.
-
-`config/keyterms.txt` is reused as Whisper's `initial_prompt`, so the same file
-and the same **Reload keyterms** button bias spelling on this backend too.
+**Adding another backend** is one new file next to those four and one line in
+`capture/backends/registry.py`. Nothing in the relay or the viewers changes.
 
 The mock backend is first-class, not a stub: it obeys the same open/close
 lifecycle, so the whole operator flow can be rehearsed without hardware, an API
@@ -151,50 +143,46 @@ nothing installed:
 python tools/mock_relay.py
 ```
 
+## Packaging a distributable .app
+
+For sending a runnable copy to someone who shouldn't need Python, Xcode, or a
+terminal at all: `macapp/` builds a self-contained macOS menu bar app with
+PyInstaller.
+
+```
+.venv/bin/python3 -m pip install -r requirements.txt -r macapp/requirements-build.txt
+macapp/build.sh
+```
+
+Output is `macapp/dist/Campus Captions.app` — copy it to `/Applications` and
+double-click. It has no console window; a graduation-cap icon appears in the
+menu bar instead, with menu items to open the status/wall/phone pages and to
+quit. `macapp/menubar.py` is the entry point: it runs the relay and capture
+client as threads in one process instead of `launch.py`'s two subprocesses,
+since a frozen app has no `python -m X` to shell out to.
+
+The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
+`apple_speech` works with no Xcode on the machine it's installed on, and
+bundles `config/event.toml` as its default configuration — edit that file
+before building if the default backend or port should differ for whoever is
+receiving the app.
+
+It's ad-hoc signed, not notarized (no paid Apple Developer ID in this setup),
+so first launch on another Mac needs Control-click → Open once to get past
+Gatekeeper's "unidentified developer" warning. That's a one-time step per
+machine, not per launch.
+
 ## Configuration
 
 `config/event.toml` (copy it from `config/event.example.toml`; the real one is
-gitignored). The relay reads only the `[relay]` section — host, port, and an
-optional `source_token` that capture clients must present on `/ws/source`. Empty
-means no token, which is fine on a closed booth network.
+gitignored). The relay reads the `[relay]` section — host, port, and an
+optional `source_token` that capture clients must present on `/ws/source`
+(empty means no token, which is fine on a closed booth network) — and
+`[youtube]`, covered below. Everything else belongs to the capture client.
 
 Environment always wins, so the launcher can override without editing files:
 `CAPTIONS_HOST`, `CAPTIONS_PORT`, `CAPTIONS_SOURCE_TOKEN`. No Deepgram key ever
 appears in a config file — that stays in the environment.
-
-## Translation
-
-`relay/translate.py`. Azure Translator today; the provider sits behind a
-`Translator` interface, so another service - or a local model - is one new class
-and one line in `create()`.
-
-**Only committed lines are translated.** Interims change several times a second;
-translating them would multiply the bill by roughly twenty and produce text that
-rewrites itself faster than anyone can read. So a viewer watching Spanish sees
-finals only, which is the better reading experience regardless.
-
-Each language is an independent stream with its own replay buffer, and a viewer
-receives only the language it asked for. One source line becomes **one** HTTP
-request covering every target language at once, and identical lines are served
-from a small LRU cache.
-
-Translation is best-effort by construction: the source line has already been
-delivered before anything reaches the translator, so a provider outage degrades
-to source-only rather than losing captions. Failures surface on the status page
-and never touch the source stream.
-
-```toml
-[languages]
-source = "en"
-offer = ["es", "pt", "zh-Hans"]     # this list is the cost lever
-
-[translate]
-provider = "azure"                   # key from AZURE_TRANSLATOR_KEY in .env
-```
-
-The relay advertises only languages it can actually deliver, so the phone
-picker never shows an option that does nothing. With one language it hides
-itself entirely.
 
 ## Relay endpoints
 
@@ -205,11 +193,98 @@ itself entirely.
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
 | `WS /ws/source?token=…` | capture client, bidirectional |
 | `WS /ws/status` | full status snapshot ~2.5×/second |
-| `GET /api/status` | one snapshot as JSON, plus the relay's LAN address |
-| `POST /api/control` | `{"action": "open_stream"}` and the other three |
+| `GET /api/status` | one snapshot as JSON, plus the relay's LAN address (operator-only) |
+| `GET /api/site` | public metadata: base URL, phone URL, available languages |
+| `GET /api/qr.svg` | the phone URL as a server-rendered QR code, for `/qr` |
+| `GET /api/transcript.srt` | recorded captions as SubRip, `?lang=` (operator-only) |
+| `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list |
+| `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |
 
 Pages are served with `no-store`: ProPresenter can hold a page for a whole
 event, and an operator editing query params must always get the current file.
+
+## Pushing captions to YouTube Live
+
+Optional, and lives entirely in the relay (`relay/youtube.py`) - it works no
+matter which ASR backend is running, and toggling it on the status page never
+touches the capture client. The status page's YouTube Live captions box pastes
+and saves the stream's Captions ingestion URL directly - no config file to
+open - via `POST /api/youtube-captions`, which calls `relay/config.py`'s
+`save_youtube_url()` to patch just the `[youtube]` section of
+`config/event.toml` in place, so it survives a relay restart. Every `final`
+caption then gets POSTed to that URL as plain text, with `seq`/`lang` query
+parameters and a handful of headers - the same wire format professional
+captioning vendors already use to feed YouTube, reverse-engineered from vendor
+documentation since Google doesn't publish it directly.
+
+Only finals are ever sent, never interims: YouTube's endpoint has no way to
+correct or delete text once sent, unlike the general version of this protocol.
+Operator-facing setup is in `SETUP.md` section 3b, including the ~15+ second
+delay YouTube's own pipeline adds on top of everything else.
+
+The status page's box only ever controls the **source-language** track. A
+translated language (see below) can get its own YouTube broadcast caption
+track too, via a `YOUTUBE_CAPTION_URL_<LANG>` environment variable (e.g.
+`YOUTUBE_CAPTION_URL_ES`) - deliberately env-only with no status-page field,
+since it's a secondary option layered on the primary one, not a replacement
+for it. `relay/youtube.py`'s `urls_from_env()` finds these.
+
+## Translation and multiple languages
+
+Optional. Set `[languages] offer = ["es", "fr"]` (or whatever codes) and
+`[translate] provider = "azure"` with `AZURE_TRANSLATOR_KEY` in `.env`, and
+every **committed** line gets translated into each offered language -
+interims never are, since they change several times a second and would
+multiply the translation bill by roughly twenty for text nobody can read that
+fast anyway. `relay/translate.py`'s `Translator` interface makes the provider
+swappable (one class, one line in `create()`); it's best-effort by
+construction, so an Azure outage degrades to source-only rather than losing
+captions.
+
+This is also what `relay/hub.py`'s per-language plumbing exists for: each
+language is an independent broadcast stream with its own replay buffer
+(`Hub.finals` is `dict[lang, deque]`, not a single deque), so a phone that
+joins mid-event and picks Spanish replays *Spanish* history, not English.
+`GET /ws/viewer?lang=es` subscribes to one; the phone view's language button
+(hidden unless there are ≥2 real languages) does this for you. Only languages
+with a working translator are ever advertised - listing a language with no
+translator behind it would put a dead choice in front of the audience.
+
+## The QR page and public site metadata
+
+`/qr` is a full-screen, ProPresenter-friendly page showing a QR code to the
+phone view, rendered server-side as SVG (`GET /api/qr.svg`, via `segno` - no
+client-side QR library, and it stays sharp at any LED resolution). It follows
+the wall view's rule: never an error, a spinner, or a placeholder.
+
+Both `/qr` and the phone view ask `GET /api/site` for the address to
+advertise - `[relay] public_hostname` when a tunnel is configured, this
+machine's LAN IP otherwise - so the URL is never hardcoded and never
+"localhost", which would be useless on someone's phone. `/api/site` is
+deliberately separate from `/api/status`: a phone or a QR screen needs a base
+URL and a language list, nothing about audio levels or viewer counts.
+`/robots.txt` disallows everything, since a live room transcript should never
+end up in a search index.
+
+## Recording a transcript, and exporting it to YouTube after the fact
+
+Separate from the live YouTube push above: the relay also keeps a full,
+per-language, timed record of every committed line (`relay/transcript.py`'s
+`TranscriptRecorder`), independent of whether live YouTube pushing is even
+configured. Press **Mark video start** on the status page right when the
+recording or stream actually begins - an `.srt` is timed from the start of
+the *video*, not the start of the world, so lines spoken before the mark are
+dropped from the export (they stay in the underlying record) rather than all
+piling up at `00:00:00`. `GET /api/transcript.srt?lang=es` downloads one
+language's file; the status page's "Transcript & translation" panel links to
+whatever's been recorded so far.
+
+`tools/youtube_upload.py` is a separate, optional CLI - the relay never
+imports it - that uploads a `.srt` to a video's caption track via the YouTube
+Data API (OAuth "Desktop app" flow, token cached at `config/google_token.json`,
+gitignored). `--from-relay --lang es` fetches straight from a running relay
+instead of a local file. Needs `requirements-youtube.txt`, and costs quota
+(400 of the default 10,000 daily units per upload - roughly 25/day).
 
 **HTML is read from disk on every request; routes are registered once at
 startup.** So editing `wall.html` takes effect on the next reload, but changing
@@ -297,14 +372,18 @@ the bottom.
 
 Auto-scrolls while the reader is at the bottom. Scrolling up unpins it and shows
 a **Jump to latest** button — the feed keeps arriving without yanking the view.
-The one control is a text-size cycler in the bottom corner, which remembers the
-choice on that device. The page requests a screen wake lock so phones do not
-sleep mid-service.
+The one visible control is a small **Aa** button in the bottom corner; tapping
+it opens a compact panel (five preset text sizes with clamped +/- stepping, five
+color swatches plus a native color picker for anything else) anchored above the
+button rather than a full-screen takeover, so captions keep scrolling behind it.
+Closes on an outside tap, Escape, or tapping **Aa** again. Both choices persist
+per device via `localStorage`, independent of anyone else viewing the same
+stream. The page requests a screen wake lock so phones do not sleep mid-service.
 
 | Param | Default | Effect |
 |---|---|---|
-| `size` | `24` | starting text size, px (the on-screen cycler overrides it) |
-| `color` | `f2f2f2` | text colour |
+| `size` | `24` | starting text size, px (a saved on-device choice overrides it) |
+| `color` | `f2f2f2` | text colour (a saved on-device choice overrides it) |
 | `bg` | `000000` | background colour |
 | `lines` | `200` | scrollback cap — the DOM is trimmed above this |
 | `debug` | off | diagnostics overlay |
@@ -331,7 +410,8 @@ and `control` on the capture side.
 
 ## Status page
 
-Dark, four tiles, four buttons, and the two URLs you need. Every judgement —
+Dark, four tiles, runtime audio-device selection, four stream controls, and the
+two URLs you need. Every judgement —
 whether audio counts as live, whether the backend is producing text — is made by
 the relay and merely rendered here, so anything else that displays status agrees
 with it.
@@ -343,21 +423,25 @@ this page with no change to the relay, the status page or the viewers.
 ## Layout
 
 ```
-Start Captions.command        double-click this (macOS)
-Start Captions.bat            double-click this (Windows)
+Start Captions.bat            double-click this
 launcher/launch.py            venv, both processes, browser, supervision
 SETUP.md                      the operator and technician document
 docs/MESSAGES.md              the message contract
 
-.env.example                  copy to .env, put the Deepgram key there
+.env.example                  copy to .env: Deepgram/Azure keys, YouTube URLs
 config/event.example.toml     copy to event.toml and edit
 config/keyterms.txt           institution vocabulary, edited per event
 config/mock_script.txt        transcript the mock backend plays
+requirements-whisper.txt      optional: the whisper backend's ~200MB of deps
+requirements-youtube.txt      optional: tools/youtube_upload.py's deps
 
 relay/server.py               FastAPI app: pages, websockets, control API
-relay/hub.py                  fan-out, replay buffer, sequencing
+relay/hub.py                  fan-out, per-language replay buffers, sequencing
 relay/state.py                what the status page is told
 relay/config.py               config/event.toml + environment
+relay/youtube.py              pushes finals to YouTube Live caption URLs
+relay/translate.py            Translator interface + Azure provider
+relay/transcript.py           per-language timed record -> .srt export
 
 capture/__main__.py           the capture client
 capture/audio.py              device selection by index or name, level metering
@@ -365,15 +449,20 @@ capture/relay_client.py       link to the relay, reconnects forever
 capture/backends/base.py      the ASR interface - read this one first
 capture/backends/mock.py      scripted backend
 capture/backends/deepgram.py  Nova-3 streaming
+capture/backends/apple_speech.py  on-device SpeechAnalyzer, macOS 26+
+capture/backends/native/      the Swift helper apple_speech.py subprocesses
+capture/backends/whisper.py   on-device via faster-whisper, any OS
 capture/backends/registry.py  name -> class; add a backend here
 
 viewer/wall.html              broadcast graphic for ProPresenter
-viewer/phone.html             audience view with scrollback
+viewer/phone.html             audience view with scrollback, language picker
 viewer/status.html            the operator's page
 viewer/tune.html              slider-driven builder for the wall-view URL
+viewer/qr.html                full-screen QR code to the phone view
 
 tools/mock_relay.py           stdlib-only relay, for viewer work with nothing installed
 tools/mock_source.py          source-protocol stand-in, for relay work
+tools/youtube_upload.py       optional: upload a recorded .srt to a video
 ```
 
 Viewers are self-contained single files: no build step, no framework, no CDN, no
