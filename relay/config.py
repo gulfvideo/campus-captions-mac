@@ -18,6 +18,47 @@ ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).r
 DEFAULT_CONFIG = ROOT / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 VIEWER_DIR = ROOT / "viewer"
+ENV_FILE = ROOT / ".env"
+
+
+def load_env_file(path: Path = ENV_FILE) -> int:
+    """Read KEY=VALUE lines into the environment without overwriting it.
+
+    Mirrors capture/config.py's copy of this function rather than importing
+    it - the relay and the capture client are meant to run as fully separate
+    processes with no dependency on each other. Without this, a key saved by
+    /api/translation only takes effect until the relay restarts: the write
+    lands in .env, but nothing reads it back until a process asks.
+    """
+    if not path.exists():
+        return 0
+    loaded = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded += 1
+    return loaded
+
+
+def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
+    """Write key=value into .env, in place, preserving every other line."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.split("=", 1)[0].strip() == key:
+            lines[i] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 @dataclass
@@ -61,6 +102,7 @@ def load(path: Path | None = None) -> RelayConfig:
     editing a file:
         CAPTIONS_HOST, CAPTIONS_PORT, CAPTIONS_SOURCE_TOKEN
     """
+    load_env_file()
     cfg = RelayConfig()
     chosen = path or (DEFAULT_CONFIG if DEFAULT_CONFIG.exists() else EXAMPLE_CONFIG)
     if chosen and chosen.exists():
@@ -101,6 +143,10 @@ def _quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _quote_list(items: list[str]) -> str:
+    return "[" + ", ".join(_quote(x) for x in items) + "]"
+
+
 def save_youtube_url(path: Path, url: str, lang: str) -> None:
     """Write url/lang into [youtube] in `path`, in place.
 
@@ -137,6 +183,46 @@ def save_youtube_url(path: Path, url: str, lang: str) -> None:
             lines.append("")
         lines.append(header)
         lines.extend(f"{key} = {value}" for key, value in wanted.items())
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def save_translate_settings(path: Path, provider: str, offer_languages: list[str]) -> None:
+    """Write provider into [translate] and the target list into [languages],
+    in place - mirrors save_youtube_url above. The Azure key itself never
+    comes near this file; it lives in .env, via save_env_var, same as the
+    Deepgram key. This only saves *which* languages to translate into, so a
+    relay restart picks up what the status page's translation panel set.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+
+    def upsert(header: str, wanted: dict[str, str]) -> None:
+        nonlocal lines
+        start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+        end = len(lines)
+        if start is not None:
+            end = next(
+                (i for i in range(start + 1, len(lines))
+                 if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+                len(lines),
+            )
+            for i in range(start + 1, end):
+                key = lines[i].split("=", 1)[0].strip()
+                if key in wanted:
+                    lines[i] = f"{key} = {wanted.pop(key)}"
+            if wanted:
+                insertion = [f"{key} = {value}" for key, value in wanted.items()]
+                lines[start + 1:start + 1] = insertion
+        else:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(header)
+            lines.extend(f"{key} = {value}" for key, value in wanted.items())
+
+    upsert("[translate]", {"provider": _quote(provider)})
+    upsert("[languages]", {"offer": _quote_list(offer_languages)})
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

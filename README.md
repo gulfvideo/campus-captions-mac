@@ -231,9 +231,15 @@ for it. `relay/youtube.py`'s `urls_from_env()` finds these.
 
 ## Translation and multiple languages
 
-Optional. Set `[languages] offer = ["es", "fr"]` (or whatever codes) and
-`[translate] provider = "azure"` with `AZURE_TRANSLATOR_KEY` in `.env`, and
-every **committed** line gets translated into each offered language -
+Optional. Easiest path: paste an Azure Translator key and a target language
+list into the status page's **Transcript & translation** panel - see SETUP.md
+3e for where to get a key. That's `POST /api/translation`, which writes the
+key to `.env` and the languages to `config/event.toml` and reconnects the
+translator immediately, no restart. Equivalently, by hand: set
+`[languages] offer = ["es", "fr"]` (or whatever codes) and
+`[translate] provider = "azure"` with `AZURE_TRANSLATOR_KEY` in `.env`.
+Either way, every **committed** line gets translated into each offered
+language -
 interims never are, since they change several times a second and would
 multiply the translation bill by roughly twenty for text nobody can read that
 fast anyway. `relay/translate.py`'s `Translator` interface makes the provider

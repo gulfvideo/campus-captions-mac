@@ -32,7 +32,7 @@ English translated on the fly. It changes nothing else.
 
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
 `GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.srt`,
-`POST /api/control`, `POST /api/youtube-captions`.
+`POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`.
 
 ---
 
@@ -307,7 +307,7 @@ outside the booth LAN - every request is checked against its `Host` header.
 Only `/`, `/wall`, `/phone`, `/tune`, other `viewer/*.html` files, and
 `/ws/viewer` work when the `Host` matches `public_hostname`; `/status`,
 `GET /api/status`, `POST /api/control`, `POST /api/youtube-captions`,
-`/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
+`POST /api/translation`, `/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
 refusal (WebSocket) - never a redirect to a login, just as if the route did
 not exist. `/` itself serves the phone page rather than the operator
 dashboard for a public `Host`. Requests arriving as `localhost` or the LAN IP
@@ -340,6 +340,30 @@ has no delete/backspace mechanism to correct them with, so only committed text
 goes out. Expect YouTube's own pipeline to add substantial further delay
 (their documentation for other captioning vendors cites 15+ seconds) on top of
 whatever latency the ASR backend itself has.
+
+## Adding an Azure Translator key live
+
+```
+POST /api/translation    {"key": "...", "region": "eastus", "languages": "es, fr"}
+  ->  200 {"ok": true, "provider": "azure", "targets": ["es", "fr"], "calls": 0, ...}
+  ->  400 if none of key/region/languages are present, or languages doesn't
+      look like a comma-separated list of short codes (es, fr, zh-Hans)
+```
+
+`key`, `region`, and `languages` may be sent alone or together - the status
+page's Save button sends whichever fields are non-empty. Leaving `languages`
+out of the request means "don't touch the target list", not "clear it" -
+unlike the YouTube URL box above, there's no way to explicitly clear the
+language list from the GUI yet. Like `/api/youtube-captions`, this never
+touches the capture client: `key`/`region` are written to `.env`
+(`relay/config.py`'s `save_env_var`, same mechanism the Deepgram key on the
+status page uses) and `languages` to `config/event.toml`'s `[languages]`
+section (`save_translate_settings`), then the relay's `TranslationWorker` is
+torn down and rebuilt against the new settings immediately - a key pasted
+mid-event takes effect on the next committed caption line, no restart.
+Response fields mirror `relay/translate.py`'s `TranslationWorker.stats()` -
+`provider` reads `"none"` when no key has been set yet, even if `languages`
+was saved.
 
 ## What the relay rejects
 

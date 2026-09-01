@@ -276,6 +276,24 @@
       </div>
       <div class="disclosure-sub" id="transcript-sub">&mdash;</div>
       <div class="disclosure-sub" id="translation-sub">&mdash;</div>
+      <div class="row">
+        <input id="azure-key" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Azure Translator API key">
+        <button id="btn-azure-show" type="button">Show</button>
+      </div>
+      <div class="row">
+        <input id="azure-region" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Region (optional)" style="flex:0 1 160px">
+        <input id="azure-langs" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Target languages, e.g. es, fr, zh-Hans">
+        <button id="btn-azure-save" type="button">Save</button>
+      </div>
+      <div class="disclosure-sub" id="azure-hint">
+        Get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
+        &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
+        <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
+        list the languages to translate into, then Save &mdash; no restart needed.
+      </div>
       <div class="row" id="srt-links"></div>
     </div>
   </div></div>
@@ -345,6 +363,7 @@
   var peakHold = 0, peakAt = 0;
   var backendSignature = null, pendingBackend = null, pendingBackendTimer = null;
   var youtubeUrlDirty = false;
+  var azureLangsDirty = false;
   var BACKEND_LABELS = {
     apple_speech: 'Apple on-device (local, free)',
     deepgram: 'Deepgram (cloud, paid)',
@@ -482,13 +501,25 @@
     badge.textContent = lines ? lines + ' line' + (lines === 1 ? '' : 's') : 'No lines yet';
     badge.className = 'badge' + (t.recording ? ' live' : '');
 
+    // Relay-local, like the YouTube panel above - no capture client needed,
+    // so only renderOffline() should ever disable these.
+    $('btn-azure-save').disabled = $('azure-key').disabled =
+      $('azure-region').disabled = $('azure-langs').disabled = false;
+
     $('transcript-sub').textContent = t.zero_set
       ? 'Video start marked ' + ago(t.zero_age) + ' — timing in the .srt is relative to that point.'
       : 'Video start not marked yet — mark it right when the recording/stream actually begins, or exported timing will be off.';
 
-    $('translation-sub').textContent = (translation.provider && translation.provider !== 'none')
-      ? 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') + '.'
-      : 'No translation configured — see [translate] in config/event.toml.';
+    var active = translation.provider && translation.provider !== 'none';
+    $('translation-sub').textContent = !active
+      ? 'No translation active yet — add an Azure Translator key and target languages below.'
+      : 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') +
+        (translation.error ? ' — last error: ' + translation.error : '') + '.';
+
+    var langsBox = $('azure-langs');
+    if (document.activeElement !== langsBox && !azureLangsDirty) {
+      langsBox.value = (translation.targets || []).join(', ');
+    }
 
     var langs = Object.keys((t.lines || {}));
     var container = $('srt-links');
@@ -586,6 +617,8 @@
     $('btn-youtube-save').disabled = $('youtube-url').disabled = true;
     $('btn-deepgram-save').disabled = $('deepgram-key').disabled = true;
     $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = true;
+    $('btn-azure-save').disabled = $('azure-key').disabled =
+      $('azure-region').disabled = $('azure-langs').disabled = true;
   }
 
   // ---- transport -------------------------------------------------------
@@ -681,6 +714,38 @@
     $('deepgram-key').value = '';  // write-only: never redisplayed once saved
   }
 
+  function saveTranslationSettings() {
+    var key = $('azure-key').value.trim();
+    var region = $('azure-region').value.trim();
+    var langs = $('azure-langs').value.trim();
+    if (!key && !region && !langs) {
+      toast('Azure Translator — enter a key and/or target languages first');
+      return;
+    }
+    var body = {};
+    if (key) body.key = key;
+    if (region) body.region = region;
+    // Sent only when non-empty: an empty field here means "leave the
+    // languages alone", not "clear them" - unlike the YouTube URL box,
+    // which does treat an empty save as an explicit clear.
+    if (langs) body.languages = langs;
+    fetch('/api/translation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function (out) {
+      azureLangsDirty = false;
+      $('azure-key').value = '';     // write-only: never redisplayed once saved
+      $('azure-region').value = '';
+      toast(out.provider && out.provider !== 'none'
+        ? 'Azure Translator — translating into ' + (out.targets || []).join(', ')
+        : 'Azure Translator — saved, but not active yet (need a key and at least one language)');
+    })['catch'](function (e) { toast('Azure Translator — ' + e.message); });
+  }
+
   // A disclosure remembers its own open/closed state across reloads - the
   // same reason Finder and Mail remember which sidebar groups you collapsed.
   function setupDisclosure(headerId, storageKey) {
@@ -735,6 +800,17 @@
       this.textContent = showing ? 'Show' : 'Hide';
     };
     $('deepgram-key').onkeydown = function (e) { if (e.key === 'Enter') saveDeepgramKey(); };
+    $('btn-azure-save').onclick = saveTranslationSettings;
+    $('btn-azure-show').onclick = function () {
+      var box = $('azure-key');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('azure-key').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('azure-region').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('azure-langs').oninput = function () { azureLangsDirty = true; };
+    $('azure-langs').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
     $('audio-device').onchange = function () {
       var index = Number(this.value);
       if (!Number.isInteger(index)) return;
