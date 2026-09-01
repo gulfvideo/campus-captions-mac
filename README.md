@@ -17,6 +17,11 @@ phone page with scrollback.
 ProPresenter, firewall and IP requirements, audio device selection, the query
 parameters, keyterms, and a pre-event checklist.
 
+**macOS and just want the app, not the source?** Grab the latest build from
+[Releases](https://github.com/koakley3/campus-captions/releases) — download
+`CampusCaptions.zip`, unzip it, and see "Packaging a macOS app" below for the
+first-launch Gatekeeper step.
+
 This README is for working on the code.
 
 ---
