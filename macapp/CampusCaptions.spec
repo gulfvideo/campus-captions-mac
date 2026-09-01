@@ -17,6 +17,9 @@ datas = [
     (str(ROOT / "config" / "mock_script.txt"), "config"),
     (str(ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"),
      "capture/backends/native/build"),
+    (str(ROOT / "macapp" / "icons" / "menubar_idle.png"), "macapp/icons"),
+    (str(ROOT / "macapp" / "icons" / "menubar_streaming.png"), "macapp/icons"),
+    (str(ROOT / "macapp" / "icons" / "menubar_inactive.png"), "macapp/icons"),
 ]
 
 hiddenimports = [
@@ -71,7 +74,7 @@ coll = COLLECT(  # noqa: F821
 app = BUNDLE(  # noqa: F821
     coll,
     name="Campus Captions.app",
-    icon=None,
+    icon=str(ROOT / "macapp" / "icons" / "AppIcon.icns"),
     bundle_identifier="edu.faulkner.campus-captions",
     info_plist={
         "CFBundleName": "Campus Captions",

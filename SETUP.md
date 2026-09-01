@@ -221,7 +221,23 @@ Deepgram or Apple on-device are both available.
 
 ## 3e. Multiple languages and live translation
 
-Optional. In `config/event.toml`:
+Optional, and the easiest way to set it up is the status page - open
+`/status`, expand **Transcript & translation**, and you'll find a spot to
+paste an Azure Translator key:
+
+1. Get a key: [portal.azure.com](https://portal.azure.com) &rarr; Create a
+   resource &rarr; search "Translator" &rarr; Create (a free tier exists) &rarr;
+   once it deploys, open the resource &rarr; **Keys and Endpoint** &rarr; copy
+   **Key 1** and the **Region**.
+2. Paste the key (and region, if shown) into the status page, list the
+   languages to translate into (e.g. `es, fr, zh-Hans`), and press Save.
+
+That's it - no restart needed, even mid-event. The key goes into `.env`
+(gitignored) and the language list into `config/event.toml`, so both survive
+a relay restart. Under the hood this is `POST /api/translation` - see
+`docs/MESSAGES.md` if you'd rather script it.
+
+Prefer hand-editing the config? The same settings live in `config/event.toml`:
 
 ```toml
 [languages]
@@ -232,7 +248,7 @@ offer = ["es", "fr"]     # languages to translate into
 provider = "azure"       # or "none"
 ```
 
-Then put your key in `.env`:
+and `.env`:
 
 ```
 AZURE_TRANSLATOR_KEY=your_key_here

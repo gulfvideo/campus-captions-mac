@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import os
 import re
 import socket
 import time
@@ -103,29 +104,54 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if is_public(headers):
             raise HTTPException(status_code=404, detail="not found")
 
-    # -- translation -------------------------------------------------------
+    # -- translation ---------------------------------------------------------
+    # A plain (translator, worker) pair can't be swapped later without
+    # `nonlocal` scattered across every closure that reads them, so they live
+    # on this object instead: /api/translation below calls .apply() with a
+    # fresh key or language list, live, mid-event, no restart.
 
-    targets = [lang for lang in cfg.offer_languages
-               if lang and lang != cfg.source_language]
-    translator = translate_module.create(cfg.translate_provider, targets)
-    worker: translate_module.TranslationWorker | None = None
+    class TranslationState:
+        def __init__(self, source_language: str, targets: list[str]):
+            self.source_language = source_language
+            self.targets = list(targets)
+            self.translator: translate_module.Translator | None = None
+            self.worker: translate_module.TranslationWorker | None = None
 
-    def available_languages() -> list[str]:
-        """Only languages that can actually be delivered are advertised, so
-        the phone picker never offers a choice that does nothing."""
-        if worker is None:
-            return [cfg.source_language]
-        return [cfg.source_language] + list(worker.targets)
-
-    if translator is not None:
-        def emit_translation(lang: str, text: str, utterance_id: str) -> None:
+        def _emit(self, lang: str, text: str, utterance_id: str) -> None:
             hub.broadcast({"type": "final", "text": text, "lang": lang,
                            "utterance": utterance_id})
 
-        worker = translate_module.TranslationWorker(
-            translator, cfg.source_language, targets, emit_translation)
-        hub.on_source_final = lambda msg: worker.submit(
-            msg.get("text", ""), msg.get("id", ""))
+        async def apply(self, provider: str, targets: list[str]) -> None:
+            if self.worker is not None:
+                await self.worker.stop()
+                self.worker = None
+            self.targets = list(targets)
+            self.translator = translate_module.create(provider, self.targets)
+            if self.translator is not None:
+                self.worker = translate_module.TranslationWorker(
+                    self.translator, self.source_language, self.targets, self._emit)
+                self.worker.start()
+            hub.on_source_final = (
+                (lambda msg: self.worker.submit(msg.get("text", ""), msg.get("id", "")))
+                if self.worker is not None else None
+            )
+
+        def languages(self) -> list[str]:
+            """Only languages that can actually be delivered are advertised,
+            so the phone picker never offers a choice that does nothing."""
+            if self.worker is None:
+                return [self.source_language]
+            return [self.source_language] + list(self.worker.targets)
+
+        def stats(self) -> dict:
+            if self.worker is not None:
+                return self.worker.stats()
+            return {"provider": "none", "targets": list(self.targets)}
+
+    translation = TranslationState(
+        cfg.source_language,
+        [lang for lang in cfg.offer_languages if lang and lang != cfg.source_language],
+    )
 
     # -- transcript + YouTube (source language uses hub.youtube above; each
     # translated language gets its own broadcast caption track, always-on
@@ -134,7 +160,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     recorder = transcript_module.TranscriptRecorder()
     additional_youtube = {
         lang: YouTubeCaptionPusher(url, lang, start_enabled=True)
-        for lang, url in urls_from_env(targets).items()
+        for lang, url in urls_from_env(translation.targets).items()
     }
 
     def on_broadcast(msg: dict) -> None:
@@ -151,9 +177,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     hub.on_event = on_broadcast
 
     hub.snapshot_extra = lambda: {
-        "translation": (worker.stats() if worker is not None
-                        else {"provider": "none", "targets": []}),
-        "languages": available_languages(),
+        "translation": translation.stats(),
+        "languages": translation.languages(),
         "transcript": recorder.stats(),
         "youtube_live_extra": [p.status() for p in additional_youtube.values()],
     }
@@ -174,8 +199,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             asyncio.create_task(heartbeat_loop()),
             asyncio.create_task(status_loop()),
         ]
-        if worker is not None:
-            worker.start()
+        await translation.apply(cfg.translate_provider, translation.targets)
         ip = local_ip()
         print(f"[relay] session {hub.session_id}")
         print(f"[relay] wall    http://{ip}:{cfg.port}/wall")
@@ -191,11 +215,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if hub.youtube.configured:
             print(f"[relay] YouTube captions configured"
                   f" ({'enabled' if hub.youtube.enabled else 'disabled'} at startup)")
-        if worker is not None:
+        if translation.worker is not None:
             print(f"[relay] translating {cfg.source_language} -> "
-                  f"{', '.join(worker.targets)} via {translator.name}")
-        elif targets:
-            print("[relay] translation NOT active - source language only")
+                  f"{', '.join(translation.worker.targets)} via {translation.translator.name}")
+        elif translation.targets:
+            print("[relay] translation NOT active - source language only "
+                  "(add an Azure Translator key on the status page)")
         if additional_youtube:
             print(f"[relay] youtube live captions, extra languages -> "
                   f"{', '.join(sorted(additional_youtube))}")
@@ -205,8 +230,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            if worker is not None:
-                await worker.stop()
+            if translation.worker is not None:
+                await translation.worker.stop()
 
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan)
     app.state.hub = hub
@@ -284,7 +309,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "base_url": base,
             "phone_url": base + "/phone",
             "source": cfg.source_language,
-            "available": available_languages(),
+            "available": translation.languages(),
             "offered": list(cfg.offer_languages),
         }, headers=NO_STORE)
 
@@ -445,6 +470,66 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    @app.post("/api/translation")
+    async def api_translation(request: Request) -> JSONResponse:
+        """Relay-local, like /api/youtube-captions: the key and target
+        languages never reach the capture client, they only matter here
+        where finals get translated before fan-out.
+
+        {"key": "...", "region": "...", "languages": "es, fr"} - any subset.
+        The key/region go into .env (gitignored, never event.toml) via the
+        same save_env_var used for the Deepgram key; languages go into
+        event.toml so they survive a restart. Translation reconnects with
+        the new settings immediately - no restart needed to pick up a key
+        pasted mid-event.
+        """
+        require_local(request.headers)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        body = body or {}
+        if not any(k in body for k in ("key", "region", "languages")):
+            raise HTTPException(status_code=400, detail="send key, region, and/or languages")
+
+        if "key" in body:
+            key = body.get("key")
+            if not isinstance(key, str) or not (1 <= len(key.strip()) <= 200):
+                raise HTTPException(status_code=400, detail="key must be a short string")
+            key = key.strip()
+            os.environ["AZURE_TRANSLATOR_KEY"] = key
+            config_module.save_env_var("AZURE_TRANSLATOR_KEY", key)
+
+        if "region" in body:
+            region = body.get("region")
+            if not isinstance(region, str) or len(region) > 64:
+                raise HTTPException(status_code=400, detail="region must be a short string")
+            region = region.strip()
+            os.environ["AZURE_TRANSLATOR_REGION"] = region
+            config_module.save_env_var("AZURE_TRANSLATOR_REGION", region)
+
+        if "languages" in body:
+            raw = body.get("languages")
+            if not isinstance(raw, str) or len(raw) > 200:
+                raise HTTPException(status_code=400, detail="languages must be a short string")
+            parsed = [tok.strip() for tok in raw.replace(";", ",").split(",") if tok.strip()]
+            if not all(transcript_module.SAFE_LANG.match(tok) for tok in parsed):
+                raise HTTPException(status_code=400,
+                                    detail="languages must look like: es, fr, zh-Hans")
+            translation.targets = [lang for lang in parsed if lang != cfg.source_language]
+            try:
+                config_module.save_translate_settings(
+                    cfg.config_path or config_module.DEFAULT_CONFIG,
+                    "azure", translation.targets)
+            except OSError as exc:
+                print(f"[relay] could not save translation languages to disk: {exc}")
+
+        provider = "azure" if os.environ.get("AZURE_TRANSLATOR_KEY", "").strip() else "none"
+        await translation.apply(provider, translation.targets)
+        print(f"[relay] translation {'active' if translation.worker else 'inactive'}"
+              f" -> {', '.join(translation.targets) or '(no target languages set)'}")
+        return JSONResponse({"ok": True, **translation.stats()}, headers=NO_STORE)
 
     # -- websockets ------------------------------------------------------
 
