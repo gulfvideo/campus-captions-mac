@@ -84,6 +84,20 @@
     padding: 10px 12px;
   }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+  .disclosure-body select.inline { width: auto; min-width: 200px; flex: 0 1 260px; min-height: 48px;
+    font: inherit; color: var(--text); background: #262b33; border: 1px solid var(--edge);
+    border-radius: 9px; padding: 10px 38px 10px 12px; }
+  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 14px;
+    min-height: 48px; white-space: nowrap; }
+  .check input { width: 18px; height: 18px; accent-color: #5aa2f0; }
+  /* Output key rows */
+  .key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0;
+    border-top: 1px solid var(--edge); }
+  .key-row:first-child { border-top: 0; }
+  .key-name { font-weight: 600; min-width: 90px; }
+  .key-url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: var(--text);
+    word-break: break-all; flex: 1 1 320px; }
+  .key-row button { font-size: 13.5px; padding: 8px 13px; font-weight: 500; }
 
   .file-label {
     display: inline-block; font: inherit; font-weight: 600; font-size: 15px;
@@ -270,6 +284,78 @@
         the install command. Paste the hostname and token above, then Enable &mdash; no restart
         needed. Needs the domain on Cloudflare's DNS and <code>cloudflared</code> installed
         (<code>brew install cloudflared</code>) &mdash; see SETUP.md 3c.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="pp-toggle" aria-expanded="false" aria-controls="pp-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">ProPresenter (direct)</span>
+    <span class="badge" id="pp-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="pp-body">
+      <div class="row">
+        <input id="pp-host" type="text" autocomplete="off" spellcheck="false"
+               placeholder="ProPresenter address, e.g. 127.0.0.1" style="flex:1 1 220px">
+        <input id="pp-port" type="text" inputmode="numeric" autocomplete="off"
+               placeholder="Port" style="flex:0 1 110px">
+        <select id="pp-surface" class="inline" aria-label="Caption surface">
+          <option value="stage_message">Stage message</option>
+          <option value="message">Message with a text token</option>
+        </select>
+      </div>
+      <div class="row" id="pp-message-row">
+        <input id="pp-message" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Message name in ProPresenter, e.g. Live Captions" style="flex:1 1 260px">
+        <input id="pp-token" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Token name, e.g. Caption" style="flex:0 1 220px">
+      </div>
+      <div class="row">
+        <input id="pp-language" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Language stream (blank = room language), e.g. es" style="flex:0 1 320px">
+        <label class="check"><input type="checkbox" id="pp-interims"> Send in-progress text too</label>
+      </div>
+      <div class="row">
+        <button id="btn-pp-save" type="button">Save</button>
+        <button id="btn-pp-probe" type="button">Test connection</button>
+        <button id="btn-pp-enable" class="go">Enable</button>
+        <button id="btn-pp-disable" class="stop">Disable</button>
+        <button id="btn-pp-clear" type="button">Clear surface</button>
+      </div>
+      <div class="disclosure-sub" id="pp-sub">&mdash;</div>
+      <div class="disclosure-sub" id="pp-hint">
+        In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note the port.
+        <b>Stage message</b> needs a stage layout with a Stage Message element on the screen that
+        should show captions. <b>Message</b> needs a Message with the name above and one text token
+        with the token name above &mdash; you design its look in ProPresenter; nothing else in the
+        library is touched. Keep the Web Fill prop (wall URL) as the fallback. See SETUP.md 7a.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="keys-toggle" aria-expanded="false" aria-controls="keys-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Wall output keys &mdash; OBS, vMix, Web Fill</span>
+    <span class="badge" id="keys-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="keys-body">
+      <div class="disclosure-sub">
+        One key per output. While any key exists, a wall URL without a valid <code>?key=</code> is
+        refused, so revoking a key switches that output off without editing every scene and prop.
+        With no keys, the plain wall URL works for everyone, as before. The tuner builds URLs with
+        the key included. Phones are never affected.
+      </div>
+      <div id="keys-list" style="flex:1 1 100%"></div>
+      <div class="row">
+        <input id="key-name" type="text" autocomplete="off" spellcheck="false" maxlength="32"
+               placeholder="Name for a new key, e.g. obs or propresenter" style="flex:0 1 320px">
+        <button id="btn-key-create" type="button">Create key</button>
       </div>
     </div>
   </div></div>
@@ -488,6 +574,154 @@
     $('btn-profanity-disable').disabled = !source.connected || !masked;
   }
 
+  // ---- ProPresenter -----------------------------------------------------
+
+  var ppDirty = false;
+  var PP_STATES = {
+    off:          ['Off',                       ''],
+    connecting:   ['Connecting…',               ''],
+    connected:    ['Connected',                 'live'],
+    degraded:     ['Degraded',                  ''],
+    disconnected: ['Disconnected — fallback',   ''],
+    unsupported:  ['Unsupported version',       '']
+  };
+
+  function renderProPresenter(pp) {
+    pp = pp || {};
+    var badge = $('pp-badge');
+    var st = PP_STATES[pp.state] || [pp.state || '—', ''];
+    badge.textContent = !pp.configured ? 'Not set up' : (pp.state === 'off' ? 'Saved, off' : st[0]);
+    badge.className = 'badge' + (st[1] ? ' live' : '');
+
+    var sub;
+    if (!pp.configured) {
+      sub = 'Enter the address and port from ProPresenter\'s Network settings, then Save and Enable.';
+    } else if (pp.state === 'off') {
+      sub = 'Saved. Enable to start sending captions to ProPresenter.';
+    } else {
+      var bits = [];
+      if (pp.version && pp.version.name) {
+        bits.push(pp.version.name + (pp.version.platform ? ' on ' + pp.version.platform : '') +
+                  (pp.version.api_version ? ' · API ' + pp.version.api_version : ''));
+      }
+      bits.push(pp.surface === 'message'
+        ? 'Message "' + (pp.message || '?') + '" · token "' + (pp.token || '?') + '"'
+        : 'Stage message');
+      bits.push(pp.pushed + ' sent' + (pp.failures ? ', ' + pp.failures + ' failed' : ''));
+      if (pp.latency) bits.push('adds ' + pp.latency.median_ms + ' ms (p95 ' + pp.latency.p95_ms + ' ms)');
+      sub = bits.join('  ·  ');
+      if (pp.error) sub += '  —  ' + pp.error;
+      if (pp.state === 'disconnected' || pp.state === 'unsupported') {
+        sub += '  —  the Web Fill prop keeps working meanwhile.';
+      }
+    }
+    $('pp-sub').textContent = sub;
+
+    $('btn-pp-enable').disabled = !pp.configured || pp.enabled;
+    $('btn-pp-disable').disabled = !pp.enabled;
+    $('btn-pp-probe').disabled = !pp.configured;
+    $('btn-pp-clear').disabled = !pp.enabled || pp.state === 'disconnected' || pp.state === 'off';
+    ['pp-host', 'pp-port', 'pp-surface', 'pp-message', 'pp-token', 'pp-language', 'pp-interims',
+     'btn-pp-save'].forEach(function (id) { $(id).disabled = false; });
+
+    var editing = ['pp-host', 'pp-port', 'pp-message', 'pp-token', 'pp-language']
+      .some(function (id) { return document.activeElement === $(id); });
+    if (!editing && !ppDirty) {
+      $('pp-host').value = pp.host || '';
+      $('pp-port').value = pp.port || '';
+      $('pp-surface').value = pp.surface || 'stage_message';
+      $('pp-message').value = pp.message || '';
+      $('pp-token').value = pp.token || '';
+      $('pp-language').value = pp.language || '';
+      $('pp-interims').checked = !!pp.interims;
+    }
+    $('pp-message-row').style.display = $('pp-surface').value === 'message' ? '' : 'none';
+  }
+
+  function ppRequest(body, label) {
+    return fetch('/api/propresenter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(jsonOrThrow).then(function (out) {
+      renderProPresenter(out);
+      if (label) toast(label);
+      return out;
+    })['catch'](function (e) { toast('ProPresenter — ' + e.message); });
+  }
+
+  function savePP() {
+    var body = {
+      host: $('pp-host').value.trim(),
+      surface: $('pp-surface').value,
+      message: $('pp-message').value.trim(),
+      token: $('pp-token').value.trim(),
+      language: $('pp-language').value.trim(),
+      interims: $('pp-interims').checked
+    };
+    var port = $('pp-port').value.trim();
+    if (port) body.port = parseInt(port, 10);
+    if (!body.host) { toast('ProPresenter — enter the address first'); return; }
+    ppDirty = false;
+    ppRequest(body, 'ProPresenter settings saved');
+  }
+
+  // ---- wall output keys -------------------------------------------------
+
+  function renderOverlayKeys(keys) {
+    keys = keys || [];
+    $('keys-badge').textContent = keys.length
+      ? keys.length + ' key' + (keys.length === 1 ? '' : 's') + ' — keyless walls refused'
+      : 'None — wall is open';
+    var list = $('keys-list');
+    list.textContent = '';
+    keys.forEach(function (k) {
+      var row = document.createElement('div');
+      row.className = 'key-row';
+      var name = document.createElement('span');
+      name.className = 'key-name';
+      name.textContent = k.name;
+      var url = document.createElement('code');
+      url.className = 'key-url';
+      url.textContent = k.url;
+      var copy = document.createElement('button');
+      copy.type = 'button';
+      copy.textContent = 'Copy URL';
+      copy.onclick = function () {
+        var done = function () { toast('Copied the ' + k.name + ' wall URL'); };
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(k.url).then(done)['catch'](function () {
+            window.getSelection().selectAllChildren(url); toast('Select and copy the URL');
+          });
+        } else {
+          window.getSelection().selectAllChildren(url);
+          try { document.execCommand('copy'); done(); } catch (e) { toast('Select and copy the URL'); }
+        }
+      };
+      var revoke = document.createElement('button');
+      revoke.type = 'button';
+      revoke.className = 'stop';
+      revoke.textContent = 'Revoke';
+      revoke.onclick = function () {
+        if (!confirm('Revoke the "' + k.name + '" key? Any wall using it goes blank now.')) return;
+        keysRequest({ revoke: k.name }, 'Revoked ' + k.name);
+      };
+      row.appendChild(name); row.appendChild(url); row.appendChild(copy); row.appendChild(revoke);
+      list.appendChild(row);
+    });
+  }
+
+  function keysRequest(body, label) {
+    fetch('/api/overlay-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(jsonOrThrow).then(function (out) {
+      renderOverlayKeys(out.keys);
+      toast(label);
+    })['catch'](function (e) { toast('Output keys — ' + e.message); });
+  }
+
   function render(s) {
     renderEventConfig(s.event);
     renderDeepgram(s.source || {});
@@ -495,6 +729,8 @@
     renderYoutube(s.youtube);
     renderTunnel(s.public_hostname, s.tunnel);
     renderKeywords(s.source || {});
+    renderProPresenter(s.propresenter);
+    renderOverlayKeys(s.overlay_keys);
     $('meta').textContent = 'session ' + s.session_id + '  ·  up ' + Math.round(s.uptime / 60) + 'm';
   }
 
@@ -513,6 +749,8 @@
       $('tunnel-token').disabled = true;
     $('btn-keyterms').disabled = true;
     $('btn-profanity-enable').disabled = $('btn-profanity-disable').disabled = true;
+    ['btn-pp-save', 'btn-pp-probe', 'btn-pp-enable', 'btn-pp-disable', 'btn-pp-clear',
+     'btn-key-create'].forEach(function (id) { $(id).disabled = true; });
   }
 
   // ---- transport (same pattern as the status page) ------------------------
@@ -730,6 +968,29 @@
     setupDisclosure('youtube-toggle', 'settings-youtube-expanded');
     setupDisclosure('tunnel-toggle', 'settings-tunnel-expanded');
     setupDisclosure('keywords-toggle', 'settings-keywords-expanded');
+    setupDisclosure('pp-toggle', 'settings-pp-expanded');
+    setupDisclosure('keys-toggle', 'settings-keys-expanded');
+    $('btn-pp-save').onclick = savePP;
+    $('btn-pp-probe').onclick = function () { ppRequest({ probe: true }, 'ProPresenter — checked'); };
+    $('btn-pp-enable').onclick = function () { ppRequest({ enabled: true }, 'ProPresenter output — enabled'); };
+    $('btn-pp-disable').onclick = function () { ppRequest({ enabled: false }, 'ProPresenter output — disabled'); };
+    $('btn-pp-clear').onclick = function () { ppRequest({ clear: true }, 'ProPresenter — surface cleared'); };
+    ['pp-host', 'pp-port', 'pp-message', 'pp-token', 'pp-language'].forEach(function (id) {
+      $(id).oninput = function () { ppDirty = true; };
+      $(id).onkeydown = function (e) { if (e.key === 'Enter') savePP(); };
+    });
+    $('pp-surface').onchange = function () {
+      ppDirty = true;
+      $('pp-message-row').style.display = this.value === 'message' ? '' : 'none';
+    };
+    $('pp-interims').onchange = function () { ppDirty = true; };
+    $('btn-key-create').onclick = function () {
+      var name = $('key-name').value.trim();
+      if (!name) { toast('Output keys — name the output first, e.g. obs'); return; }
+      $('key-name').value = '';
+      keysRequest({ create: name }, 'Created key for ' + name);
+    };
+    $('key-name').onkeydown = function (e) { if (e.key === 'Enter') $('btn-key-create').onclick(); };
 
     $('btn-event-save').onclick = saveEventText;
     EVENT_FIELDS.forEach(function (field) {

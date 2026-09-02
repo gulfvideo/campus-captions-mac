@@ -40,7 +40,7 @@ English translated on the fly. It changes nothing else.
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
 `GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.{srt,vtt,txt,json,csv}`,
 `POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`,
-`POST /api/tunnel`.
+`POST /api/tunnel`, `POST /api/propresenter`, `POST /api/overlay-keys`.
 
 ---
 
@@ -539,6 +539,57 @@ above is the primary control and this is the second layer. Two related rules
 keep it from failing open: the tunnel is never auto-started at boot while
 `public_hostname` is empty, and `POST /api/tunnel` refuses to clear the
 hostname while the tunnel is enabled.
+
+## Direct ProPresenter output
+
+```
+POST /api/propresenter    {"host": "127.0.0.1", "port": 1025, "surface": "stage_message"}
+POST /api/propresenter    {"surface": "message", "message": "Live Captions", "token": "Caption"}
+POST /api/propresenter    {"language": "es", "interims": true}
+POST /api/propresenter    {"enabled": true}       start delivering (probes first)
+POST /api/propresenter    {"enabled": false}      stop, clearing the surface
+POST /api/propresenter    {"probe": true}         re-check the connection now
+POST /api/propresenter    {"clear": true}         take the caption off the surface
+  ->  200 {"ok": true, "configured": true, "enabled": true, "state": "connected",
+           "host": "127.0.0.1", "port": 1025, "surface": "stage_message",
+           "message": "Live Captions", "token": "Caption", "message_id": null,
+           "language": "", "interims": false,
+           "version": {"name": "ProPresenter", "platform": "mac", "api_version": "v1"},
+           "pushed": 118, "cleared": 3, "failures": 0, "error": null,
+           "latency": {"samples": 118, "median_ms": 14, "p95_ms": 38, "last_ms": 13}}
+  ->  400 on a bad field; 401 without the operator token
+```
+
+Any subset of the settings may be sent together; they are saved into
+`[propresenter]` in event.toml. The same object appears as `propresenter` in
+every status snapshot. `state` is one of `off`, `connecting`, `connected`,
+`degraded` (recent failures, still trying), `disconnected` (ProPresenter is
+not answering; probing every few seconds; the Web Fill fallback is what is on
+screen), `unsupported` (it answered with an API version this build does not
+know). `latency` is the ProPresenter round trip only - what this output adds
+on top of the caption pipeline. The relay talks to ProPresenter's own network
+API (`GET /v1/version`, `PUT|DELETE /v1/stage/message`, `GET /v1/messages`,
+`POST /v1/message/{id}/trigger`, `GET /v1/message/{id}/clear`) and nothing
+else; see relay/propresenter.py. Pausing or ending the event (`POST
+/api/event`) clears the surface.
+
+## Wall output keys
+
+```
+POST /api/overlay-keys    {"create": "obs"}
+  ->  200 {"ok": true, "keys": [{"name": "obs", "key": "3UGo3AhKI0CU",
+                                 "url": "http://192.168.8.169:8000/wall?key=3UGo3AhKI0CU"}]}
+POST /api/overlay-keys    {"revoke": "obs"}
+  ->  200 {"ok": true, "keys": []}
+  ->  404 if no key has that name; 400 on a bad name
+```
+
+The list also appears as `overlay_keys` in every status snapshot. Keys are
+saved into `[overlay] keys` in event.toml as `"name:key"` strings. While the
+relay has any keys, `WS /ws/viewer?role=wall` without a valid `key` is
+accepted and immediately closed with code `4403`; revoking a key closes the
+live sockets that used it with the same code. With no keys, `key` is
+ignored. Phones never need one.
 
 ## Pushing captions to YouTube Live
 

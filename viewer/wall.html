@@ -173,6 +173,7 @@
       text:     P.get('text'),
       soak:     P.get('soak'),
       lang:     P.get('lang') || '',              // caption stream, e.g. es; '' = the room's language
+      key:      P.get('key') || '',               // output key, required once the relay has any
       relay:    location.protocol === 'file:' ? P.get('relay') : null   // file:// use only, see phone.html
     };
   }
@@ -406,6 +407,10 @@
     // A wall can show a translated stream: ?lang=es joins Spanish and replays
     // Spanish history on reconnect. No lang means the room's language.
     if (cfg.lang) url += '&lang=' + encodeURIComponent(cfg.lang);
+    // Output key: once the operator has created keys on the settings page, a
+    // wall without a valid one is refused (close code 4403). Revoking a key
+    // is how an old OBS scene or a forgotten prop is switched off.
+    if (cfg.key) url += '&key=' + encodeURIComponent(cfg.key);
     return url;
   }
 
@@ -431,13 +436,17 @@
     sock.onerror = teardown;
   }
 
-  function teardown() {
+  function teardown(ev) {
     if (sock) {
       // drop handlers so a late error/close cannot schedule a second reconnect
       sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null;
       try { sock.close(); } catch (e) {}
       sock = null;
     }
+    // 4403: the relay refused our output key (missing, unknown, or just
+    // revoked). Still nothing is painted and we still retry - the key may be
+    // created a moment later - but a blank wall gets a diagnosis in the log.
+    if (ev && ev.code === 4403) log('output key refused (4403) - create or check the key on the settings page');
     scheduleReconnect();
   }
 

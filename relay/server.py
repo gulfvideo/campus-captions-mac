@@ -40,6 +40,7 @@ import hmac
 import io
 import os
 import re
+import secrets
 import socket
 import time
 import urllib.parse
@@ -52,6 +53,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 
 from . import config as config_module
 from . import event as event_module
+from . import propresenter as propresenter_module
 from . import transcript as transcript_module
 from . import translate as translate_module
 from . import tunnel as tunnel_module
@@ -81,6 +83,10 @@ SAFE_PAGE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # A DNS hostname and nothing else: what `public_hostname` is compared against
 # on every request, so it must never be able to carry anything surprising into
 # event.toml or the Host check.
+# Queued to a viewer's outbox to make pump() close its socket with 4403 -
+# used when the wall output key it connected with is revoked.
+CLOSE_SENTINEL = "__close_4403__"
+
 SAFE_HOSTNAME = re.compile(
     r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
 
@@ -140,11 +146,21 @@ SCRIPT_RE = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL
 SAFE_HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
+def _script_hash(script: bytes) -> str:
+    """The CSP hash the browser will compute for an inline script.
+
+    Browsers hash the script *as parsed*, and the HTML parser turns every
+    CR LF and lone CR into LF before anything else sees the text. A checkout
+    with CRLF line endings (Windows, with git's autocrlf) therefore served a
+    hash of the raw bytes that matched nothing, and every page's script was
+    silently blocked. Normalising here makes the hash line-ending independent.
+    """
+    normalized = script.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return "'sha256-" + base64.b64encode(hashlib.sha256(normalized).digest()).decode() + "'"
+
+
 def page_csp(html: bytes) -> str:
-    hashes = " ".join(
-        "'sha256-" + base64.b64encode(hashlib.sha256(m.group(1)).digest()).decode() + "'"
-        for m in SCRIPT_RE.finditer(html)
-    )
+    hashes = " ".join(_script_hash(m.group(1)) for m in SCRIPT_RE.finditer(html))
     script_src = hashes or "'none'"
     return (
         "default-src 'none'; "
@@ -181,6 +197,15 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     hub.youtube = YouTubeCaptionPusher(cfg.youtube_url, cfg.youtube_lang, cfg.youtube_start_enabled)
     event = event_module.EventState.from_config(cfg, config_module.DEFAULT_CONFIG.parent)
     hub.event = event
+    propresenter = propresenter_module.ProPresenterOutput(
+        host=cfg.pp_host, port=cfg.pp_port, surface=cfg.pp_surface,
+        message=cfg.pp_message, token=cfg.pp_token, language=cfg.pp_language,
+        interims=cfg.pp_interims, start_enabled=cfg.pp_start_enabled)
+
+    def overlay_key_list() -> list[dict]:
+        base = cfg.base_url(local_ip())
+        return [{"name": name, "key": key, "url": f"{base}/wall?key={key}"}
+                for name, key in cfg.overlay_keys.items()]
     tunnel = tunnel_module.CloudflareTunnel(token=os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip())
 
     def is_public(headers) -> bool:
@@ -365,9 +390,21 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     def on_broadcast(msg: dict) -> None:
         recorder.observe(msg)
-        if msg.get("type") != "final":
-            return
+        kind = msg.get("type")
         lang = msg.get("lang") or cfg.source_language
+
+        # ProPresenter follows one language stream - the source by default.
+        # It sees interims too (the module decides whether to send them) and
+        # an operator Clear takes the caption off the ProPresenter surface.
+        if propresenter.enabled:
+            wanted = propresenter.language or cfg.source_language
+            if kind in ("final", "interim") and lang == wanted:
+                propresenter.submit(msg.get("text", ""), kind == "final")
+            elif kind == "clear":
+                asyncio.create_task(propresenter.clear())
+
+        if kind != "final":
+            return
         if lang == cfg.source_language:
             return  # already pushed to YouTube by ingest(), via hub.youtube
         pusher = additional_youtube.get(lang)
@@ -385,6 +422,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         "public_hostname": cfg.public_hostname,
         "event": event.public(),
         "health": hub.health(),
+        "propresenter": propresenter.status(),
+        "overlay_keys": overlay_key_list(),
     }
 
     async def heartbeat_loop() -> None:
@@ -412,6 +451,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             else:
                 print("[relay] tunnel start_enabled but no public_hostname is set - "
                       "not starting it; set the hostname on the status page first")
+        if cfg.pp_start_enabled and propresenter.configured:
+            await propresenter.start()
+            print(f"[relay] ProPresenter output {propresenter.state}: "
+                  f"{propresenter.surface} at {propresenter.host}:{propresenter.port}")
+        if cfg.overlay_keys:
+            print(f"[relay] wall output keys in force: {', '.join(cfg.overlay_keys)}")
         ip = local_ip()
         login = f"?token={cfg.operator_token}"
         print(f"[relay] session {hub.session_id}")
@@ -458,6 +503,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 await translation.worker.stop()
             if tunnel.running:
                 await tunnel.stop()
+            if propresenter.enabled:
+                await propresenter.stop()
 
     # No /docs, /redoc or /openapi.json: they would describe the whole
     # operator API to anyone, including through the public hostname.
@@ -826,6 +873,10 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         hub.broadcast_event()
         if "state" in fields:
             print(f"[relay] event -> {fields['state']}")
+            if fields["state"] in ("paused", "ended") and propresenter.enabled:
+                # Pausing or ending clears the ProPresenter surface (N-05),
+                # so a stale line never sits on a screen in front of the room.
+                asyncio.create_task(propresenter.clear())
         return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
 
     async def store_image(request: Request, setter, what: str) -> JSONResponse:
@@ -980,6 +1031,135 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             {"ok": True, **tunnel.status(), "public_hostname": cfg.public_hostname},
             headers=NO_STORE)
 
+    @app.post("/api/propresenter")
+    async def api_propresenter(request: Request) -> JSONResponse:
+        """Relay-local, like the tunnel and YouTube panels: configure and
+        switch the direct ProPresenter output (relay/propresenter.py).
+
+        Any subset of {"host", "port", "surface", "message", "token",
+        "language", "interims"} is applied and saved into event.toml's
+        [propresenter] section; {"enabled": bool} starts or stops delivery;
+        {"probe": true} re-checks the connection now; {"clear": true} takes
+        the caption off the surface. Returns the output's status().
+        """
+        require_operator(request)
+        body = await read_json(request)
+        body = body or {}
+        known = ("host", "port", "surface", "message", "token", "language", "interims",
+                 "enabled", "probe", "clear")
+        if not any(k in body for k in known):
+            raise HTTPException(status_code=400, detail=f"send one of: {', '.join(known)}")
+
+        changes = {}
+        if "host" in body:
+            host = text_field(body, "host", 253).lower()
+            if not SAFE_HOSTNAME.match(host):
+                raise HTTPException(status_code=400, detail="host must be a plain DNS name or address")
+            changes["host"] = host
+        if "port" in body:
+            port = body.get("port")
+            if isinstance(port, str) and port.strip().isdigit():
+                port = int(port)
+            if isinstance(port, bool) or not isinstance(port, int) or not (1 <= port <= 65535):
+                raise HTTPException(status_code=400, detail="port must be 1-65535")
+            changes["port"] = port
+        if "surface" in body:
+            surface = body.get("surface")
+            if surface not in propresenter_module.SURFACES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"surface must be one of {', '.join(propresenter_module.SURFACES)}")
+            changes["surface"] = surface
+        for key in ("message", "token"):
+            if key in body:
+                changes[key] = text_field(body, key, 120, allow_empty=True)
+        if "language" in body:
+            language = text_field(body, "language", 16, allow_empty=True)
+            if language and not transcript_module.SAFE_LANG.match(language):
+                raise HTTPException(status_code=400, detail="language must look like: en, es, zh-Hans")
+            changes["language"] = language
+        if "interims" in body:
+            if not isinstance(body.get("interims"), bool):
+                raise HTTPException(status_code=400, detail="interims must be a boolean")
+            changes["interims"] = body["interims"]
+        if changes:
+            propresenter.configure(**changes)
+            try:
+                config_module.save_section(config_target(), "[propresenter]", {
+                    "host": propresenter.host, "port": propresenter.port,
+                    "surface": propresenter.surface, "message": propresenter.message,
+                    "token": propresenter.token, "language": propresenter.language,
+                    "interims": propresenter.interims,
+                })
+            except OSError as exc:
+                print(f"[relay] could not save ProPresenter settings to disk: {exc}")
+
+        if "enabled" in body:
+            enabled = body.get("enabled")
+            if not isinstance(enabled, bool):
+                raise HTTPException(status_code=400, detail="enabled must be a boolean")
+            if enabled:
+                if not propresenter.configured:
+                    raise HTTPException(status_code=400, detail="set a host and port first")
+                await propresenter.start()
+            else:
+                await propresenter.stop()
+            try:
+                config_module.save_section(config_target(), "[propresenter]",
+                                           {"start_enabled": enabled})
+            except OSError as exc:
+                print(f"[relay] could not save ProPresenter settings to disk: {exc}")
+            print(f"[relay] ProPresenter output {'enabled' if enabled else 'disabled'}")
+        elif body.get("probe") is True:
+            await propresenter.probe()
+        if body.get("clear") is True:
+            await propresenter.clear()
+
+        return JSONResponse({"ok": True, **propresenter.status()}, headers=NO_STORE)
+
+    @app.post("/api/overlay-keys")
+    async def api_overlay_keys(request: Request) -> JSONResponse:
+        """Wall output keys (N-09): one per browser-source output - "obs",
+        "propresenter", "lobby" - so a forgotten scene or an old prop can be
+        switched off by revoking its key instead of changing every URL.
+
+        {"create": "obs"} makes (or replaces) a key for that name;
+        {"revoke": "obs"} removes it and closes the wall sockets that used it.
+        While any key exists, a wall socket without a valid ?key= is refused
+        (close 4403). With none, the wall needs no key, as before. Keys are
+        saved to event.toml's [overlay] section.
+        """
+        require_operator(request)
+        body = await read_json(request)
+        body = body or {}
+        if "create" not in body and "revoke" not in body:
+            raise HTTPException(status_code=400, detail="send create or revoke with a name")
+        field = "create" if "create" in body else "revoke"
+        name = text_field(body, field, 32)
+        if not re.match(r"^[A-Za-z0-9 _.-]{1,32}$", name):
+            raise HTTPException(status_code=400,
+                                detail="name must be 1-32 letters, digits, spaces, . _ or -")
+        if field == "create":
+            cfg.overlay_keys[name] = secrets.token_urlsafe(9)
+            print(f"[relay] wall output key created: {name}")
+        else:
+            if name not in cfg.overlay_keys:
+                raise HTTPException(status_code=404, detail=f"no key called {name!r}")
+            del cfg.overlay_keys[name]
+            print(f"[relay] wall output key revoked: {name}")
+            # Anyone holding the revoked key is dropped now, not at their
+            # next reconnect. Their page retries and is refused with 4403.
+            for client in list(hub.viewers.values()):
+                if (client.role == "wall" and client.key is not None
+                        and client.key not in cfg.overlay_keys.values()):
+                    client.send(CLOSE_SENTINEL)
+        try:
+            config_module.save_section(config_target(), "[overlay]",
+                                       {"keys": config_module.format_overlay_keys(cfg.overlay_keys)})
+        except OSError as exc:
+            print(f"[relay] could not save overlay keys to disk: {exc}")
+        return JSONResponse({"ok": True, "keys": overlay_key_list()}, headers=NO_STORE)
+
     @app.post("/api/translation")
     async def api_translation(request: Request) -> JSONResponse:
         """Relay-local, like /api/youtube-captions: the key and target
@@ -1054,6 +1234,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                         await ws.close(code=1013)
                         return
                     continue
+                if payload == CLOSE_SENTINEL:
+                    # Queued by an overlay-key revoke: end this socket with
+                    # the same code a refused key gets, so the page knows why.
+                    await ws.close(code=4403, reason="output key revoked")
+                    return
                 await ws.send_text(payload)
         except Exception:
             # Writing to a socket the client already dropped. Starlette and
@@ -1090,9 +1275,21 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             hub.remove(client)
 
     @app.websocket("/ws/viewer")
-    async def ws_viewer(ws: WebSocket, role: str = "wall", lang: str = "") -> None:
+    async def ws_viewer(ws: WebSocket, role: str = "wall", lang: str = "",
+                        key: str = "") -> None:
         await ws.accept()
+        # Output keys gate the wall only. Phones stay anonymous and public;
+        # a wall is an output somebody set up, and the key is how it is
+        # switched off again without touching the URL in ProPresenter or OBS.
+        # Accepted first so the 4403 reaches the page: a refused handshake is
+        # indistinguishable from the relay being down.
+        if role == "wall" and cfg.overlay_keys and key not in cfg.overlay_keys.values():
+            await ws.close(code=4403, reason="output key required")
+            print(f"[relay] refused wall {peer_of(ws)}: "
+                  f"{'no' if not key else 'unknown'} output key")
+            return
         client = hub.add_viewer(role, peer_of(ws), lang=lang)
+        client.key = key or None
         print(f"[relay] + {client} ({len(hub.viewers)} viewers)")
         await serve(ws, client, read=False)
         print(f"[relay] - {client} ({len(hub.viewers)} viewers)")

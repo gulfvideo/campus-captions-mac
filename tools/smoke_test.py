@@ -105,8 +105,11 @@ try:
     check("phone page carries a hashed script-src CSP", "script-src 'sha256-" in csp and "frame-ancestors 'self'" in csp and "'unsafe-inline'" not in csp.split("style-src")[0], csp[:160])
     import hashlib, base64, re as _re
     inline = _re.findall(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", b, _re.S)
-    digest = "'sha256-" + base64.b64encode(hashlib.sha256(inline[0]).digest()).decode() + "'"
-    check("  CSP hash matches the page's inline script", digest in csp, digest)
+    # Browsers hash the script as parsed - CR LF already normalised to LF - so
+    # that is what the header must carry, whatever line endings the checkout has.
+    as_parsed = inline[0].replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    digest = "'sha256-" + base64.b64encode(hashlib.sha256(as_parsed).digest()).decode() + "'"
+    check("  CSP hash matches the page's inline script as a browser parses it", digest in csp, digest)
     check("  nosniff / referrer / frame headers present", h.get("x-content-type-options") == "nosniff" and h.get("referrer-policy") == "no-referrer" and h.get("x-frame-options") == "SAMEORIGIN", str({k: h.get(k) for k in ("x-content-type-options", "referrer-policy", "x-frame-options")}))
     st, h, b = http("GET", "/api/site")
     check("JSON responses carry the strict CSP", h.get("content-security-policy", "").startswith("default-src 'none'"), h.get("content-security-policy", ""))
@@ -293,6 +296,44 @@ try:
     st, h, b = http("GET", "/api/transcript.vtt")
     check("  .vtt without auth -> 401", st == 401, f"{st}")
 
+    # --- direct ProPresenter output, against the fake API ------------------------
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from fake_propresenter import FakeProPresenter
+    with FakeProPresenter() as fake:
+        st, h, b = http("POST", "/api/propresenter", body={"host": "127.0.0.1", "port": fake.port, "surface": "stage_message"}, headers=bearer)
+        check("POST /api/propresenter settings -> 200, saved, still off", st == 200 and json.loads(b).get("state") == "off" and json.loads(b).get("port") == fake.port, f"{st} {b[:120]}")
+        st, h, b = http("POST", "/api/propresenter", body={"enabled": True}, headers=bearer)
+        out = json.loads(b) if st == 200 else {}
+        check("POST /api/propresenter enabled -> connected with version", st == 200 and out.get("state") == "connected" and (out.get("version") or {}).get("api_version") == "v1", f"{st} {out.get('state')} {out.get('error')}")
+        http("POST", "/api/control", body={"action": "caption", "text": "[Music]"}, headers=bearer)
+        time.sleep(0.6)
+        check("  an operator caption reached the stage message", fake.stage_message == "[Music]", repr(fake.stage_message))
+        http("POST", "/api/event", body={"state": "paused"}, headers=bearer)
+        time.sleep(0.6)
+        check("  pausing the event cleared the stage message", fake.stage_message is None, repr(fake.stage_message))
+        http("POST", "/api/event", body={"state": "live"}, headers=bearer)
+        st, h, b = http("POST", "/api/propresenter", body={"surface": "message", "message": "Live Captions", "token": "Caption", "probe": True}, headers=bearer)
+        out = json.loads(b) if st == 200 else {}
+        check("  switching to the Message surface resolves the Message by name", st == 200 and out.get("message_id") == "11111111-2222-3333-4444-555555555555", f"{st} {out.get('state')} {out.get('error')}")
+        st, h, b = http("POST", "/api/propresenter", body={"surface": "nonsense"}, headers=bearer)
+        check("  bad surface -> 400", st == 400, f"{st}")
+        st, h, b = http("POST", "/api/propresenter", body={"enabled": True})
+        check("  without auth -> 401", st == 401, f"{st}")
+        st, h, b = http("GET", "/api/status", headers=bearer)
+        snap = json.loads(b)
+        check("  status snapshot carries propresenter and overlay_keys, no caption text", snap.get("propresenter", {}).get("state") == "connected" and snap.get("overlay_keys") == [] and "[Music]" not in json.dumps(snap.get("propresenter")), str(snap.get("propresenter"))[:120])
+        http("POST", "/api/propresenter", body={"enabled": False}, headers=bearer)
+
+    # --- wall output keys -------------------------------------------------------
+    st, h, b = http("POST", "/api/overlay-keys", body={"create": "obs"}, headers=bearer)
+    keys = json.loads(b).get("keys", []) if st == 200 else []
+    check("POST /api/overlay-keys create -> 200 with a URL carrying the key", st == 200 and len(keys) == 1 and keys[0]["name"] == "obs" and ("?key=" + keys[0]["key"]) in keys[0]["url"], f"{st} {b[:160]}")
+    st, h, b = http("POST", "/api/overlay-keys", body={"create": "bad/name"}, headers=bearer)
+    check("  bad key name -> 400", st == 400, f"{st}")
+    st, h, b = http("POST", "/api/overlay-keys", body={"revoke": "nope"}, headers=bearer)
+    check("  revoking an unknown key -> 404", st == 404, f"{st}")
+    OBS_KEY = keys[0]["key"] if keys else ""
+
     # --- websockets -------------------------------------------------------------
     async def ws_checks():
         async def try_ws(path, **kw):
@@ -323,6 +364,39 @@ try:
         check("WS /ws/status with cookie but foreign Origin rejected", r[0] == "rejected", str(r))
         r = await try_ws("/ws/status", additional_headers={"Cookie": f"captions_operator={OPTOK}"}, origin=f"http://127.0.0.1:{PORT}")
         check("WS /ws/status with cookie and own Origin -> snapshot", r[0] == "open" and r[1] and "session_id" in r[1], str(r)[:120])
+        # wall output keys gate the wall only; a refused wall is accepted then closed 4403
+        async def close_code(path):
+            try:
+                async with websockets.connect(f"ws://127.0.0.1:{PORT}{path}", open_timeout=5) as ws:
+                    try:
+                        first = await asyncio.wait_for(ws.recv(), timeout=3)
+                        return "open", first
+                    except websockets.exceptions.ConnectionClosed as e:
+                        return "closed", e.rcvd.code if e.rcvd else None
+            except Exception as e:
+                return "error", repr(e)
+        r = await close_code("/ws/viewer?role=wall")
+        check("WS wall without a key while keys exist -> closed 4403", r == ("closed", 4403), str(r))
+        r = await close_code("/ws/viewer?role=wall&key=wrong")
+        check("WS wall with an unknown key -> closed 4403", r == ("closed", 4403), str(r))
+        r = await close_code(f"/ws/viewer?role=wall&key={OBS_KEY}")
+        check("WS wall with the obs key -> hello", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
+        r = await close_code("/ws/viewer?role=phone")
+        check("WS phone needs no key", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
+        async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/viewer?role=wall&key={OBS_KEY}") as ws:
+            await ws.recv()   # hello
+            http("POST", "/api/overlay-keys", body={"revoke": "obs"}, headers=bearer)
+            try:
+                while True:
+                    await asyncio.wait_for(ws.recv(), timeout=3)
+                revoked = None
+            except websockets.exceptions.ConnectionClosed as e:
+                revoked = e.rcvd.code if e.rcvd else None
+            except asyncio.TimeoutError:
+                revoked = "still open"
+        check("  revoking the key closes the live wall with 4403", revoked == 4403, str(revoked))
+        r = await close_code("/ws/viewer?role=wall")
+        check("  with no keys left the plain wall connects again", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
         # oversized frames and chatty viewers are closed, not parsed
         async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/source", additional_headers={"Authorization": f"Bearer {SRCTOK}"}, max_size=None) as ws:
             await ws.send(json.dumps({"type": "final", "text": "y" * 70000}))

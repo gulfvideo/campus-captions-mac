@@ -63,6 +63,26 @@ disclaimer = ""           # e.g. "Captions are auto-generated and may not be 100
 # can read.
 provider = "none"
 
+# Direct caption output into ProPresenter over its network API (Settings ->
+# Network -> Enable Network; note the port). Read by the relay - see
+# relay/propresenter.py and SETUP.md 7a. Everything here can also be set from
+# the Settings page's "ProPresenter (direct)" panel, which writes it back here.
+[propresenter]
+host = "127.0.0.1"          # the machine running ProPresenter; this one, usually
+port = 1025                 # whatever ProPresenter's Network settings show
+surface = "stage_message"   # stage_message | message  (see SETUP.md 7a)
+message = "Live Captions"   # for surface = "message": the Message's name...
+token = "Caption"           #   ...and the name of its one text token
+language = ""               # which caption stream to send; "" = the room's language
+interims = false            # true = also send in-progress text (newest only)
+start_enabled = false       # true = start sending as soon as the relay starts
+
+# Wall output keys (OBS, vMix, ProPresenter Web Fill). Managed from the
+# Settings page. While any key exists, a wall without a valid ?key= is
+# refused, so revoking a key switches that output off. Empty = no key needed.
+[overlay]
+keys = []                   # e.g. ["obs:abc123", "propresenter:def456"]
+
 # --- stage 3, not read by the relay ---------------------------------------
 
 [capture]

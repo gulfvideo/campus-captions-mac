@@ -135,6 +135,10 @@
         <select id="lang" title="Which caption stream this wall shows">
           <option value="">Room language</option>
         </select>
+        <label for="okey">Output key</label>
+        <select id="okey" title="Which output this URL belongs to - revoke it from Settings">
+          <option value="">None</option>
+        </select>
         <label for="sample">Sample text</label>
         <input type="text" id="sample" style="flex:1;min-width:220px"
                value="Our next speaker is Doctor Amara Vasquez">
@@ -308,6 +312,7 @@
     out.color = COLORS.color;
     out.bar = COLORS.bar;
     out.lang = '';                 // '' = the room's language, left out of the URL
+    out.key = '';                  // '' = no output key (only valid while none exist)
     out.align = ALIGN_DEFAULT;
     out.font = FONT_DEFAULT;
     return out;
@@ -347,6 +352,12 @@
     }
     if (state.lang) {
       parts.push('lang=' + encodeURIComponent(state.lang));
+    }
+    // The key goes on the final URL only, never on the preview: the preview
+    // is same-origin and would only be refused if keys exist and this one
+    // were stale, which the list below already prevents.
+    if (state.key && !includeSample) {
+      parts.push('key=' + encodeURIComponent(state.key));
     }
     if (includeSample) {
       parts.push('text=' + encodeURIComponent(sampleBox.value || ' '));
@@ -437,8 +448,24 @@
     $('color').value = state.color;
     $('bar').value = state.bar;
     $('lang').value = state.lang || '';
+    $('okey').value = state.key || '';
     $('align').value = state.align;
     $('font').value = state.font;
+  }
+
+  // Output keys are created and revoked on the Settings page. This offers
+  // only the ones that exist, so a URL is never built with a revoked key.
+  function loadOutputKeys(keys) {
+    var sel = $('okey');
+    keys = keys || [];
+    sel.innerHTML = '';
+    sel.appendChild(new Option(keys.length ? 'None (refused while keys exist)' : 'None', ''));
+    keys.forEach(function (k) { sel.appendChild(new Option(k.name, k.key)); });
+    var valid = keys.some(function (k) { return k.key === state.key; });
+    if (state.key && !valid) { state.key = ''; save(); }
+    if (!state.key && keys.length) { state.key = keys[0].key; save(); }
+    sel.value = state.key || '';
+    urlBox.value = finalUrl();
   }
 
   // ---- presets ---------------------------------------------------------
@@ -489,6 +516,9 @@
 
     $('lang').addEventListener('change', function () {
       state.lang = this.value; save(); rebuild();
+    });
+    $('okey').addEventListener('change', function () {
+      state.key = this.value; save(); rebuild();
     });
     ['color', 'bar'].forEach(function (key) {
       $(key).addEventListener('input', function () {
@@ -597,6 +627,7 @@
         relayBase = 'http://' + s.relay.ip + ':' + s.relay.port;
         urlBox.value = finalUrl();
       }
+      if (s) loadOutputKeys(s.overlay_keys);
     })['catch'](function () {});
   }
 
