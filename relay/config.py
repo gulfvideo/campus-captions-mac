@@ -240,6 +240,7 @@ class RelayConfig:
     event_notice: str = ""
     event_pause_message: str = ""
     event_logo_alt: str = ""
+    event_disclaimer: str = ""
 
     config_path: Path | None = None
 
@@ -304,6 +305,7 @@ def load(path: Path | None = None) -> RelayConfig:
             cfg.event_notice = str(ev.get("notice", cfg.event_notice))
             cfg.event_pause_message = str(ev.get("pause_message", cfg.event_pause_message))
             cfg.event_logo_alt = str(ev.get("logo_alt", cfg.event_logo_alt))
+            cfg.event_disclaimer = str(ev.get("disclaimer", cfg.event_disclaimer))
 
             cfg.config_path = chosen
         except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:

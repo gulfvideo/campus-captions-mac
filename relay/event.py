@@ -35,7 +35,7 @@ from pathlib import Path
 STATES = ("starting", "live", "paused", "ended")
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MEDIA_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-TEXT_FIELDS = ("state", "title", "message", "notice", "pause_message", "logo_alt")
+TEXT_FIELDS = ("state", "title", "message", "notice", "pause_message", "logo_alt", "disclaimer")
 
 
 def sniff_image(data: bytes) -> str | None:
@@ -118,6 +118,11 @@ class EventState:
     # What a screen reader says for the logo - "Faulkner University", not
     # "logo.png". Set by the operator alongside the image.
     logo_alt: str = ""
+    # Shown once per device on the phone view, not tied to event state like
+    # `notice` (which only appears on the welcome screen) - a caption-
+    # accuracy note is just as relevant mid-event as before it starts. Blank
+    # disables it; see viewer/phone.html's dismissal-by-text-match.
+    disclaimer: str = ""
     image_dir: Path | None = None
     changed_at: float = field(default_factory=time.time)
     welcome: ImageSlot = field(default=None)   # type: ignore[assignment]
@@ -137,6 +142,7 @@ class EventState:
             notice=cfg.event_notice,
             pause_message=cfg.event_pause_message,
             logo_alt=getattr(cfg, "event_logo_alt", ""),
+            disclaimer=getattr(cfg, "event_disclaimer", ""),
             image_dir=image_dir,
         )
 
@@ -198,5 +204,6 @@ class EventState:
             "logo": self.logo.path is not None,
             "logo_v": self.logo.version(),
             "logo_alt": self.logo_alt,
+            "disclaimer": self.disclaimer,
             "changed_at": round(self.changed_at, 3),
         }

@@ -98,6 +98,27 @@
   #status.on { display: block; }
   #status.calm { border-bottom-color: #8ab4ff; }
 
+  /* Caption-accuracy disclaimer: shown once per device, in normal flow (not
+     fixed) so it pushes captions down rather than covering them, gone for
+     good once dismissed - see dismissDisclaimer() for the "once per exact
+     wording" rule. */
+  #disclaimer {
+    flex: none; z-index: 8; display: none;
+    align-items: center; gap: 12px;
+    padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+    background: #232323; color: #d9d9d9;
+    font-size: 14.5px; line-height: 1.4; border-bottom: 1px solid rgba(255,255,255,0.14);
+  }
+  #disclaimer.on { display: flex; }
+  #disclaimer-text { flex: 1 1 auto; }
+  #disclaimer-dismiss {
+    flex: none; width: 32px; height: 32px; border-radius: 16px;
+    background: rgba(255,255,255,0.10); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+    font-family: inherit; font-size: 1rem; line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #disclaimer-dismiss:focus-visible { outline: 3px solid #ffffff; outline-offset: 2px; }
+
   /* Welcome / ended screen. The photo is decorative: a scrim plus a dark
      panel keep the words at high contrast over any image the operator
      picks, and every word is real text for screen readers and zoom. */
@@ -269,6 +290,10 @@
 <body>
 <div id="link"></div>
 <div id="status" role="status" aria-live="polite"></div>
+<div id="disclaimer" role="status" aria-live="polite">
+  <span id="disclaimer-text"></span>
+  <button id="disclaimer-dismiss" type="button" aria-label="Dismiss disclaimer">&times;</button>
+</div>
 <header id="brand"><img id="brand-img" alt=""></header>
 <div id="scroll" tabindex="0" role="region" aria-label="Captions">
   <div id="lang-note" hidden></div>
@@ -316,6 +341,7 @@
   var P, cfg, elScroll, elLines, elInterim, elLatest, elLang, elLink, elDbg;
   var elSettings, elSettingsBtn, elSizeDec, elSizeInc, elSizeValue, elSwatches, elColorCustom;
   var elStatus, elEvent, elEventTitle, elEventMessage, elEventNotice, elBrand, elBrandImg;
+  var elDisclaimer, elDisclaimerText, elDisclaimerDismiss;
   var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0;
   var statusText = '', bannerReason = '', resumedTimer = null, replayMute = null;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
@@ -575,6 +601,26 @@
       elBrandImg.alt = ev.logo_alt || '';
     }
     elBrand.className = showLogo ? 'on' : '';
+    updateDisclaimer(ev);
+  }
+
+  // Shown once per exact wording, not once ever: an operator who edits the
+  // disclaimer (a new accommodation number, a policy change) wants it seen
+  // again, but re-saving the same text on a whim should not re-interrupt
+  // someone who already dismissed it.
+  function updateDisclaimer(ev) {
+    var text = (ev.disclaimer || '').trim();
+    if (!text) { elDisclaimer.className = ''; return; }
+    var seen = '';
+    try { seen = localStorage.getItem('cc.disclaimerSeen') || ''; } catch (e) {}
+    if (seen === text) { elDisclaimer.className = ''; return; }
+    if (elDisclaimerText.textContent !== text) elDisclaimerText.textContent = text;
+    elDisclaimer.className = 'on';
+  }
+
+  function dismissDisclaimer() {
+    try { localStorage.setItem('cc.disclaimerSeen', elDisclaimerText.textContent || ''); } catch (e) {}
+    elDisclaimer.className = '';
   }
 
   function applyEvent(ev) {
@@ -903,6 +949,9 @@
     elEventTitle = document.getElementById('event-title');
     elEventMessage = document.getElementById('event-message');
     elEventNotice = document.getElementById('event-notice');
+    elDisclaimer = document.getElementById('disclaimer');
+    elDisclaimerText = document.getElementById('disclaimer-text');
+    elDisclaimerDismiss = document.getElementById('disclaimer-dismiss');
 
     document.documentElement.style.setProperty('--bg', cfg.bg);
     setSize(loadSize());
@@ -924,6 +973,7 @@
       if (btn) setColor(btn.getAttribute('data-color'));
     });
     elColorCustom.addEventListener('input', function () { setColor(this.value); });
+    elDisclaimerDismiss.addEventListener('click', dismissDisclaimer);
     // Tapping anywhere else, or Escape, closes the panel - it should feel
     // like a lightweight popover, not a screen you have to explicitly exit.
     document.addEventListener('click', function (e) {
