@@ -386,6 +386,32 @@ def save_youtube_url(path: Path, url: str, lang: str) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _inline_comment(line: str) -> str:
+    """The trailing `# ...` of a TOML line, whitespace and all, or "".
+
+    Only a '#' outside the quoted value counts: a device really can be named
+    "Mic #2", and eating the rest of that line would corrupt the file. Used
+    to carry a key's explanatory comment across a rewrite - this file is
+    meant to stay hand-editable, and the hint next to `device` is worth more
+    than the two lines it costs to keep.
+    """
+    _, sep, rhs = line.partition("=")
+    if not sep:
+        return ""
+    quote = ""
+    for i, ch in enumerate(rhs):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#":
+            # Keep the gap between value and comment, so the column the file
+            # lines its comments up in survives the rewrite.
+            return rhs[len(rhs[:i].rstrip()):]
+    return ""
+
+
 def save_audio_device(path: Path, device: str) -> None:
     """Write the operator's chosen input into [capture] device, in place.
 
@@ -422,7 +448,15 @@ def save_audio_device(path: Path, device: str) -> None:
         for i in range(start + 1, end):
             key = lines[i].split("=", 1)[0].strip()
             if key in wanted:
-                lines[i] = f"{key} = {wanted.pop(key)}"
+                comment = _inline_comment(lines[i])
+                rewritten = f"{key} = {wanted.pop(key)}"
+                if comment:
+                    # Put the comment back in the column it was in, so a file
+                    # whose comments line up still does after a device with a
+                    # long name is saved into it.
+                    column = len(lines[i]) - len(comment.lstrip())
+                    rewritten += " " * max(column - len(rewritten), 2) + comment.lstrip()
+                lines[i] = rewritten
         if wanted:
             insertion = [f"{key} = {value}" for key, value in wanted.items()]
             lines[start + 1:start + 1] = insertion
