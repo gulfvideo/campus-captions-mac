@@ -201,14 +201,16 @@
       hint: 'percent of output width' },
     { key: 'maxchars', label: 'Characters per line', def: 42,   min: 10, max: 90, step: 1,
       hint: 'longer lines need a wider bar or smaller text' },
-    { key: 'opacity',  label: 'Bar opacity',         def: 0.85, min: 0,  max: 1,  step: 0.01,
-      hint: '1 is solid; lower lets video show through' },
+    { key: 'lines',    label: 'Rows',                def: 3,    min: 2,  max: 4,  step: 1,
+      hint: '3 gives slower readers about 8 s per line at speech rate; 2 is the old look' },
+    { key: 'opacity',  label: 'Bar opacity',         def: 0.85, min: 0.6, max: 1, step: 0.01,
+      hint: '1 is solid; 0.6 is the floor that keeps white text readable over a bright slide' },
     { key: 'pad',      label: 'Bar padding',         def: 2,    min: 0,  max: 8,  step: 0.1,
       hint: 'space inside the bar' },
     { key: 'radius',   label: 'Corner radius',       def: 1.5,  min: 0,  max: 8,  step: 0.1,
       hint: '0 for square corners' },
-    { key: 'idle',     label: 'Fade out after',      def: 5,    min: 0,  max: 60, step: 1,
-      hint: 'seconds of no new text; 0 never fades' }
+    { key: 'idle',     label: 'Fade out after',      def: 15,   min: 0,  max: 60, step: 1,
+      hint: 'seconds of no new text; 0 never fades. Two full rows take ~8 s to read, and prayers and readings pause longer' }
   ];
   var COLORS = { color: '#ffffff', bar: '#000000' };
   var STORE_KEY = 'cc.tune.state';

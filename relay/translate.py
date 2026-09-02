@@ -29,6 +29,33 @@ from collections import OrderedDict
 
 AZURE_DEFAULT_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 REQUEST_TIMEOUT = 8.0
+
+# AZURE_TRANSLATOR_ENDPOINT exists for regional/custom Translator resources.
+# The subscription key is sent to whatever host it names, so it is held to
+# Microsoft's own domains over https - anything else is ignored with a
+# message rather than quietly handing the key to a stranger.
+ALLOWED_ENDPOINT_SUFFIXES = (
+    ".microsofttranslator.com",
+    ".cognitiveservices.azure.com",
+    ".cognitiveservices.azure.us",
+    ".cognitiveservices.azure.cn",
+)
+
+
+def endpoint_from_env() -> str:
+    raw = os.environ.get("AZURE_TRANSLATOR_ENDPOINT", "").strip()
+    if not raw:
+        return AZURE_DEFAULT_ENDPOINT
+    try:
+        parts = urllib.parse.urlsplit(raw)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        parts, host = None, ""
+    if parts is not None and parts.scheme == "https" and host.endswith(ALLOWED_ENDPOINT_SUFFIXES):
+        return raw
+    print("[relay] ignoring AZURE_TRANSLATOR_ENDPOINT: must be an https Microsoft "
+          "Translator endpoint - using the default")
+    return AZURE_DEFAULT_ENDPOINT
 CACHE_SIZE = 512
 MAX_CHARS = 2000
 
@@ -176,8 +203,7 @@ def create(provider: str, targets: list[str]) -> Translator | None:
         return AzureTranslator(
             key=key,
             region=os.environ.get("AZURE_TRANSLATOR_REGION", "").strip(),
-            endpoint=os.environ.get("AZURE_TRANSLATOR_ENDPOINT",
-                                    AZURE_DEFAULT_ENDPOINT),
+            endpoint=endpoint_from_env(),
         )
     print(f"[relay] unknown translation provider {provider!r}, "
           f"continuing without translation")

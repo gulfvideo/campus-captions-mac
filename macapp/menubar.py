@@ -36,6 +36,21 @@ from relay.server import create_app
 RELAY_READY_TIMEOUT = 25.0
 STATUS_POLL_INTERVAL = 3.0
 
+# Set in main() from the relay config, before anything below runs. /api/status
+# is operator-only, so every poll from this process carries the token, and
+# the status page is opened with it once so the browser gets its cookie.
+OPERATOR_TOKEN = ""
+
+
+def status_request(port: int) -> urllib.request.Request:
+    return urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/status",
+        headers={"Authorization": f"Bearer {OPERATOR_TOKEN}"})
+
+
+def status_link(port: int) -> str:
+    return f"http://127.0.0.1:{port}/status?token={OPERATOR_TOKEN}"
+
 
 def _icons_dir() -> Path:
     """Where the menu bar PNGs live - inside the frozen bundle's Resources
@@ -86,7 +101,7 @@ def port_in_use(port: int) -> bool:
 def existing_session(port: int) -> dict | None:
     """Is the thing on this port one of ours, or someone else's server?"""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=2) as r:
+        with urllib.request.urlopen(status_request(port), timeout=2) as r:
             data = json.load(r)
         return data if "session_id" in data and "relay" in data else None
     except Exception:
@@ -94,10 +109,9 @@ def existing_session(port: int) -> dict | None:
 
 
 def wait_ready(port: int, deadline: float) -> bool:
-    url = f"http://127.0.0.1:{port}/api/status"
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1.5) as r:
+            with urllib.request.urlopen(status_request(port), timeout=1.5) as r:
                 json.load(r)
                 return True
         except (urllib.error.URLError, OSError, ValueError):
@@ -124,10 +138,9 @@ def poll_status(app: "CampusCaptionsApp", port: int) -> None:
     a plain graduation cap while idle, filled-in while captions are
     flowing, and the warning glyph the moment the source reports trouble
     or the relay stops answering."""
-    url = f"http://127.0.0.1:{port}/api/status"
     while True:
         try:
-            with urllib.request.urlopen(url, timeout=2) as r:
+            with urllib.request.urlopen(status_request(port), timeout=2) as r:
                 data = json.load(r)
             source = data.get("source", {})
             asr = data.get("asr", {})
@@ -186,7 +199,7 @@ class CampusCaptionsApp(rumps.App):
         )
 
     def open_status(self, _sender) -> None:
-        webbrowser.open(f"http://127.0.0.1:{self.port}/status")
+        webbrowser.open(status_link(self.port))
 
     def open_wall(self, _sender) -> None:
         webbrowser.open(f"http://127.0.0.1:{self.port}/wall")
@@ -199,12 +212,14 @@ class CampusCaptionsApp(rumps.App):
 
 
 def main() -> None:
+    global OPERATOR_TOKEN
     rcfg = relay_config.load()
+    OPERATOR_TOKEN = rcfg.operator_token
 
     if port_in_use(rcfg.port):
         session = existing_session(rcfg.port)
         if session is not None:
-            webbrowser.open(f"http://127.0.0.1:{rcfg.port}/status")
+            webbrowser.open(status_link(rcfg.port))
             rumps.alert("Campus Captions",
                         "Already running - opened its status page.\n\n"
                         "Quit the other copy first if you want a fresh start.")
@@ -223,7 +238,7 @@ def main() -> None:
         if wait_ready(rcfg.port, time.time() + RELAY_READY_TIMEOUT):
             threading.Thread(target=run_capture, daemon=True).start()
             threading.Thread(target=poll_status, args=(app, rcfg.port), daemon=True).start()
-            webbrowser.open(f"http://127.0.0.1:{rcfg.port}/status")
+            webbrowser.open(status_link(rcfg.port))
         else:
             app.set_icon_state("inactive")  # rumps allows icon updates off the main thread
 

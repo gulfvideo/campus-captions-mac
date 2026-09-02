@@ -4,9 +4,12 @@
 [relay]
 host = "0.0.0.0"          # all interfaces, so phones on the LAN can connect
 port = 8000
-# Shared secret the capture client must send on /ws/source. Empty = no token,
-# which is fine on a closed booth network. This is not a Deepgram key; that
-# lives in the environment only, never in this file.
+# Shared secret the capture client must send on /ws/source. Leave it empty:
+# the relay generates one on first start and saves it to .env as
+# CAPTIONS_SOURCE_TOKEN, where the capture client reads it too. A token is
+# always required - the audience is on the booth network as well, so "no
+# token" was never safe. This is not a Deepgram key; that lives in the
+# environment only, never in this file.
 source_token = ""
 # Set this to the domain a tunnel (e.g. Cloudflare Tunnel) exposes this relay
 # on. Anyone reaching the relay through this exact hostname gets read-only
@@ -31,6 +34,19 @@ source = "en"
 #   "zh-Hant" Traditional Chinese    "ko" Korean   "vi" Vietnamese
 offer = []
 
+# What attendees see on their phones before and after the captions: the
+# welcome screen. Everything here is editable live from the status page's
+# "Event & welcome screen" panel, which also writes it back into this file,
+# and `state` is saved on every Start/Pause/End so a relay restart mid-event
+# does not put the welcome screen back up. A background photo goes in
+# config/welcome.jpg|png|webp via the same panel (gitignored).
+[event]
+state = "starting"        # starting | live | paused | ended
+title = ""                # e.g. "Fall Convocation"
+message = ""              # default: "Live captions will begin when the program starts."
+notice = ""               # e.g. "Captions are automatic. Accommodations: Disability Services, 334-555-0100"
+pause_message = ""        # shown over the captions while paused; default "Captions paused"
+
 [translate]
 # "azure" or "none". The key is read from AZURE_TRANSLATOR_KEY in .env - never
 # from this file. AZURE_TRANSLATOR_REGION is required for a regional resource.
@@ -53,6 +69,10 @@ mock_script = "config/mock_script.txt"
 model = "nova-3"
 language = "en-US"
 keyterms_file = "config/keyterms.txt"
+# Speaker changes become ">>" at the start of the new speaker's words on
+# committed lines - the broadcast-caption convention. Names still have to
+# come from the operator (the status page's caption box). false to disable.
+diarize = true
 
 # On-device, free, no key - but macOS 26+ only, and no keyterm boosting.
 # Running from source: first open() compiles capture/backends/native/speech_helper.swift

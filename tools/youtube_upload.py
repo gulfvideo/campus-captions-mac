@@ -29,7 +29,9 @@ default 10,000/day quota, so roughly 25 uploads a day.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -97,13 +99,34 @@ def authenticate():
     return creds
 
 
-def fetch_from_relay(relay: str, lang: str, admin: str, out: Path) -> Path:
+def read_env_var(key: str) -> str:
+    """The environment, then the project's .env - where the relay keeps it."""
+    value = os.environ.get(key, "").strip()
+    env_file = ROOT / ".env"
+    if value or not env_file.exists():
+        return value
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def fetch_from_relay(relay: str, lang: str, token: str, out: Path) -> Path:
     url = f"{relay.rstrip('/')}/api/transcript.srt?lang={lang}"
-    if admin:
-        url += f"&admin={admin}"
+    # The operator token rides in a header, never in the URL (which gets
+    # printed, and would land in any proxy log on the way).
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     print(f"fetching {url}")
-    with urllib.request.urlopen(url, timeout=15) as response:
-        body = response.read()
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            raise SystemExit("the relay wants the operator token: set "
+                             "CAPTIONS_OPERATOR_TOKEN (it is in the project's .env)")
+        raise
     out.write_bytes(body)
     print(f"saved {len(body)} bytes to {out}")
     return out
@@ -143,8 +166,9 @@ def main() -> None:
     parser.add_argument("--from-relay", action="store_true",
                         help="download the transcript from a running relay")
     parser.add_argument("--relay", default="http://127.0.0.1:8000")
-    parser.add_argument("--admin", default="",
-                        help="admin token, if the relay is in public mode")
+    parser.add_argument("--token", default=read_env_var("CAPTIONS_OPERATOR_TOKEN"),
+                        help="operator token (default: CAPTIONS_OPERATOR_TOKEN from "
+                             "the environment or .env)")
     parser.add_argument("--lang", default="en",
                         help="caption language code (default: en)")
     parser.add_argument("--name", default="",
@@ -156,7 +180,7 @@ def main() -> None:
 
     if args.from_relay:
         srt_path = fetch_from_relay(
-            args.relay, args.lang, args.admin,
+            args.relay, args.lang, args.token,
             ROOT / f"captions-{args.video}-{args.lang}.srt")
     elif args.srt:
         srt_path = args.srt

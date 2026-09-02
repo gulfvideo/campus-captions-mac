@@ -63,9 +63,18 @@ class DeepgramBackend(ASRBackend):
         self.punctuate = bool(cfg.get("punctuate", True))
         self.smart_format = bool(cfg.get("smart_format", True))
         self.endpointing = int(cfg.get("endpointing", 300))
+        # Speaker changes matter to a deaf reader as much as the words: in a
+        # panel or Q&A, one unbroken stream cannot tell a question from its
+        # answer. Deepgram labels every word with a speaker index; a change
+        # becomes a ">>" marker at the start of that speaker's words, the
+        # convention broadcast captions already use. Names still come from
+        # the operator (the status page's caption box) - ASR only knows
+        # "speaker 0" and "speaker 1".
+        self.diarize = bool(cfg.get("diarize", True))
         self.keyterms_file = Path(cfg.get("keyterms_file", "config/keyterms.txt"))
         self.keyterms: list[str] = []
         self.sample_rate = 16000
+        self._last_speaker: int | None = None
 
         self._ws = None
         self._tasks: list[asyncio.Task] = []
@@ -88,6 +97,8 @@ class DeepgramBackend(ASRBackend):
             ("smart_format", "true" if self.smart_format else "false"),
             ("endpointing", str(self.endpointing)),
         ]
+        if self.diarize:
+            params.append(("diarize", "true"))
         # Nova-3 uses keyterm prompting; older models use keyword boosting.
         key = "keyterm" if self.model.startswith("nova-3") else "keywords"
         params += [(key, term) for term in self.keyterms]
@@ -102,6 +113,7 @@ class DeepgramBackend(ASRBackend):
             return
         self.sample_rate = int(sample_rate)
         self.keyterms = load_keyterms(self.keyterms_file)
+        self._last_speaker = None
         self._want_open = True
         self._error = None
         self._tasks.append(asyncio.create_task(self._run(api_key)))
@@ -189,12 +201,45 @@ class DeepgramBackend(ASRBackend):
             kind = msg.get("type")
             if kind == "Results":
                 alts = (msg.get("channel") or {}).get("alternatives") or [{}]
-                text = (alts[0] or {}).get("transcript", "")
+                is_final = bool(msg.get("is_final"))
+                text = self._text_with_speakers(alts[0] or {}, is_final)
                 if text:
-                    self._emit(text, is_final=bool(msg.get("is_final")))
+                    self._emit(text, is_final=is_final)
             elif kind == "Error":
                 self._error = str(msg.get("description") or msg.get("message") or msg)
             # Metadata, SpeechStarted and UtteranceEnd need no action here.
+
+    def _text_with_speakers(self, alt: dict, is_final: bool) -> str:
+        """The transcript, with ">>" wherever the speaker changes.
+
+        Only finals get markers: Deepgram's speaker labels on interim results
+        are still settling, and a marker that flickers in and out on the live
+        row would be worse than none. The last committed speaker carries
+        across segments, so a marker appears only on an actual change - not
+        at the start of every sentence from the same person.
+        """
+        transcript = alt.get("transcript", "")
+        words = alt.get("words") or []
+        if not self.diarize or not is_final or not words:
+            return transcript
+        if not any(isinstance(w, dict) and "speaker" in w for w in words):
+            return transcript
+        out: list[str] = []
+        prev = self._last_speaker
+        for w in words:
+            if not isinstance(w, dict):
+                continue
+            token = w.get("punctuated_word") or w.get("word") or ""
+            if not token:
+                continue
+            speaker = w.get("speaker")
+            if isinstance(speaker, int) and speaker != prev:
+                if prev is not None or out:
+                    out.append(">>")
+                prev = speaker
+            out.append(token)
+        self._last_speaker = prev
+        return " ".join(out)
 
     # -- audio -----------------------------------------------------------
 

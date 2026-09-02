@@ -54,6 +54,49 @@
   }
   #lines > div.new { animation: fadein 260ms ease-out; }
   @keyframes fadein { from { opacity: 0.35; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #lines > div.new { animation: none; } }
+  /* Where the operator cleared the display: the reader keeps their history,
+     with a mark where the segment ended. */
+  #lines > div.divider {
+    height: 0; margin: 0.4em 0 1.1em; border-top: 1px solid rgba(255,255,255,0.28);
+  }
+  #scroll:focus-visible { outline: 3px solid #ffffff; outline-offset: -3px; }
+
+  /* Status banner: reconnecting, paused, a fault. Real text in a live
+     region - the old two-pixel hairline told a deaf reader nothing. Amber
+     edge for trouble, blue edge for an operator's intentional pause. */
+  #status {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 8;
+    padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+    background: #2a2a2a; color: #ffffff; border-bottom: 3px solid #ffd54a;
+    font-size: 16px; font-weight: 600; text-align: center; line-height: 1.3;
+    display: none;
+  }
+  #status.on { display: block; }
+  #status.calm { border-bottom-color: #8ab4ff; }
+
+  /* Welcome / ended screen. The photo is decorative: a scrim plus a dark
+     panel keep the words at high contrast over any image the operator
+     picks, and every word is real text for screen readers and zoom. */
+  #event {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 4;
+    display: none; background: #000000 center / cover no-repeat;
+  }
+  #event.on { display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #event::before {
+    content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.75));
+  }
+  #event .panel {
+    position: relative; max-width: 34rem; width: 100%;
+    background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 16px; padding: 22px 24px; color: #ffffff; text-align: center;
+    overflow-wrap: break-word;
+  }
+  #event h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 10px; }
+  #event p { font-size: 1.05rem; line-height: 1.45; margin: 0 0 10px; }
+  #event .notice { color: #d9d9d9; font-size: 0.95rem; margin: 0; }
+  #event .notice:empty { display: none; }
 
   #interim {
     font-size: var(--size);
@@ -77,16 +120,17 @@
   }
   #latest.on { display: block; }
 
-  /* Settings trigger. One 44px target, low contrast, bottom right - the
-     only thing visible on the page until someone taps it. */
+  /* Settings trigger. One 44px target, bottom right. Quiet, but it is the
+     control a low-vision reader needs to find, so its text clears 4.5:1 and
+     its edge is visible against the page. */
   #settings-btn {
     position: fixed;
     right: calc(env(safe-area-inset-right) + 14px);
     bottom: calc(env(safe-area-inset-bottom) + 14px);
     z-index: 7;
     width: 44px; height: 44px; border-radius: 22px;
-    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.42);
-    border: 0; font-family: inherit; font-size: 15px; font-weight: 600;
+    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.62);
+    border: 1px solid rgba(255,255,255,0.35); font-family: inherit; font-size: 15px; font-weight: 600;
     -webkit-tap-highlight-color: transparent;
   }
   #settings-btn.open { background: rgba(255,255,255,0.16); color: rgba(255,255,255,0.75); }
@@ -178,9 +222,17 @@
 </head>
 <body>
 <div id="link"></div>
-<div id="scroll">
-  <div id="lines"></div>
-  <div id="interim"></div>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="scroll" tabindex="0" role="region" aria-label="Captions">
+  <div id="lines" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
+  <div id="interim" aria-hidden="true"></div>
+</div>
+<div id="event" aria-hidden="true">
+  <div class="panel">
+    <h1 id="event-title">Live captions</h1>
+    <p id="event-message">Live captions will begin when the program starts.</p>
+    <p id="event-notice" class="notice"></p>
+  </div>
 </div>
 <button id="latest" type="button">Jump to latest</button>
 <button id="lang" type="button" aria-label="Language"></button>
@@ -214,6 +266,9 @@
 
   var P, cfg, elScroll, elLines, elInterim, elLatest, elLang, elLink, elDbg;
   var elSettings, elSettingsBtn, elSizeDec, elSizeInc, elSizeValue, elSwatches, elColorCustom;
+  var elStatus, elEvent, elEventTitle, elEventMessage, elEventNotice;
+  var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0;
+  var statusText = '', bannerReason = '', resumedTimer = null, replayMute = null;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, lastMsgAt = 0, startedAt = 0;
   var seenIds = Object.create(null), seenOrder = [], pinned = true, lineCount = 0;
@@ -355,7 +410,87 @@
         // Only show the control when there is a real choice. One language
         // means the button would do nothing, so it stays hidden.
         elLang.className = availableLangs.length > 1 ? 'on' : '';
+        // Interims are always in the source language, whatever stream was
+        // picked - a screen reader needs to know which rules to read by.
+        elInterim.setAttribute('lang', site.source || 'en');
+        if (site.event) applyEvent(site.event);   // welcome screen before the socket is even up
       })['catch'](function () {});
+  }
+
+  // ---- event state and status banner --------------------------------------
+
+  function setStatus(text, calm) {
+    if (text === statusText) return;
+    statusText = text;
+    elStatus.textContent = text || '';
+    elStatus.className = text ? ('on' + (calm ? ' calm' : '')) : '';
+  }
+  // A one-shot announcement that clears itself: "Captions started".
+  function announce(text) {
+    setStatus(text, true);
+    clearTimeout(resumedTimer);
+    resumedTimer = setTimeout(function () { if (statusText === text) setStatus(''); }, 4000);
+  }
+
+  function renderEvent() {
+    var ev = eventInfo || {};
+    var overlay = ev.state === 'starting' || ev.state === 'ended';
+    if (overlay) {
+      elEventTitle.textContent = ev.title || 'Live captions';
+      elEventMessage.textContent = ev.state === 'ended'
+        ? 'This event has ended. Thank you for attending.'
+        : (ev.message || 'Live captions will begin when the program starts.');
+      elEventNotice.textContent = ev.notice || '';
+      elEvent.style.backgroundImage = ev.image
+        ? 'url("/api/event/image?v=' + encodeURIComponent(String(ev.image_v || 0)) + '")'
+        : 'none';
+    }
+    elEvent.className = overlay ? 'on' : '';
+    elEvent.setAttribute('aria-hidden', overlay ? 'false' : 'true');
+  }
+
+  function applyEvent(ev) {
+    if (!ev || typeof ev.state !== 'string') return;
+    var prev = eventInfo ? eventInfo.state : null;
+    eventInfo = ev;
+    renderEvent();
+    if (prev && prev !== ev.state && ev.state === 'live') {
+      announce(prev === 'paused' ? 'Captions resumed' : 'Captions started');
+    }
+  }
+
+  // Decides, once a second, whether the reader needs to be told something
+  // the captions themselves cannot say. A 2.5 s grace keeps a quick
+  // reconnect or a momentary hiccup from flashing a banner.
+  function updateBanner(n) {
+    var ev = eventInfo || {};
+    var reason = '', calm = false;
+    var linkDown = !sock || sock.readyState !== 1 || (n - lastMsgAt) > 20000;
+    if (linkDown) {
+      if (!linkDownAt) linkDownAt = n;
+      if ((n - linkDownAt) > 2500) reason = 'Captions paused — reconnecting…';
+    } else {
+      linkDownAt = 0;
+    }
+    if (!reason && ev.state === 'paused') {
+      reason = ev.pause_message || 'Captions paused';
+      calm = true;
+    }
+    var faulted = !!(health && health.fault);
+    if (!reason && ev.state === 'live' && faulted) {
+      if (!faultSince) faultSince = n;
+      if ((n - faultSince) > 2500) reason = 'Captions paused — technical difficulty';
+    }
+    if (!faulted) faultSince = 0;
+
+    if (reason) {
+      bannerReason = reason;
+      clearTimeout(resumedTimer);
+      setStatus(reason, calm);
+    } else if (bannerReason) {
+      bannerReason = '';
+      announce('Captions resumed');
+    }
   }
 
   // ---- settings panel -----------------------------------------------------
@@ -398,6 +533,18 @@
     if (!isReplay) d.className = 'new';
     elLines.appendChild(d);
     lineCount++;
+    trimScrollback();
+  }
+
+  function addDivider() {
+    var d = document.createElement('div');
+    d.className = 'divider';
+    d.setAttribute('aria-hidden', 'true');
+    elLines.appendChild(d);
+    trimScrollback();
+  }
+
+  function trimScrollback() {
     // Bounded DOM: an all-day service must not grow without limit.
     while (elLines.childNodes.length > cfg.lines) {
       elLines.removeChild(elLines.firstChild);
@@ -446,6 +593,7 @@
 
   function setLink(up) {
     elLink.className = up ? '' : 'down';
+    if (up) linkDownAt = 0;
   }
 
   function connect() {
@@ -504,6 +652,14 @@
       }
       sessionId = m.session_id || null;
       lastSeq = -1;
+      // The replay burst that follows would be read out as thirty lines in
+      // a row; a screen reader user wants the live ones, so the log stays
+      // quiet for a moment.
+      elLines.setAttribute('aria-live', 'off');
+      clearTimeout(replayMute);
+      replayMute = setTimeout(function () { elLines.setAttribute('aria-live', 'polite'); }, 1500);
+      if (m.lang) elLines.setAttribute('lang', m.lang);
+      if (m.event) applyEvent(m.event);
       return;
     }
     if (typeof m.seq === 'number') {
@@ -520,13 +676,21 @@
         setInterimText('');
         break;
       case 'clear':
-        resetAll();
+        // The wall goes blank; the reader keeps what they were reading, with
+        // a mark where the operator drew the line.
+        addDivider();
+        setInterimText('');
+        break;
+      case 'event':
+        applyEvent(m);
         break;
       case 'heartbeat':
         if (m.session_id && sessionId && m.session_id !== sessionId) {
           sessionId = m.session_id;
           resetAll();
         }
+        if (m.event) applyEvent(m.event);
+        if (m.health) health = m.health;
         break;
       default: break;
     }
@@ -558,6 +722,7 @@
       log('stale link, forcing reconnect');
       teardown();
     }
+    updateBanner(n);
     if (cfg.debug) {
       elDbg.textContent =
         'ws       ' + (sock ? WS_NAMES[sock.readyState] : 'none') + '\n' +
@@ -590,6 +755,11 @@
     elSizeValue = document.getElementById('size-value');
     elSwatches = document.getElementById('swatches');
     elColorCustom = document.getElementById('color-custom');
+    elStatus = document.getElementById('status');
+    elEvent = document.getElementById('event');
+    elEventTitle = document.getElementById('event-title');
+    elEventMessage = document.getElementById('event-message');
+    elEventNotice = document.getElementById('event-notice');
 
     document.documentElement.style.setProperty('--bg', cfg.bg);
     setSize(loadSize());

@@ -148,12 +148,14 @@ class MockSource:
 
     async def run(self) -> None:
         url = self.args.url
-        if self.args.token:
-            url += ("&" if "?" in url else "?") + "token=" + self.args.token
+        # Header, not query string - same as the real capture client, so the
+        # token never lands in a log line or a proxy's access log.
+        headers = {"Authorization": f"Bearer {self.args.token}"} if self.args.token else {}
         backoff = 0.5
         while True:
             try:
-                async with websockets.connect(url, ping_interval=20) as ws:
+                async with websockets.connect(url, additional_headers=headers,
+                                              ping_interval=20) as ws:
                     print(f"   connected to {url}")
                     print(f"   stream is {'OPEN' if self.stream_open else 'CLOSED'}"
                           f" - control it from the status page")

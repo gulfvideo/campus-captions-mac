@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import urllib.parse
 from collections.abc import Callable
 
 import websockets
@@ -21,9 +22,10 @@ RECONNECT_CAP = 10.0
 class RelayClient:
     def __init__(self, url: str, token: str = "",
                  on_control: Callable[[str, dict], None] | None = None):
-        if token:
-            url += ("&" if "?" in url else "?") + "token=" + token
         self.url = url
+        # The token rides in a header, not the URL: a query string ends up in
+        # access logs, proxy logs and this client's own connection message.
+        self._headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.on_control = on_control
         self._ws = None
         self._connected = False
@@ -33,6 +35,12 @@ class RelayClient:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def display_url(self) -> str:
+        """The relay address with any query string removed, for log lines."""
+        parts = urllib.parse.urlsplit(self.url)
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
     @property
     def last_error(self) -> str | None:
@@ -60,12 +68,12 @@ class RelayClient:
         backoff = 0.5
         while True:
             try:
-                async with websockets.connect(self.url, ping_interval=20,
-                                              ping_timeout=20) as ws:
+                async with websockets.connect(self.url, additional_headers=self._headers,
+                                              ping_interval=20, ping_timeout=20) as ws:
                     self._ws = ws
                     self._connected = True
                     self._last_error = None
-                    print(f"[capture] connected to relay {self.url}")
+                    print(f"[capture] connected to relay {self.display_url}")
                     backoff = 0.5
                     async for raw in ws:
                         self._handle(raw)

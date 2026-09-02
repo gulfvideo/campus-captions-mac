@@ -17,6 +17,8 @@ config/*.local.*
 config/google_client_secret.json
 config/google_token.json
 captions-*.srt
+# the welcome screen's background photo, uploaded from the status page
+config/welcome.*
 
 # ---- python ------------------------------------------------------------
 __pycache__/

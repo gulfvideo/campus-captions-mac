@@ -180,29 +180,43 @@ machine, not per launch.
 ## Configuration
 
 `config/event.toml` (copy it from `config/event.example.toml`; the real one is
-gitignored). The relay reads the `[relay]` section — host, port, and an
-optional `source_token` that capture clients must present on `/ws/source`
-(empty means no token, which is fine on a closed booth network) — and
+gitignored). The relay reads the `[relay]` section — host, port, and the
+`source_token` that capture clients must present on `/ws/source` — and
 `[youtube]`, covered below. Everything else belongs to the capture client.
 
 Environment always wins, so the launcher can override without editing files:
-`CAPTIONS_HOST`, `CAPTIONS_PORT`, `CAPTIONS_SOURCE_TOKEN`. No Deepgram key ever
-appears in a config file — that stays in the environment.
+`CAPTIONS_HOST`, `CAPTIONS_PORT`, `CAPTIONS_SOURCE_TOKEN`,
+`CAPTIONS_OPERATOR_TOKEN`. No Deepgram key ever appears in a config file —
+that stays in the environment.
+
+Two secrets gate the relay, and both are generated into `.env` on first start
+if nothing sets them, so a fresh checkout is protected without anyone inventing
+a password:
+
+- **`CAPTIONS_SOURCE_TOKEN`** — who may push captions. The capture client reads
+  the same `.env`, so the two agree automatically. An empty token is refused,
+  not treated as "no token": the audience is on the booth LAN too (the QR code
+  put them there), so it was never a closed network.
+- **`CAPTIONS_OPERATOR_TOKEN`** — who may open the status page and call the
+  control API. The launcher opens `/status?token=…`, which signs that browser
+  in for a month; scripts send it as `Authorization: Bearer`. See
+  `docs/MESSAGES.md` "Operator authentication".
 
 ## Relay endpoints
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /wall` `/phone` `/status` `/tune` | the four pages, served `no-store` |
-| `GET /<name>` | any other `viewer/<name>.html`, no code change needed |
+| `GET /wall` `/phone` `/status` `/tune` | the four pages, served `no-store` (`/status` and `/tune` operator-only) |
+| `GET /<name>` | any other `viewer/<name>.html`, no code change needed (operator-only unless listed public) |
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
-| `WS /ws/source?token=…` | capture client, bidirectional |
-| `WS /ws/status` | full status snapshot ~2.5×/second |
+| `WS /ws/source` | capture client, bidirectional; source token as `Authorization: Bearer` |
+| `WS /ws/status` | full status snapshot ~2.5×/second (operator-only) |
 | `GET /api/status` | one snapshot as JSON, plus the relay's LAN address (operator-only) |
 | `GET /api/site` | public metadata: base URL, phone URL, available languages |
 | `GET /api/qr.svg` | the phone URL as a server-rendered QR code, for `/qr` |
 | `GET /api/transcript.srt` | recorded captions as SubRip, `?lang=` (operator-only) |
-| `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list |
+| `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
+| `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |
 
 Pages are served with `no-store`: ProPresenter can hold a page for a whole
