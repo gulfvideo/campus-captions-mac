@@ -31,7 +31,9 @@ client, not who may view or control things.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
 import hmac
 import io
 import os
@@ -109,6 +111,42 @@ NO_STORE = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
 }
+
+# The largest JSON body any operator endpoint accepts, and the largest frame
+# a websocket peer may send. Both are far above anything real; the point is
+# that a hostile client cannot make the event loop parse megabytes.
+MAX_JSON_BYTES = 16 * 1024
+MAX_WS_FRAME_BYTES = 64 * 1024
+
+# Sent on every response. The pages load nothing from anywhere else, so the
+# policy can be strict: scripts only by hash of the page's own inline block
+# (computed when the page is served, so editing a page never breaks it),
+# no framing except by our own tune page, no forms, no plugins.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+}
+SCRIPT_RE = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
+SAFE_HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def page_csp(html: bytes) -> str:
+    hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(m.group(1)).digest()).decode() + "'"
+        for m in SCRIPT_RE.finditer(html)
+    )
+    script_src = hashes or "'none'"
+    return (
+        "default-src 'none'; "
+        f"script-src {script_src}; "
+        "style-src 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self' ws: wss:; "
+        "frame-src 'self'; frame-ancestors 'self'; "
+        "base-uri 'none'; form-action 'none'; object-src 'none'"
+    )
 
 
 def local_ip() -> str:
@@ -203,6 +241,22 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         except ValueError:
             return False
         return bool(origin_host) and origin_host.lower() == headers.get("host", "").lower()
+
+    async def read_json(request: Request) -> dict:
+        """The request body as a dict, or {} if it is not JSON - bounded
+        before it is read, so a large body is refused rather than parsed."""
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_JSON_BYTES:
+            raise HTTPException(status_code=413, detail="request body too large")
+        data = await request.body()
+        if len(data) > MAX_JSON_BYTES:
+            raise HTTPException(status_code=413, detail="request body too large")
+        try:
+            import json as _json
+            body = _json.loads(data.decode("utf-8")) if data else {}
+        except (ValueError, UnicodeDecodeError):
+            return {}
+        return body if isinstance(body, dict) else {}
 
     def text_field(body: dict, name: str, max_len: int, *, allow_empty: bool = False) -> str:
         """A string from a JSON body, stripped, length-bounded, and free of
@@ -403,13 +457,39 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     app.state.hub = hub
     app.state.config = cfg
 
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for key, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(key, value)
+        # Pages set their own hashed policy in file_page; everything else
+        # (JSON, SVG, images, .srt) can carry the strictest one there is.
+        response.headers.setdefault("Content-Security-Policy",
+                                    "default-src 'none'; frame-ancestors 'self'")
+        return response
+
     # -- pages -----------------------------------------------------------
 
-    def file_page(path: Path) -> FileResponse:
+    page_cache: dict[Path, tuple[float, bytes, str]] = {}
+
+    def file_page(path: Path) -> Response:
+        """A viewer page with a Content-Security-Policy that names the hash
+        of its inline script. Read per request (the file may change during
+        an event), hashed once per file version."""
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            raise HTTPException(status_code=404, detail=f"{path.name} not found")
         if not path.is_file():
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
-        return FileResponse(path, media_type="text/html; charset=utf-8",
-                            headers=NO_STORE)
+        cached = page_cache.get(path)
+        if cached is None or cached[0] != mtime:
+            html = path.read_bytes()
+            cached = (mtime, html, page_csp(html))
+            page_cache[path] = cached
+        _, html, csp = cached
+        return Response(content=html, media_type="text/html; charset=utf-8",
+                        headers={**NO_STORE, "Content-Security-Policy": csp})
 
     def page(name: str) -> FileResponse:
         return file_page(config_module.VIEWER_DIR / PAGES[name])
@@ -470,17 +550,27 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     @app.get("/api/qr.svg")
     async def qr_svg(request: Request) -> Response:
-        """QR for the phone view, as SVG so it stays sharp on an LED wall."""
-        target = request.query_params.get("url") or (
-            cfg.base_url(local_ip()) + "/phone")
+        """QR for the phone view, as SVG so it stays sharp on an LED wall.
+
+        `url` may only point at this relay: the page is public, and a QR
+        served from the venue's own address that led somewhere else would
+        be a phishing aid."""
+        ip = local_ip()
+        ours = (cfg.base_url(ip), f"http://{ip}:{cfg.port}",
+                f"http://localhost:{cfg.port}", f"http://127.0.0.1:{cfg.port}")
+        target = request.query_params.get("url") or (cfg.base_url(ip) + "/phone")
+        if len(target) > 512 or not any(target == o or target.startswith(o + "/") for o in ours):
+            raise HTTPException(status_code=400, detail="url must be this relay's own address")
+        dark = request.query_params.get("dark", "#000000")
+        light = request.query_params.get("light", "#ffffff")
+        if not (SAFE_HEX_COLOR.match(dark) and SAFE_HEX_COLOR.match(light)):
+            raise HTTPException(status_code=400, detail="colours must be #rgb or #rrggbb")
         try:
             code = segno.make(target, error="m")
+            buf = io.BytesIO()
+            code.save(buf, kind="svg", scale=10, border=2, dark=dark, light=light)
         except Exception:
             raise HTTPException(status_code=400, detail="cannot encode that url")
-        buf = io.BytesIO()
-        code.save(buf, kind="svg", scale=10, border=2,
-                  dark=request.query_params.get("dark", "#000000"),
-                  light=request.query_params.get("light", "#ffffff"))
         return Response(content=buf.getvalue(), media_type="image/svg+xml",
                         headers=NO_STORE)
 
@@ -592,10 +682,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.post("/api/control")
     async def api_control(request: Request) -> JSONResponse:
         require_operator(request)
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body = await read_json(request)
         action = (body or {}).get("action")
 
         if action in RELAY_ACTIONS:
@@ -646,10 +733,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         title, message, notice, pause_message - any subset. Every change is
         pushed to viewers at once and saved to event.toml."""
         require_operator(request)
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body = await read_json(request)
         body = body or {}
         fields: dict[str, str] = {}
         if "state" in body:
@@ -731,10 +815,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         source-language track - see relay/youtube.py for additional languages.
         """
         require_operator(request)
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body = await read_json(request)
         body = body or {}
         if "url" not in body and "enabled" not in body:
             raise HTTPException(status_code=400, detail="send url and/or enabled")
@@ -785,10 +866,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         walkthrough and where the token comes from.
         """
         require_operator(request)
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body = await read_json(request)
         body = body or {}
         if not any(k in body for k in ("token", "hostname", "enabled")):
             raise HTTPException(status_code=400, detail="send token, hostname, and/or enabled")
@@ -848,10 +926,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         pasted mid-event.
         """
         require_operator(request)
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+        body = await read_json(request)
         body = body or {}
         if not any(k in body for k in ("key", "region", "languages")):
             raise HTTPException(status_code=400, detail="send key, region, and/or languages")
@@ -910,8 +985,14 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         try:
             while True:
                 raw = await ws.receive_text()
-                if read:
-                    hub.ingest(raw, client.peer)
+                if not read:
+                    # Viewers never send. One that does is not our page.
+                    await ws.close(code=1008)
+                    break
+                if len(raw) > MAX_WS_FRAME_BYTES:
+                    await ws.close(code=1009)
+                    break
+                hub.ingest(raw, client.peer)
         except WebSocketDisconnect:
             pass
         except Exception as exc:                     # never take the relay down

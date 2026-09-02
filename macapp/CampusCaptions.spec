@@ -10,9 +10,14 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller injects SPECPATH
 
+# Only the *example* config ships in the bundle. The real event.toml, the
+# .env with the keys, and any uploaded images live in
+# ~/Library/Application Support/Campus Captions/ (see relay/config.py) - the
+# app creates them on first run - so nothing personal or secret travels with
+# a zipped .app, and writing settings never breaks the bundle's signature.
 datas = [
     (str(ROOT / "viewer"), "viewer"),
-    (str(ROOT / "config" / "event.toml"), "config"),
+    (str(ROOT / "config" / "event.example.toml"), "config"),
     (str(ROOT / "config" / "keyterms.txt"), "config"),
     (str(ROOT / "config" / "mock_script.txt"), "config"),
     (str(ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"),

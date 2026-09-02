@@ -17,10 +17,30 @@ from pathlib import Path
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
 # (where the .spec's `datas` land) when frozen into the macOS app.
-ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = ROOT / "config" / "event.toml"
+FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
+# Per-machine state lives outside the .app bundle - see relay/config.py for
+# why. The relay (same process in the packaged app) creates event.toml there
+# on first run; this side only ever reads config and writes .env.
+DATA_DIR = (Path.home() / "Library" / "Application Support" / "Campus Captions") if FROZEN else ROOT
+DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
-ENV_FILE = ROOT / ".env"
+ENV_FILE = DATA_DIR / ".env"
+
+
+def resolve_path(value: str) -> str:
+    """A relative path in event.toml (keyterms_file, mock_script) means "next
+    to my config" first, then "shipped with the app". Absolute paths pass
+    through. Matters for the packaged app, whose working directory is not
+    the bundle."""
+    p = Path(value)
+    if p.is_absolute():
+        return str(p)
+    for base in (DATA_DIR, ROOT):
+        candidate = base / p
+        if candidate.exists():
+            return str(candidate)
+    return str(DATA_DIR / p)
 
 
 def _log_dir() -> Path:
@@ -216,6 +236,11 @@ def load(path: Path | None = None) -> CaptureConfig:
         f"whisper_{key}": value
         for key, value in (data.get("whisper", {}) or {}).items()
     })
+    for key in ("keyterms_file", "mock_script"):
+        if isinstance(backend_config.get(key), str):
+            backend_config[key] = resolve_path(backend_config[key])
+    if "keyterms_file" not in backend_config:
+        backend_config["keyterms_file"] = resolve_path("config/keyterms.txt")
     cfg.backend_config = backend_config
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)

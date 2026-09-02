@@ -391,7 +391,10 @@
       bg:    hex('bg', '#000000'),
       lines: Math.round(num('lines', 200, 10, 2000)),  // scrollback cap, bounded DOM
       debug: flag('debug'),
-      relay: P.get('relay'),
+      // A relay override is honoured only when the page was opened as a
+      // file (ProPresenter's web layer, testing). Served from the relay it
+      // would let a crafted link point every phone at a stranger's server.
+      relay: location.protocol === 'file:' ? P.get('relay') : null,
       lang: P.get('lang') || ''
     };
   }

@@ -158,7 +158,7 @@
       debug:    flag('debug'),
       text:     P.get('text'),
       soak:     P.get('soak'),
-      relay:    P.get('relay')
+      relay:    location.protocol === 'file:' ? P.get('relay') : null   // file:// use only, see phone.html
     };
   }
 

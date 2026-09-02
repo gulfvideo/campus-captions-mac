@@ -18,11 +18,31 @@ from pathlib import Path
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
 # (where the .spec's `datas` land) when frozen into the macOS app.
-ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = ROOT / "config" / "event.toml"
+FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
+# Per-machine state - event.toml, .env, uploaded images - lives in the
+# checkout when run from source, and in the user's Application Support folder
+# when packaged. Never inside the .app: a bundle is signed, shared as a zip,
+# and replaced on every update, so a Deepgram key written into it would break
+# the signature and travel with the next copy someone passes around.
+DATA_DIR = (Path.home() / "Library" / "Application Support" / "Campus Captions") if FROZEN else ROOT
+DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 VIEWER_DIR = ROOT / "viewer"
-ENV_FILE = ROOT / ".env"
+ENV_FILE = DATA_DIR / ".env"
+
+
+def ensure_data_dir() -> None:
+    """First run of the packaged app: give it a real event.toml to edit,
+    copied from the example, in the place the status page will write to."""
+    if not FROZEN:
+        return
+    try:
+        DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        if not DEFAULT_CONFIG.exists() and EXAMPLE_CONFIG.exists():
+            DEFAULT_CONFIG.write_bytes(EXAMPLE_CONFIG.read_bytes())
+    except OSError as exc:
+        print(f"[relay] could not prepare {DATA_DIR}: {exc}")
 
 
 def _log_dir() -> Path:
@@ -249,6 +269,7 @@ def load(path: Path | None = None) -> RelayConfig:
     Both tokens are generated and written to .env when nothing sets them.
     """
     setup_logging()
+    ensure_data_dir()
     load_env_file()
     cfg = RelayConfig()
     chosen = path or (DEFAULT_CONFIG if DEFAULT_CONFIG.exists() else EXAMPLE_CONFIG)

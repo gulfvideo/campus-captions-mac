@@ -21,6 +21,8 @@ captions-*.srt
 # the status page
 config/welcome.*
 config/logo.*
+# pre-downloaded Whisper models (whisper_model_dir in event.toml)
+models/
 
 # ---- python ------------------------------------------------------------
 __pycache__/

@@ -189,6 +189,11 @@ Environment always wins, so the launcher can override without editing files:
 `CAPTIONS_OPERATOR_TOKEN`. No Deepgram key ever appears in a config file —
 that stays in the environment.
 
+Running from source, `config/event.toml` and `.env` live in the checkout. The
+packaged macOS app keeps them, and any uploaded welcome photo or logo, in
+`~/Library/Application Support/Campus Captions/` — never inside the `.app`,
+which is signed and gets passed around as a zip.
+
 Two secrets gate the relay, and both are generated into `.env` on first start
 if nothing sets them, so a fresh checkout is protected without anyone inventing
 a password:

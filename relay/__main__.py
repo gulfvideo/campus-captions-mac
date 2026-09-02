@@ -34,7 +34,7 @@ def main() -> None:
 
     uvicorn.run(create_app(cfg), host=cfg.host, port=cfg.port,
                 log_level=args.log_level, ws_ping_interval=20,
-                ws_ping_timeout=20)
+                ws_ping_timeout=20, ws_max_size=64 * 1024)
 
 
 if __name__ == "__main__":

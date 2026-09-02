@@ -123,6 +123,7 @@ def run_relay(cfg) -> None:
     server = _SilentServer(uvicorn.Config(
         create_app(cfg), host=cfg.host, port=cfg.port,
         log_level="warning", ws_ping_interval=20, ws_ping_timeout=20,
+        ws_max_size=64 * 1024,
     ))
     server.run()
 
@@ -227,8 +228,8 @@ def main() -> None:
             rumps.alert("Campus Captions",
                         f"Port {rcfg.port} is already used by another program "
                         f"on this Mac. Close it, or change the port in this "
-                        f"app's config/event.toml (right-click the app, Show "
-                        f"Package Contents).")
+                        f"app's config file: ~/Library/Application Support/"
+                        f"Campus Captions/config/event.toml.")
         return
 
     app = CampusCaptionsApp(rcfg.port)

@@ -429,6 +429,25 @@ draw the welcome screen before its websocket is up.
 `clear` is the exception: the relay applies it to viewers itself, in addition to
 forwarding it, so the wall blanks even when no capture client is connected.
 
+## Hardening details
+
+- Every viewer page is served with a `Content-Security-Policy` whose
+  `script-src` is the SHA-256 hash of that page's own inline script, computed
+  when the page is served; nothing external is allowed, pages may be framed
+  only by this origin (the tune page's preview), and forms and plugins are off.
+  Every other response carries `default-src 'none'`, plus `nosniff`,
+  `Referrer-Policy: no-referrer` and `X-Frame-Options: SAMEORIGIN`.
+- JSON bodies over 16 KiB are refused with `413` before they are read;
+  websocket frames over 64 KiB close the connection (`1009`); a viewer that
+  sends anything is closed (`1008`).
+- `/api/qr.svg` encodes only this relay's own addresses and accepts colours
+  as `#rgb`/`#rrggbb` only.
+- `cloudflared` and the Apple speech helper are started with a minimal
+  environment (`PATH`, `HOME`, locale, TLS certificate variables) rather than
+  the relay's, which holds the API keys.
+- The packaged macOS app keeps `event.toml`, `.env` and uploaded images in
+  `~/Library/Application Support/Campus Captions/`, never inside the bundle.
+
 ## Exposing the relay publicly (a tunnel)
 
 If `[relay] public_hostname` (config/event.toml) is set - typically to a

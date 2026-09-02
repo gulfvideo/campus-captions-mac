@@ -30,6 +30,9 @@ REPLAY_BUFFER = 200
 CLIENT_QUEUE_MAX = 256
 
 MAX_TEXT_CHARS = 2000
+# A source frame larger than this is not a caption. Refused before json.loads
+# so a hostile peer cannot park the event loop on a megabyte of brackets.
+MAX_FRAME_CHARS = 16 * 1024
 SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
 CONTROL_ACTIONS = {
     "open_stream", "close_stream", "clear", "reload_keyterms",
@@ -235,6 +238,8 @@ class Hub:
 
     def ingest(self, raw: str, peer: str) -> None:
         """Handle one frame from a capture client. Never raises on bad input."""
+        if len(raw) > MAX_FRAME_CHARS:
+            return
         try:
             msg = json.loads(raw)
         except (ValueError, TypeError):

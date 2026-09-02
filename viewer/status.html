@@ -1256,7 +1256,10 @@
       if (s.relay) {
         var base = 'http://' + s.relay.ip + ':' + s.relay.port;
         $('url-wall').textContent = base + '/wall';
-        $('url-phone').textContent = base + '/phone';
+        // The phone link is what gets handed out; prefer the https tunnel
+        // address when there is one, like the QR code does.
+        $('url-phone').textContent = (s.relay.public_hostname
+          ? 'https://' + s.relay.public_hostname : base) + '/phone';
       }
     })['catch'](function () {});
 

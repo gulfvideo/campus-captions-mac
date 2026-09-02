@@ -36,6 +36,20 @@ NATIVE_DIR = Path(sys._MEIPASS, "capture", "backends", "native") if FROZEN else 
     Path(__file__).resolve().parent / "native"
 BUILD_SCRIPT = NATIVE_DIR / "build.sh"
 SOURCE = NATIVE_DIR / "speech_helper.swift"
+
+# What the helper (and swiftc/codesign when building it) may see of this
+# process's environment. The capture client's environment carries the
+# Deepgram key, and in the packaged app the Azure key and tunnel token too;
+# a speech helper needs none of them. Mirrors relay/tunnel.py.
+CHILD_ENV_KEYS = (
+    "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "USER", "LOGNAME",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "DEVELOPER_DIR", "SDKROOT",
+)
+
+
+def child_env() -> dict[str, str]:
+    import os
+    return {k: v for k, v in os.environ.items() if k in CHILD_ENV_KEYS}
 BINARY = NATIVE_DIR / "build" / "speech_helper"
 
 # Long enough for the helper's own finalize-on-EOF to emit its last result.
@@ -68,7 +82,8 @@ def _ensure_built() -> str | None:
         return None
     try:
         result = subprocess.run(
-            [str(BUILD_SCRIPT)], capture_output=True, text=True, timeout=120)
+            [str(BUILD_SCRIPT)], capture_output=True, text=True, timeout=120,
+            env=child_env())
     except FileNotFoundError:
         return "Xcode command line tools not found (swiftc/codesign unavailable)"
     except subprocess.TimeoutExpired:
@@ -116,6 +131,7 @@ class AppleSpeechBackend(ASRBackend):
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
+                env=child_env(),
             )
         except Exception as exc:
             self._error = f"could not start speech_helper: {exc}"
