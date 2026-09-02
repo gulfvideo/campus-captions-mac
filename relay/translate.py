@@ -29,6 +29,33 @@ from collections import OrderedDict
 
 AZURE_DEFAULT_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 REQUEST_TIMEOUT = 8.0
+
+# AZURE_TRANSLATOR_ENDPOINT exists for regional/custom Translator resources.
+# The subscription key is sent to whatever host it names, so it is held to
+# Microsoft's own domains over https - anything else is ignored with a
+# message rather than quietly handing the key to a stranger.
+ALLOWED_ENDPOINT_SUFFIXES = (
+    ".microsofttranslator.com",
+    ".cognitiveservices.azure.com",
+    ".cognitiveservices.azure.us",
+    ".cognitiveservices.azure.cn",
+)
+
+
+def endpoint_from_env() -> str:
+    raw = os.environ.get("AZURE_TRANSLATOR_ENDPOINT", "").strip()
+    if not raw:
+        return AZURE_DEFAULT_ENDPOINT
+    try:
+        parts = urllib.parse.urlsplit(raw)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        parts, host = None, ""
+    if parts is not None and parts.scheme == "https" and host.endswith(ALLOWED_ENDPOINT_SUFFIXES):
+        return raw
+    print("[relay] ignoring AZURE_TRANSLATOR_ENDPOINT: must be an https Microsoft "
+          "Translator endpoint - using the default")
+    return AZURE_DEFAULT_ENDPOINT
 CACHE_SIZE = 512
 MAX_CHARS = 2000
 
@@ -176,8 +203,7 @@ def create(provider: str, targets: list[str]) -> Translator | None:
         return AzureTranslator(
             key=key,
             region=os.environ.get("AZURE_TRANSLATOR_REGION", "").strip(),
-            endpoint=os.environ.get("AZURE_TRANSLATOR_ENDPOINT",
-                                    AZURE_DEFAULT_ENDPOINT),
+            endpoint=endpoint_from_env(),
         )
     print(f"[relay] unknown translation provider {provider!r}, "
           f"continuing without translation")
@@ -198,21 +224,26 @@ class TranslationWorker:
         self.translator = translator
         self.source = source
         self.targets = list(targets)
-        self.emit = emit                     # emit(lang, text, utterance_id)
+        self.emit = emit                     # emit(lang, text, utterance_id, t0, t)
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=64)
         self.translated = 0
         self.dropped = 0
         self._task: asyncio.Task | None = None
 
-    def submit(self, text: str, utterance_id: str) -> None:
+    def submit(self, text: str, utterance_id: str,
+               t0: float | None = None, t: float | None = None) -> None:
+        """Queue a committed source line. `t0`/`t` are when it was spoken and
+        committed; the translated line inherits them so its .srt cue covers
+        the same window instead of collapsing to the minimum duration."""
+        item = (text, utterance_id, t0, t)
         try:
-            self.queue.put_nowait((text, utterance_id))
+            self.queue.put_nowait(item)
         except asyncio.QueueFull:
             # Falling behind: the newest line matters more than the oldest.
             self.dropped += 1
             try:
                 self.queue.get_nowait()
-                self.queue.put_nowait((text, utterance_id))
+                self.queue.put_nowait(item)
             except (asyncio.QueueEmpty, asyncio.QueueFull):
                 pass
 
@@ -232,12 +263,12 @@ class TranslationWorker:
 
     async def _run(self) -> None:
         while True:
-            text, utterance_id = await self.queue.get()
+            text, utterance_id, t0, t = await self.queue.get()
             try:
                 results = await self.translator.translate(
                     text, self.source, self.targets)
                 for lang, translated in results.items():
-                    self.emit(lang, translated, utterance_id)
+                    self.emit(lang, translated, utterance_id, t0, t)
                 if results:
                     self.translated += 1
             except asyncio.CancelledError:

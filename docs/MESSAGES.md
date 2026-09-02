@@ -24,6 +24,13 @@ Unknown `type` values MUST be ignored silently. Unknown fields MUST be ignored.
 | `/ws/source` | capture client | both ways |
 | `/ws/status` | status page | relay → status |
 
+`/ws/source` needs the source token, sent as `Authorization: Bearer ...`
+(`?token=` on the URL is also accepted). `/ws/status` needs the operator
+token - see "Operator authentication" below. Both refuse a handshake whose
+`Origin` header names a different host than the request's `Host`: browsers
+never apply same-origin policy to WebSockets themselves, so without that a
+page on any site could open these from a booth machine's browser.
+
 `role` affects only how many committed lines are replayed on connect
 (`wall` → 2, `phone` → 30). `lang` selects which language stream to join
 (default: the source language) - each language is an independent stream with
@@ -121,10 +128,45 @@ history. Absence of the field means live.
 Wipe the display now. Also empties the relay's replay buffer, so a viewer
 connecting afterwards gets nothing rather than pre-clear text.
 
+### `event`
+
+```json
+{"type":"event","seq":46,"t":1756590106.0,"state":"live","title":"Fall Convocation",
+ "message":"","notice":"Captions are automatic.","pause_message":"","image":true,
+ "image_v":1756589000,"logo":true,"logo_v":1756589100,"logo_alt":"Faulkner University",
+ "changed_at":1756590106.0}
+```
+
+`logo` / `logo_v` / `logo_alt` describe an optional logo at
+`GET /api/event/logo?v=<logo_v>` that the phone view shows in a slim header
+row above the captions while the state is `live` or `paused` - never over the
+welcome screen, which has the title already. `logo_alt` is the accessible
+name the operator gave it; empty means decorative.
+
+Where the event is, sent to every viewer the moment the operator changes it,
+and also carried in `hello` (as `event`) and in every `heartbeat`. `state` is
+one of `starting` (phones show the welcome screen: `title`, `message`,
+`notice`, and the photo at `GET /api/event/image?v=<image_v>` when `image` is
+true), `live` (captions), `paused` (captions stay up under a banner reading
+`pause_message`, or "Captions paused"), or `ended`. Defaults for empty text
+live in the viewer, so an operator who types nothing still gets a sensible
+screen. See "Event state" below for the API.
+
 ### `heartbeat`
 
 ```json
-{"type":"heartbeat","seq":45,"t":1756590105.0,"session_id":"7f3a1c9e","viewers":12}
+{"type":"heartbeat","seq":45,"t":1756590105.0,"session_id":"7f3a1c9e","viewers":12,
+ "event":{"state":"live", ...},
+ "health":{"source":true,"audio":"live","asr":"producing","fault":null}}
+```
+
+`health` is the one thing a viewer needs to know about the pipeline that the
+captions themselves cannot say. `fault` is `null` or one of `no_source`,
+`source_error`, `audio_stalled`, `stream_closed`. While `event.state` is
+`live` and a fault persists for more than a couple of seconds, the phone view
+shows a "Captions paused - technical difficulty" banner and the wall shows a
+short status line; both clear on their own. A deaf attendee has no other way to
+tell a dead microphone from a pause.
 ```
 
 Every 5 seconds. A viewer that has seen no frame of any kind for 20 seconds
@@ -243,16 +285,18 @@ object once, plus a `relay` block.
               "last_final_text": "Our next speaker is Dr. Vasquez."},
   "viewers": {"total": 34, "wall": 2, "phone": 31, "status": 1},
   "youtube": {"configured": true, "enabled": false, "pushed": 118, "error": null,
-              "url": "http://upload.youtube.com/closedcaption?cid=...", "lang": "en-US"}
+              "url_hint": "upload.youtube.com/closedcaption?cid=…k3Qz", "lang": "en-US"}
 }
 ```
 
 `youtube` is relay-local state, not reported by the capture client - see
 "Pushing captions to YouTube Live" below. `configured` is whether a `url` is
 set at all; `enabled` is the operator's toggle, which can only be turned on
-when `configured` is true. `url` is echoed back so the status page can show
-what's currently saved (masked by default, since it does grant caption-posting
-capability to whoever has it) without needing a config file open next to it.
+when `configured` is true. The URL itself is never sent back - it grants
+caption-posting capability to whoever has it, and this snapshot goes to every
+status client several times a second - only `url_hint` (host, path, and the
+last four characters of `cid`) so the status page can say which stream is
+saved.
 
 The relay decides what the words mean, so every status display agrees:
 
@@ -271,11 +315,53 @@ sentences.
 
 ```json
 {"relay": {"host": "0.0.0.0", "port": 8000, "ip": "192.168.8.169",
-           "token_required": false, "config": "config/event.toml"}}
+           "token_required": true, "config": "config/event.toml"}}
 ```
 
 `ip` is the relay's LAN address, which is what the status page prints for
 phones and for the ProPresenter URL.
+
+## Transcript export
+
+```
+GET /api/transcript.srt?lang=en&offset=0.8
+```
+
+Cues follow the DCMP presentation rules: at most two lines of at most 42
+characters, a long line split into consecutive cues that share its time
+window, a duration a reader can manage (17 characters per second, at least
+1.2 s, at most 7 s), and an 80 ms gap between neighbours. Translated lines
+inherit the source line's window. `offset` (seconds, 0-10) shifts every cue
+earlier to take the recognizer's own delay back out; about 0.8 suits Deepgram.
+
+## Operator authentication
+
+Everything that changes state or reveals it - `/status`, `/tune`, any
+`viewer/*.html` not explicitly public, `GET /api/status`,
+`GET /api/transcript.srt`, every `POST /api/*`, and `/ws/status` - needs the
+operator token. It is `CAPTIONS_OPERATOR_TOKEN` in `.env`, generated the
+first time the relay (or the launcher) starts.
+
+Two ways to present it:
+
+- **Browser.** Open `/status?token=...` once (the launcher and the menu bar
+  app open exactly that link). The relay answers with a `303` to `/status`
+  and sets a `captions_operator` cookie (`HttpOnly`, `SameSite=Strict`, 30
+  days). Every later page load, fetch, and `/ws/status` handshake from that
+  browser carries the cookie. `SameSite=Strict` is what makes the JSON
+  `POST`s safe from cross-site request forgery: a request started by another
+  site never carries the cookie, and the relay additionally refuses a
+  cookie-authenticated `POST` whose `Sec-Fetch-Site` says cross-site.
+- **Scripts.** Send `Authorization: Bearer <token>` (e.g.
+  `tools/youtube_upload.py --from-relay`).
+
+Without either, pages get a short `401` page saying where the link is, and
+API routes get `401 {"detail": "operator token required"}`. This is separate
+from, and in addition to, the public-hostname gate below: through the public
+hostname these routes are `404` even with a valid token.
+
+The LAN is not a trust boundary - the QR code invites the audience onto it -
+which is why being on it proves nothing here.
 
 ## Control API
 
@@ -293,34 +379,104 @@ POST /api/control    {"action": "set_deepgram_key", "key": "..."}
   ->  400 if the action is unknown or key is not a short string
 ```
 
+```
+POST /api/control    {"action": "caption", "text": "[Applause]"}
+  ->  200 {"ok": true, "action": "caption"}
+  ->  400 if text is empty, over 200 characters, or carries control characters
+```
+
+A `final` may also carry `"late": true`: the capture client held it while the
+relay was unreachable and sent it on reconnect. Its `t` is the time it was
+actually committed, so the transcript stays honest; viewers render it like any
+other line.
+
+`caption` is handled by the relay itself and needs no capture client: the text
+is committed exactly like a final from the recognizer - wall, phones, replay
+buffer, transcript, translation, YouTube - with `"kind": "note"` on the frame.
+It is how an operator captions what speech recognition cannot hear
+(`[Applause]`, `[Music]`, `[Inaudible]`) and names speakers (`>> Dr. Vasquez:`),
+both of which FCC and DCMP caption-quality guidance require. The status page has
+one-tap buttons for the common ones.
+
 `delivered_to` is the number of capture clients that received it — `0` means
 nothing is listening, which the status page reports rather than pretending the
 action worked.
 
+## Event state
+
+```
+POST /api/event           {"state": "live"}
+POST /api/event           {"title": "Fall Convocation", "message": "...", "notice": "...", "pause_message": "Intermission"}
+  ->  200 {"ok": true, "state": "live", "title": ..., "image": false, "image_v": 0, ...}
+  ->  400 if state is not starting|live|paused|ended, or a field is too long
+PUT  /api/event/image     (body: the raw JPEG/PNG/WebP bytes, at most 5 MB)
+  ->  200 {"ok": true, ..., "image": true, "image_v": 1756589000}
+  ->  400 if the bytes are not a JPEG, PNG, or WebP; 413 if over 5 MB
+DELETE /api/event/image   ->  200
+GET  /api/event/image     ->  the image (public; cache by ?v=<image_v>)
+PUT / DELETE / GET /api/event/logo   ->  the same, for the logo (stored as config/logo.<ext>)
+```
+
+`logo_alt` is one more text field on `POST /api/event`, up to 80 characters.
+
+All operator-only except the `GET`. Any subset of fields may be sent. Every
+change is broadcast as an `event` frame and written to `[event]` in
+`config/event.toml`; the image is stored as `config/welcome.<ext>`. The type is
+sniffed from the bytes, never taken from the header, and SVG is refused because
+it can carry scripts. `/api/site` also carries `event`, so the phone page can
+draw the welcome screen before its websocket is up.
+
 `clear` is the exception: the relay applies it to viewers itself, in addition to
 forwarding it, so the wall blanks even when no capture client is connected.
+
+## Hardening details
+
+- Every viewer page is served with a `Content-Security-Policy` whose
+  `script-src` is the SHA-256 hash of that page's own inline script, computed
+  when the page is served; nothing external is allowed, pages may be framed
+  only by this origin (the tune page's preview), and forms and plugins are off.
+  Every other response carries `default-src 'none'`, plus `nosniff`,
+  `Referrer-Policy: no-referrer` and `X-Frame-Options: SAMEORIGIN`.
+- JSON bodies over 16 KiB are refused with `413` before they are read;
+  websocket frames over 64 KiB close the connection (`1009`); a viewer that
+  sends anything is closed (`1008`).
+- `/api/qr.svg` encodes only this relay's own addresses and accepts colours
+  as `#rgb`/`#rrggbb` only.
+- `cloudflared` and the Apple speech helper are started with a minimal
+  environment (`PATH`, `HOME`, locale, TLS certificate variables) rather than
+  the relay's, which holds the API keys.
+- The packaged macOS app keeps `event.toml`, `.env` and uploaded images in
+  `~/Library/Application Support/Campus Captions/`, never inside the bundle.
 
 ## Exposing the relay publicly (a tunnel)
 
 If `[relay] public_hostname` (config/event.toml) is set - typically to a
 Cloudflare Tunnel or similar domain that makes this relay reachable from
 outside the booth LAN - every request is checked against its `Host` header.
-Only `/`, `/wall`, `/phone`, `/tune`, other `viewer/*.html` files, and
+Only `/`, `/wall`, `/phone`, `/qr`, `/api/site`, `/api/qr.svg`, and
 `/ws/viewer` work when the `Host` matches `public_hostname`; `/status`,
-`GET /api/status`, `POST /api/control`, `POST /api/youtube-captions`,
-`POST /api/translation`, `POST /api/tunnel`, `/ws/status`, and `/ws/source` all reject with 404 (HTTP) or a connection
-refusal (WebSocket) - never a redirect to a login, just as if the route did
-not exist. `/` itself serves the phone page rather than the operator
-dashboard for a public `Host`. Requests arriving as `localhost` or the LAN IP
-are completely unaffected regardless of this setting - the gate only ever
-triggers on the exact configured hostname.
+`/tune`, `GET /api/status`, `POST /api/control`, `POST /api/youtube-captions`,
+`POST /api/translation`, `POST /api/tunnel`, `/ws/status`, and `/ws/source` all
+reject with 404 (HTTP) or a connection refusal (WebSocket) - never a redirect
+to a login, just as if the route did not exist, and regardless of any operator
+token presented. `/` itself serves the phone page rather than redirecting to
+the operator dashboard for a public `Host`.
+
+This gate holds only when whatever sits in front of the relay forwards the
+original `Host` unchanged (Cloudflare Tunnel does). A proxy that rewrites
+`Host` to `localhost:8000` would defeat it - which is why the operator token
+above is the primary control and this is the second layer. Two related rules
+keep it from failing open: the tunnel is never auto-started at boot while
+`public_hostname` is empty, and `POST /api/tunnel` refuses to clear the
+hostname while the tunnel is enabled.
 
 ## Pushing captions to YouTube Live
 
 ```
 POST /api/youtube-captions    {"url": "http://upload.youtube.com/closedcaption?cid=..."}
-  ->  200 {"ok": true, "configured": true, "enabled": false, "pushed": 0, "error": null, "url": "...", "lang": "en-US"}
-  ->  400 if url doesn't start with http:// or https://
+  ->  200 {"ok": true, "configured": true, "enabled": false, "pushed": 0, "error": null, "url_hint": "upload.youtube.com/closedcaption?cid=…", "lang": "en-US"}
+  ->  400 unless the host is upload.youtube.com (every committed line is POSTed
+          there, so an arbitrary host would be a transcript exfiltration channel)
 POST /api/youtube-captions    {"enabled": true}
   ->  200 {"ok": true, ...same shape}
   ->  400 if enabled is not a boolean, or true with no url configured yet
@@ -374,6 +530,8 @@ POST /api/tunnel    {"hostname": "captions.example.com", "token": "..."}
 POST /api/tunnel    {"enabled": true}
   ->  200 {"ok": true, ..., "public_hostname": "captions.example.com"}
   ->  400 if enabled: true with no token or no hostname set yet
+  ->  400 if hostname is "" while the tunnel is enabled (disable it first),
+          or is not a plain DNS name
 ```
 
 `hostname`, `token`, and `enabled` may be sent alone or together. Like

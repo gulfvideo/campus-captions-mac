@@ -15,15 +15,20 @@
     --sub: 2.6;              /* URL size, vh */
   }
   html, body {
-    margin: 0; padding: 0; width: 100%; height: 100%;
-    background: var(--bg); overflow: hidden;
+    margin: 0; padding: 0; width: 100%; min-height: 100%;
+    background: var(--bg);
   }
+  /* This is a lobby display, but it is served publicly and gets opened on
+     phones too: so it scrolls rather than clips, text has a rem floor so
+     zoom and text-size settings still work, and the address is a real link. */
   body {
     display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 3vh 4vw; box-sizing: border-box;
     font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
-    color: var(--fg); cursor: none;
-    -webkit-user-select: none; user-select: none;
+    color: var(--fg);
   }
+  @media (pointer: none), (pointer: coarse) { body { cursor: auto; } }
+  @media (min-width: 900px) and (pointer: fine) { body { cursor: none; } }
   #wrap {
     display: flex; flex-direction: column; align-items: center;
     gap: 3.2vh; text-align: center;
@@ -32,9 +37,9 @@
   #wrap.on { opacity: 1; }
 
   #title {
-    font-size: calc(var(--title) * 1vh);
+    font-size: max(1.25rem, calc(var(--title) * 1vh));
     font-weight: 650; letter-spacing: 0.005em; line-height: 1.15;
-    max-width: 88vw;
+    max-width: 88vw; margin: 0;
   }
   #card {
     background: var(--card);
@@ -43,26 +48,32 @@
     line-height: 0;
   }
   #card svg, #card img {
-    height: calc(var(--size) * 1vh);
-    width: calc(var(--size) * 1vh);
+    height: min(calc(var(--size) * 1vh), 80vw);
+    width: min(calc(var(--size) * 1vh), 80vw);
     display: block;
   }
   #url {
-    font-size: calc(var(--sub) * 1vh);
-    font-weight: 500; opacity: 0.86; letter-spacing: 0.01em;
+    font-size: max(1rem, calc(var(--sub) * 1vh));
+    font-weight: 500; letter-spacing: 0.01em;
     word-break: break-all; max-width: 88vw;
+    color: var(--fg); text-decoration: none;
   }
+  #url:focus-visible { outline: 3px solid var(--fg); outline-offset: 4px; }
   #note {
-    font-size: calc(var(--sub) * 0.82vh);
-    opacity: 0.6; max-width: 70vw;
+    font-size: max(0.9rem, calc(var(--sub) * 0.82vh));
+    opacity: 0.75; max-width: 70vw;
+  }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
   }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <div id="title">Live captions</div>
-  <div id="card"><img id="qr" alt=""></div>
-  <div id="url"></div>
+  <h1 id="title">Live captions</h1>
+  <div id="card"><img id="qr" alt="QR code"></div>
+  <a id="url" href="#"></a>
   <div id="note"></div>
 </div>
 <script>
@@ -99,12 +110,17 @@
     var pretty = url.replace(/^https?:\/\//, '');
     document.getElementById('title').textContent =
       P.get('title') !== null ? P.get('title') : 'Live captions';
-    document.getElementById('url').textContent =
-      P.get('showurl') === '0' ? '' : pretty;
+    var link = document.getElementById('url');
+    link.href = url;
+    link.textContent = pretty;
+    // Hidden visually on request, never from assistive technology: the
+    // address is the one thing this page exists to convey.
+    link.className = P.get('showurl') === '0' ? 'visually-hidden' : '';
     document.getElementById('note').textContent = P.get('note') || '';
     // The QR itself is rendered by the relay as SVG, so it stays crisp at any
     // LED resolution and the page needs no QR library.
     var img = document.getElementById('qr');
+    img.alt = 'QR code for ' + pretty;
     img.onload = function () { document.getElementById('wrap').className = 'on'; };
     img.src = '/api/qr.svg?url=' + encodeURIComponent(url)
             + '&dark=' + encodeURIComponent(hex('qrdark', '#000000'))
@@ -113,8 +129,11 @@
 
   function boot() {
     apply();
+    // An explicit url is honoured only for this relay's own address - the
+    // page is public, and a link that puts a stranger's site behind the
+    // venue's QR code would be a phishing aid.
     var explicit = P.get('url');
-    if (explicit) { show(explicit); return; }
+    if (explicit && location.origin && explicit.indexOf(location.origin) === 0) { show(explicit); return; }
 
     // Ask the relay what address to advertise: the public URL when one is
     // configured, otherwise this machine's LAN address. Never "localhost",

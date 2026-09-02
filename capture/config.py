@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -16,10 +17,30 @@ from pathlib import Path
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
 # (where the .spec's `datas` land) when frozen into the macOS app.
-ROOT = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = ROOT / "config" / "event.toml"
+FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
+# Per-machine state lives outside the .app bundle - see relay/config.py for
+# why. The relay (same process in the packaged app) creates event.toml there
+# on first run; this side only ever reads config and writes .env.
+DATA_DIR = (Path.home() / "Library" / "Application Support" / "Campus Captions") if FROZEN else ROOT
+DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
-ENV_FILE = ROOT / ".env"
+ENV_FILE = DATA_DIR / ".env"
+
+
+def resolve_path(value: str) -> str:
+    """A relative path in event.toml (keyterms_file, mock_script) means "next
+    to my config" first, then "shipped with the app". Absolute paths pass
+    through. Matters for the packaged app, whose working directory is not
+    the bundle."""
+    p = Path(value)
+    if p.is_absolute():
+        return str(p)
+    for base in (DATA_DIR, ROOT):
+        candidate = base / p
+        if candidate.exists():
+            return str(candidate)
+    return str(DATA_DIR / p)
 
 
 def _log_dir() -> Path:
@@ -114,13 +135,37 @@ def load_env_file(path: Path = ENV_FILE) -> int:
     return loaded
 
 
+# Mirrors relay/config.py: a value with a newline in it would become extra
+# KEY=VALUE lines that load_env_file() loads for real on the next start -
+# and CAPTIONS_RELAY_URL / CAPTIONS_SOURCE_TOKEN from the environment outrank
+# event.toml, so that is a way to redirect this client. Refused at the write.
+ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def has_control_chars(value: str) -> bool:
+    return any(ch < " " or ch == "\x7f" for ch in value)
+
+
+def write_private(path: Path, text: str) -> None:
+    """Owner-only (0600) file write; advisory on Windows."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+
+
 def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
     """Write key=value into .env, in place, preserving every other line.
 
     Lets the status page's "add your Deepgram key" field work without anyone
     opening a text editor. Mirrors load_env_file's hand-rolled parsing rather
-    than pulling in python-dotenv's writer for one line.
+    than pulling in python-dotenv's writer for one line. Raises ValueError
+    rather than writing anything that could not be read back as one line.
     """
+    if not isinstance(key, str) or not ENV_KEY_RE.match(key):
+        raise ValueError(f"refusing to write .env key {key!r}")
+    if not isinstance(value, str) or has_control_chars(value):
+        raise ValueError(f"refusing to write {key}: value contains control characters")
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     for i, raw in enumerate(lines):
         line = raw.strip()
@@ -131,7 +176,7 @@ def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
             break
     else:
         lines.append(f"{key}={value}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_private(path, "\n".join(lines) + "\n")
 
 
 @dataclass
@@ -191,6 +236,11 @@ def load(path: Path | None = None) -> CaptureConfig:
         f"whisper_{key}": value
         for key, value in (data.get("whisper", {}) or {}).items()
     })
+    for key in ("keyterms_file", "mock_script"):
+        if isinstance(backend_config.get(key), str):
+            backend_config[key] = resolve_path(backend_config[key])
+    if "keyterms_file" not in backend_config:
+        backend_config["keyterms_file"] = resolve_path("config/keyterms.txt")
     cfg.backend_config = backend_config
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)

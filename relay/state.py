@@ -71,7 +71,7 @@ class RelayState:
         for key in ("backend", "device"):
             val = msg.get(key)
             if isinstance(val, str):
-                setattr(self, key, val)
+                setattr(self, key, val[:128])
         backends = msg.get("available_backends")
         if isinstance(backends, list):
             self.available_backends = [str(b)[:32] for b in backends[:16] if isinstance(b, str)]
@@ -102,7 +102,7 @@ class RelayState:
                 })
             self.audio_devices = cleaned
         err = msg.get("error")
-        self.error = err if isinstance(err, str) and err else None
+        self.error = err[:512] if isinstance(err, str) and err else None
 
     def note_interim(self) -> None:
         self.interims += 1

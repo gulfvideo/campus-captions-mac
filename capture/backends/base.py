@@ -78,15 +78,33 @@ class ASRBackend(ABC):
         text = " ".join(str(text).split())
         if not text:
             return
+        event = TranscriptEvent(text=text, is_final=is_final)
         try:
-            self._queue.put_nowait(TranscriptEvent(text=text, is_final=is_final))
+            self._queue.put_nowait(event)
         except asyncio.QueueFull:
-            # Transcript is worthless if it is late. Drop the oldest interim
-            # rather than block the audio path or grow without limit.
+            # Interim text is worthless if it is late, so the oldest interim
+            # goes. A final is a committed line the reader will never get
+            # another way, so it is never the one evicted: only when the
+            # whole queue is finals does the oldest of those go, and that
+            # means the consumer has been stalled for hundreds of lines.
+            held: list[TranscriptEvent] = []
+            while True:
+                try:
+                    held.append(self._queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            for i, old in enumerate(held):
+                if not old.is_final:
+                    del held[i]
+                    break
+            else:
+                if held:
+                    held.pop(0)
+            for old in held:
+                self._queue.put_nowait(old)
             try:
-                self._queue.get_nowait()
-                self._queue.put_nowait(TranscriptEvent(text=text, is_final=is_final))
-            except (asyncio.QueueEmpty, asyncio.QueueFull):
+                self._queue.put_nowait(event)
+            except asyncio.QueueFull:
                 pass
 
     # -- reported to the status page -------------------------------------

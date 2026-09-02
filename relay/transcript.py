@@ -23,8 +23,18 @@ from dataclasses import dataclass, field
 # Keep a cue on screen for at least this long even if the speaker was terse, and
 # never longer than this even if there was a long gap before the commit.
 MIN_CUE_SECONDS = 1.2
-MAX_CUE_SECONDS = 8.0
+MAX_CUE_SECONDS = 7.0
 MAX_CUES = 20000            # ~9 hours of dense speech; bounded on purpose
+
+# Presentation rules from the DCMP Captioning Key, which is what YouTube's
+# own caption editor and most players assume: at most two lines of at most
+# 42 characters per cue, a reading rate a viewer can keep up with, and a
+# visible gap between consecutive cues so two identical positions do not
+# blur into one.
+MAX_LINE_CHARS = 42
+MAX_LINES = 2
+READ_CHARS_PER_SECOND = 17.0
+MIN_GAP_SECONDS = 0.08
 
 SAFE_LANG = re.compile(r"^[A-Za-z0-9_-]{1,16}$")
 
@@ -35,6 +45,40 @@ class Cue:
     start: float            # seconds from the zero point
     end: float
     text: str
+
+
+def wrap_lines(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
+    """Word-wrap to lines of at most `max_chars`; a single over-long token is
+    cut rather than allowed to overflow."""
+    out: list[str] = []
+    cur = ""
+    for word in text.split():
+        while len(word) > max_chars:
+            if cur:
+                out.append(cur)
+                cur = ""
+            out.append(word[:max_chars])
+            word = word[max_chars:]
+        if not cur:
+            cur = word
+        elif len(cur) + 1 + len(word) <= max_chars:
+            cur += " " + word
+        else:
+            out.append(cur)
+            cur = word
+    if cur:
+        out.append(cur)
+    return out
+
+
+def split_for_display(text: str) -> list[str]:
+    """One recorded line becomes one or more cue texts of at most MAX_LINES
+    wrapped lines each, so a long sentence is never a single unreadable
+    block."""
+    lines = wrap_lines(text)
+    if not lines:
+        return []
+    return ["\n".join(lines[i:i + MAX_LINES]) for i in range(0, len(lines), MAX_LINES)]
 
 
 def format_timestamp(seconds: float) -> str:
@@ -104,43 +148,69 @@ class TranscriptRecorder:
             return len(self.lines.get(lang, ()))
         return sum(len(v) for v in self.lines.values())
 
-    def cues(self, lang: str) -> list[Cue]:
-        """Turn recorded lines into non-overlapping, sanely bounded cues."""
+    def cues(self, lang: str, offset: float = 0.0) -> list[Cue]:
+        """Turn recorded lines into non-overlapping, sanely bounded cues that
+        follow the presentation rules above.
+
+        `offset` shifts every cue earlier by that many seconds - the
+        recognizer's own delay, so cues line up with the speaker's mouth
+        rather than with the moment the line was committed.
+        """
         raw = self.lines.get(lang) or []
         if not raw:
             return []
         zero = self.zero_time if self.zero_time is not None else raw[0]["started"]
 
-        cues: list[Cue] = []
-        previous_end = 0.0
+        # First pass: one window per recorded line, split into display-sized
+        # pieces that share the window in proportion to their length.
+        pieces: list[tuple[float, float, str]] = []
         for entry in raw:
-            start = entry["started"] - zero
-            end = entry["committed"] - zero
+            start = entry["started"] - zero - offset
+            end = entry["committed"] - zero - offset
             # Lines finished before the video began are not part of the video.
             # Marking the start part way through an event is normal, and
             # clamping those earlier lines to zero would pile them on top of
             # each other at 00:00:00 where nobody could read them.
             if end <= 0:
                 continue
-            if end - start < MIN_CUE_SECONDS:
-                end = start + MIN_CUE_SECONDS
+            start = max(0.0, start)
+            if end - start > MAX_CUE_SECONDS * MAX_LINES:
+                start = end - MAX_CUE_SECONDS * MAX_LINES
+            texts = split_for_display(entry["text"])
+            if not texts:
+                continue
+            total = sum(len(t) for t in texts) or 1
+            cursor = start
+            for i, text in enumerate(texts):
+                share = (end - start) * len(text) / total
+                piece_end = end if i == len(texts) - 1 else cursor + share
+                pieces.append((cursor, piece_end, text))
+                cursor = piece_end
+
+        # Second pass: durations a reader can manage, no overlaps, a gap
+        # between neighbours, and nothing longer than MAX_CUE_SECONDS.
+        cues: list[Cue] = []
+        previous_end = -MIN_GAP_SECONDS
+        for i, (start, end, text) in enumerate(pieces):
+            wanted = max(MIN_CUE_SECONDS, len(text.replace("\n", " ")) / READ_CHARS_PER_SECOND)
+            if start < previous_end + MIN_GAP_SECONDS:
+                start = previous_end + MIN_GAP_SECONDS
+            next_start = pieces[i + 1][0] if i + 1 < len(pieces) else None
+            if end - start < wanted:
+                end = start + wanted
+                if next_start is not None and end > next_start - MIN_GAP_SECONDS:
+                    end = max(start + MIN_CUE_SECONDS, next_start - MIN_GAP_SECONDS)
             if end - start > MAX_CUE_SECONDS:
-                start = end - MAX_CUE_SECONDS
-            # A translated line is committed after its source line, and a
-            # speaker can start again before the previous commit lands, so
-            # overlaps are normal. SubRip tolerates them badly; nudge instead.
-            if start < previous_end:
-                start = previous_end
+                end = start + MAX_CUE_SECONDS
             if end <= start:
                 end = start + MIN_CUE_SECONDS
             previous_end = end
-            cues.append(Cue(index=len(cues) + 1, start=max(0.0, start),
-                            end=max(0.0, end), text=entry["text"]))
+            cues.append(Cue(index=len(cues) + 1, start=start, end=end, text=text))
         return cues
 
-    def to_srt(self, lang: str) -> str:
+    def to_srt(self, lang: str, offset: float = 0.0) -> str:
         blocks = []
-        for cue in self.cues(lang):
+        for cue in self.cues(lang, offset=offset):
             blocks.append(
                 f"{cue.index}\n"
                 f"{format_timestamp(cue.start)} --> {format_timestamp(cue.end)}\n"

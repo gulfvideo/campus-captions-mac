@@ -17,6 +17,12 @@ config/*.local.*
 config/google_client_secret.json
 config/google_token.json
 captions-*.srt
+# the welcome screen's background photo and the header logo, uploaded from
+# the status page
+config/welcome.*
+config/logo.*
+# pre-downloaded Whisper models (whisper_model_dir in event.toml)
+models/
 
 # ---- python ------------------------------------------------------------
 __pycache__/

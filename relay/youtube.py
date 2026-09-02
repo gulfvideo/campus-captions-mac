@@ -37,6 +37,20 @@ from datetime import datetime, timezone
 REQUEST_TIMEOUT = 5.0
 ENV_PREFIX = "YOUTUBE_CAPTION_URL"
 
+# The only place captions may be POSTed. Every committed line of the event
+# goes to this URL, so an arbitrary host here would be a transcript
+# exfiltration channel - and, pointed at 127.0.0.1 or a LAN address, a way to
+# make the relay poke at things it has no business reaching.
+ALLOWED_HOSTS = frozenset({"upload.youtube.com"})
+
+
+def valid_ingestion_url(url: str) -> bool:
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and (parts.hostname or "").lower() in ALLOWED_HOSTS
+
 
 def env_key_for(lang: str) -> str:
     """es -> YOUTUBE_CAPTION_URL_ES, zh-Hans -> YOUTUBE_CAPTION_URL_ZH_HANS."""
@@ -50,8 +64,13 @@ def urls_from_env(languages: list[str]) -> dict[str, str]:
     found: dict[str, str] = {}
     for lang in languages:
         value = os.environ.get(env_key_for(lang), "").strip()
-        if value:
-            found[lang] = value
+        if not value:
+            continue
+        if not valid_ingestion_url(value):
+            print(f"[relay] ignoring {env_key_for(lang)}: not a YouTube ingestion URL "
+                  f"(host must be one of {', '.join(sorted(ALLOWED_HOSTS))})")
+            continue
+        found[lang] = value
     return found
 
 
@@ -129,12 +148,24 @@ class YouTubeCaptionPusher:
         if lang and lang.strip():
             self.lang = lang.strip()
 
+    def masked_url(self) -> str:
+        """Enough to recognise which stream is saved, never enough to post
+        to it: host and path plus the last four characters of `cid`. The
+        full URL is a credential and goes nowhere near a status snapshot,
+        which is pushed to every status client several times a second."""
+        if not self.url:
+            return ""
+        parts = urllib.parse.urlsplit(self.url)
+        cid = dict(urllib.parse.parse_qsl(parts.query)).get("cid", "")
+        tail = f"?cid=\u2026{cid[-4:]}" if cid else ""
+        return f"{parts.netloc}{parts.path}{tail}"
+
     def status(self) -> dict:
         return {
             "configured": self.configured,
             "enabled": self.enabled,
             "pushed": self.pushed,
             "error": self.error,
-            "url": self.url,
+            "url_hint": self.masked_url(),
             "lang": self.lang,
         }

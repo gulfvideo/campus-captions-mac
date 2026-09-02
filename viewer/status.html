@@ -160,6 +160,27 @@
     padding: 10px 12px;
   }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+  .disclosure-header .badge.paused { color: var(--warn); }
+
+  /* A file input styled as one of our buttons; the real input stays in the
+     accessibility tree (visually hidden), so keyboard and screen reader
+     users get the native picker. */
+  .file-label {
+    display: inline-block; font: inherit; font-weight: 600; font-size: 15px;
+    padding: 13px 21px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  }
+  .file-label:hover { background: #2f353f; }
+  .file-label:focus-within { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  #caption-row input[type=text] {
+    flex: 1 1 260px; min-height: 48px; font: inherit; color: var(--text);
+    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 12px;
+  }
 
   .links { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
   .link {
@@ -191,6 +212,67 @@
 </header>
 
 <div id="error-banner"><span class="dot"></span><span id="error-banner-text"></span></div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="event-toggle" aria-expanded="true" aria-controls="event-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Event &amp; welcome screen</span>
+    <span class="badge" id="event-state-label">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="event-body">
+      <div class="row">
+        <button id="btn-event-start" class="go" type="button">Start event</button>
+        <button id="btn-event-pause" type="button">Pause</button>
+        <button id="btn-event-resume" class="go" type="button">Resume</button>
+        <button id="btn-event-end" class="stop" type="button">End event</button>
+      </div>
+      <div class="disclosure-sub" id="event-sub">&mdash;</div>
+      <div class="row">
+        <input id="event-title" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Event title, e.g. Fall Convocation" aria-label="Event title">
+        <input id="event-message" type="text" autocomplete="off"
+               placeholder="Welcome message (default: Live captions will begin when the program starts.)"
+               aria-label="Welcome message">
+      </div>
+      <div class="row">
+        <input id="event-notice" type="text" autocomplete="off"
+               placeholder="Notice, e.g. Captions are automatic. Accommodations: Disability Services, 334-555-0100"
+               aria-label="Notice shown under the welcome message">
+        <input id="event-pause-message" type="text" autocomplete="off" style="flex:0 1 300px"
+               placeholder="Message while paused, e.g. Intermission" aria-label="Message shown while paused">
+        <button id="btn-event-save" type="button">Save</button>
+      </div>
+      <div class="row">
+        <label class="file-label">Choose background image
+          <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+        </label>
+        <button id="btn-event-image-remove" type="button">Remove image</button>
+        <span class="disclosure-sub" id="event-image-status" style="flex:1 1 200px">&mdash;</span>
+      </div>
+      <div class="row">
+        <label class="file-label">Choose logo
+          <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+        </label>
+        <button id="btn-event-logo-remove" type="button">Remove logo</button>
+        <input id="event-logo-alt" type="text" autocomplete="off" style="flex:1 1 220px"
+               placeholder="Logo description for screen readers, e.g. Faulkner University"
+               aria-label="Logo description for screen readers">
+        <span class="disclosure-sub" id="event-logo-status" style="flex:1 1 200px">&mdash;</span>
+      </div>
+      <div class="disclosure-sub">
+        Attendees who open the phone view see the welcome screen until you press <b>Start event</b>,
+        and again after <b>End event</b>. The words sit on a dark panel over the image, so any photo
+        keeps them readable. JPEG, PNG, or WebP, up to 5 MB. <b>Pause</b> keeps captions on screen
+        with your pause message on top; a fault while live shows attendees
+        &ldquo;Captions paused &mdash; technical difficulty&rdquo; on its own.
+        The logo sits in a slim row above the captions while they are live &mdash; a transparent
+        PNG works best, since readers choose their own background colour. Give it a description
+        so screen readers announce the name, not the file.
+      </div>
+    </div>
+  </div></div>
+</div>
 
 <div class="grid">
   <div class="card" id="c-audio">
@@ -356,6 +438,18 @@
   <button id="btn-keyterms">Reload keyterms</button>
 </div>
 
+<div class="device-control" id="caption-row">
+  <label style="flex:1 1 100%;margin-bottom:-4px"><span>Send a caption by hand &mdash; sounds, speaker names, corrections</span></label>
+  <button type="button" data-caption="[Applause]">[Applause]</button>
+  <button type="button" data-caption="[Laughter]">[Laughter]</button>
+  <button type="button" data-caption="[Music]">[Music]</button>
+  <button type="button" data-caption="[Inaudible]">[Inaudible]</button>
+  <input id="note-text" type="text" autocomplete="off" placeholder="Text, or a speaker&rsquo;s name"
+         aria-label="Caption text or speaker name">
+  <button id="btn-note-send" type="button">Send as note</button>
+  <button id="btn-speaker-send" type="button">Speaker change</button>
+</div>
+
 <div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
 
 <div class="links" style="margin-top:18px">
@@ -413,8 +507,19 @@
   var peakHold = 0, peakAt = 0;
   var backendSignature = null, pendingBackend = null, pendingBackendTimer = null;
   var youtubeUrlDirty = false;
+  var youtubeConfigured = false;
+  var signedOut = false;
   var azureLangsDirty = false;
   var tunnelHostnameDirty = false;
+  var eventDirty = {};
+  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt'];
+  var EVENT_LABELS = { starting: 'Starting soon', live: 'Live', paused: 'Paused', ended: 'Ended' };
+  var FAULT_TEXT = {
+    no_source: 'no capture client is connected',
+    source_error: 'the capture client reports an error (see the banner above)',
+    audio_stalled: 'audio has stopped arriving from the capture client',
+    stream_closed: 'the ASR stream is closed'
+  };
   var BACKEND_LABELS = {
     apple_speech: 'Apple on-device (local, free)',
     deepgram: 'Deepgram (cloud, paid)',
@@ -525,9 +630,15 @@
     $('youtube-url').disabled = false;
     $('btn-youtube-save').disabled = false;
 
+    // The saved URL is a credential, so the relay never sends it back - only
+    // a hint (host plus the tail of cid) to confirm which stream is saved.
+    youtubeConfigured = !!youtube.configured;
     var urlBox = $('youtube-url');
     if (document.activeElement !== urlBox && !youtubeUrlDirty) {
-      urlBox.value = youtube.url || '';
+      urlBox.value = '';
+      urlBox.placeholder = youtubeConfigured && youtube.url_hint
+        ? 'Saved: ' + youtube.url_hint + ' — paste a new URL to replace it'
+        : 'Paste the Captions ingestion URL from YouTube Studio';
     }
   }
 
@@ -595,6 +706,50 @@
     }
   }
 
+  function eventBox(field) { return $('event-' + field.replace('_', '-')); }
+
+  function renderEvent(ev, health) {
+    ev = ev || {};
+    var badge = $('event-state-label');
+    badge.textContent = EVENT_LABELS[ev.state] || '—';
+    badge.className = 'badge' + (ev.state === 'live' ? ' live' : (ev.state === 'paused' ? ' paused' : ''));
+    $('btn-event-start').disabled = ev.state === 'live';
+    $('btn-event-pause').disabled = ev.state !== 'live';
+    $('btn-event-resume').disabled = ev.state !== 'paused';
+    $('btn-event-end').disabled = ev.state === 'ended';
+    $('btn-event-save').disabled = false;
+    EVENT_FIELDS.forEach(function (field) {
+      var box = eventBox(field);
+      box.disabled = false;
+      if (document.activeElement !== box && !eventDirty[field]) box.value = ev[field] || '';
+    });
+    $('event-image').disabled = false;
+    $('btn-event-image-remove').disabled = !ev.image;
+    $('event-image-status').textContent = ev.image
+      ? 'Background image set — attendees see it behind the welcome text.'
+      : 'No background image — the welcome screen is plain dark.';
+    $('event-logo').disabled = false;
+    $('btn-event-logo-remove').disabled = !ev.logo;
+    $('event-logo-status').textContent = ev.logo
+      ? 'Logo set — shown above the captions while live.' + (ev.logo_alt ? '' : ' Add a description for screen readers.')
+      : 'No logo.';
+
+    var fault = health && health.fault;
+    var sub;
+    if (ev.state === 'starting') {
+      sub = 'Attendees see the welcome screen. Press Start event when the program begins.';
+    } else if (ev.state === 'paused') {
+      sub = 'Attendees see “' + (ev.pause_message || 'Captions paused') + '” over their captions.';
+    } else if (ev.state === 'ended') {
+      sub = 'Attendees see that the event has ended.';
+    } else if (fault) {
+      sub = 'Attendees see “Captions paused — technical difficulty”: ' + (FAULT_TEXT[fault] || fault) + '.';
+    } else {
+      sub = 'Live — captions are flowing to attendees.';
+    }
+    $('event-sub').textContent = sub;
+  }
+
   function renderTunnel(hostname, tunnel) {
     tunnel = tunnel || {};
     var badge = $('tunnel-badge');
@@ -639,6 +794,7 @@
 
   function render(s) {
     lastSnap = s;
+    renderEvent(s.event, s.health);
     renderBackends(s.source || {});
     renderDevices(s.source || {});
     renderYoutube(s.youtube);
@@ -720,6 +876,12 @@
     $('btn-tunnel-save').disabled = $('btn-tunnel-enable').disabled =
       $('btn-tunnel-disable').disabled = $('tunnel-hostname').disabled =
       $('tunnel-token').disabled = true;
+    $('btn-event-start').disabled = $('btn-event-pause').disabled = $('btn-event-resume').disabled =
+      $('btn-event-end').disabled = $('btn-event-save').disabled = $('event-image').disabled =
+      $('btn-event-image-remove').disabled = $('event-logo').disabled =
+      $('btn-event-logo-remove').disabled = true;
+    EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
+    $('event-sub').textContent = 'Relay unreachable.';
   }
 
   // ---- transport -------------------------------------------------------
@@ -738,12 +900,23 @@
       lastMsgAt = Date.now();
       try { render(JSON.parse(ev.data)); } catch (e) {}
     };
-    sock.onclose = sock.onerror = function () {
+    function dropped() {
       if (sock) { sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null; }
       sock = null;
       renderOffline();
+      if (signedOut) {
+        // The sign-in cookie is gone (it lasts a month). Reconnecting would
+        // just be refused again; say what to do instead.
+        $('meta').textContent = 'not signed in — open the status link from the launcher window (it ends in ?token=…)';
+        return;
+      }
       scheduleReconnect();
+    }
+    sock.onclose = function (ev) {
+      if (ev && ev.code === 4401) signedOut = true;
+      dropped();
     };
+    sock.onerror = function () { dropped(); };
   }
   function scheduleReconnect() {
     if (reconnTimer) return;
@@ -795,6 +968,9 @@
 
   function saveYoutubeUrl() {
     var url = $('youtube-url').value.trim();
+    // The box is always empty once a URL is saved (the relay never echoes it
+    // back), so an empty Save must mean "clear it" on purpose, not by habit.
+    if (!url && youtubeConfigured && !confirm('Clear the saved YouTube ingestion URL?')) return;
     fetch('/api/youtube-captions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -871,6 +1047,61 @@
     })['catch'](function (e) { toast('Tunnel — ' + e.message); });
   }
 
+  function jsonOrThrow(r) {
+    if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+    return r.json();
+  }
+
+  function eventPost(fields, label) {
+    fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    }).then(jsonOrThrow).then(function () {
+      eventDirty = {};
+      toast(label);
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function saveEventText() {
+    var fields = {};
+    EVENT_FIELDS.forEach(function (field) { fields[field] = eventBox(field).value.trim(); });
+    eventPost(fields, 'Welcome screen saved');
+  }
+
+  function uploadEventImage(file, path, label) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast(label + ' — must be under 5 MB'); return; }
+    fetch(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file
+    }).then(jsonOrThrow).then(function () {
+      toast(label + ' saved');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function removeEventImage(path, label) {
+    fetch(path, { method: 'DELETE' }).then(jsonOrThrow).then(function () {
+      toast(label + ' removed');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  // A caption the operator typed: committed by the relay itself, so it
+  // lands on the wall, every phone, the transcript, and YouTube even with
+  // no capture client connected.
+  function sendCaption(text) {
+    text = (text || '').trim();
+    if (!text) { toast('Type something first'); return; }
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'caption', text: text })
+    }).then(jsonOrThrow).then(function () {
+      toast('Sent: ' + text);
+    })['catch'](function (e) { toast('Caption — ' + e.message); });
+  }
+
   function setTunnelEnabled(enabled) {
     fetch('/api/tunnel', {
       method: 'POST',
@@ -903,6 +1134,48 @@
   }
 
   function boot() {
+    setupDisclosure('event-toggle', 'event-expanded');
+    $('btn-event-start').onclick = function () { eventPost({ state: 'live' }, 'Event started — attendees now see captions'); };
+    $('btn-event-pause').onclick = function () { eventPost({ state: 'paused' }, 'Paused — attendees see the pause message'); };
+    $('btn-event-resume').onclick = function () { eventPost({ state: 'live' }, 'Resumed'); };
+    $('btn-event-end').onclick = function () { eventPost({ state: 'ended' }, 'Event ended'); };
+    $('btn-event-save').onclick = saveEventText;
+    EVENT_FIELDS.forEach(function (field) {
+      var box = eventBox(field);
+      box.oninput = function () { eventDirty[field] = true; };
+      box.onkeydown = function (e) { if (e.key === 'Enter') saveEventText(); };
+    });
+    $('event-image').onchange = function () {
+      uploadEventImage(this.files && this.files[0], '/api/event/image', 'Background image');
+      this.value = '';
+    };
+    $('btn-event-image-remove').onclick = function () { removeEventImage('/api/event/image', 'Background image'); };
+    $('event-logo').onchange = function () {
+      uploadEventImage(this.files && this.files[0], '/api/event/logo', 'Logo');
+      this.value = '';
+    };
+    $('btn-event-logo-remove').onclick = function () { removeEventImage('/api/event/logo', 'Logo'); };
+
+    var quick = document.querySelectorAll('#caption-row [data-caption]');
+    for (var q = 0; q < quick.length; q++) {
+      quick[q].onclick = function () { sendCaption(this.getAttribute('data-caption')); };
+    }
+    $('btn-note-send').onclick = function () {
+      var t = $('note-text').value.trim();
+      if (!t) { toast('Type something first'); return; }
+      // Sound and stage notes are conventionally bracketed; a name or a
+      // correction is sent as typed.
+      sendCaption(t);
+      $('note-text').value = '';
+    };
+    $('btn-speaker-send').onclick = function () {
+      var name = $('note-text').value.trim().replace(/:$/, '');
+      if (!name) { toast('Type the speaker’s name first'); return; }
+      sendCaption('>> ' + name + ':');
+      $('note-text').value = '';
+    };
+    $('note-text').onkeydown = function (e) { if (e.key === 'Enter') $('btn-note-send').onclick(); };
+
     setupDisclosure('youtube-toggle', 'youtube-expanded');
     setupDisclosure('deepgram-toggle', 'deepgram-expanded');
     setupDisclosure('transcript-toggle', 'transcript-expanded');
@@ -983,7 +1256,10 @@
       if (s.relay) {
         var base = 'http://' + s.relay.ip + ':' + s.relay.port;
         $('url-wall').textContent = base + '/wall';
-        $('url-phone').textContent = base + '/phone';
+        // The phone link is what gets handed out; prefer the https tunnel
+        // address when there is one, like the QR code does.
+        $('url-phone').textContent = (s.relay.public_hostname
+          ? 'https://' + s.relay.public_hostname : base) + '/phone';
       }
     })['catch'](function () {});
 

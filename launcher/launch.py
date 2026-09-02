@@ -25,6 +25,8 @@ VENV = ROOT / ".venv"
 VENV_PY = VENV / "Scripts" / "python.exe" if os.name == "nt" else VENV / "bin" / "python"
 REQUIREMENTS = ROOT / "requirements.txt"
 STAMP = VENV / ".requirements-stamp"
+ENV_FILE = ROOT / ".env"
+OPERATOR_TOKEN_KEY = "CAPTIONS_OPERATOR_TOKEN"
 
 RELAY_READY_TIMEOUT = 25.0
 RESTART_LIMIT = 5
@@ -70,6 +72,44 @@ def ensure_dependencies(python: Path) -> None:
     say("dependencies ready")
 
 
+def read_env_var(key: str) -> str:
+    """The environment first, then .env - the same order the relay uses."""
+    value = os.environ.get(key, "").strip()
+    if value or not ENV_FILE.exists():
+        return value
+    for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith(f"{key}="):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def ensure_operator_token() -> str:
+    """The secret that signs the status page in. The relay generates one
+    itself if none exists, but this launcher needs it *before* the relay is
+    up - to recognise an already-running relay, and to build the link it
+    opens - so it settles the value first and the relay simply finds it."""
+    token = read_env_var(OPERATOR_TOKEN_KEY)
+    if not token:
+        import secrets
+        token = secrets.token_urlsafe(24)
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+        lines.append(f"{OPERATOR_TOKEN_KEY}={token}")
+        ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        say("generated an operator token (saved in .env)")
+    os.environ[OPERATOR_TOKEN_KEY] = token
+    return token
+
+
+def status_json(port: int, token: str, timeout: float) -> dict:
+    """One /api/status snapshot. Operator-only, hence the bearer header."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/status",
+        headers={"Authorization": f"Bearer {token}"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.load(response)
+
+
 def read_port() -> int:
     port = os.environ.get("CAPTIONS_PORT")
     if port and port.isdigit():
@@ -109,12 +149,10 @@ def port_in_use(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
-def existing_relay(port: int) -> dict | None:
+def existing_relay(port: int, token: str) -> dict | None:
     """Is the thing on this port one of ours, or someone else's server?"""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status",
-                                    timeout=2) as response:
-            data = json.load(response)
+        data = status_json(port, token, timeout=2)
         return data if "session_id" in data and "relay" in data else None
     except Exception:
         return None
@@ -149,27 +187,23 @@ def port_owner(port: int) -> str:
     return ""
 
 
-def wait_for_relay(port: int, proc: subprocess.Popen) -> bool:
+def wait_for_relay(port: int, proc: subprocess.Popen, token: str) -> bool:
     """Wait for OUR relay. If it exits, stop waiting - do not adopt another."""
-    url = f"http://127.0.0.1:{port}/api/status"
     deadline = time.time() + RELAY_READY_TIMEOUT
     while time.time() < deadline:
         if proc.poll() is not None:
             return False                      # our relay died; whatever is on
         try:                                  # that port is not ours
-            with urllib.request.urlopen(url, timeout=1.5) as response:
-                json.load(response)
-                return True
+            status_json(port, token, timeout=1.5)
+            return True
         except (urllib.error.URLError, OSError, ValueError):
             time.sleep(0.4)
     return False
 
 
-def relay_ip(port: int) -> str:
+def relay_ip(port: int, token: str) -> str:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status",
-                                    timeout=2) as response:
-            return (json.load(response).get("relay") or {}).get("ip", "127.0.0.1")
+        return (status_json(port, token, timeout=2).get("relay") or {}).get("ip", "127.0.0.1")
     except Exception:
         return "127.0.0.1"
 
@@ -193,6 +227,8 @@ def main() -> int:
         return 1
 
     port = read_port()
+    token = ensure_operator_token()
+    status_link = f"http://127.0.0.1:{port}/status?token={token}"
     procs: dict[str, subprocess.Popen] = {}
     restarts = {"relay": 0, "capture": 0}
 
@@ -201,7 +237,7 @@ def main() -> int:
     # declared itself ready, and pointed the capture client at a relay that was
     # not its own while its own relay died over and over.
     if port_in_use(port):
-        running = existing_relay(port)
+        running = existing_relay(port, token)
         if running is not None:
             rule("already running")
             say(f"Campus Captions is already running on port {port}"
@@ -210,7 +246,7 @@ def main() -> int:
             say("\nIf you want a fresh start, close the other Campus Captions")
             say("window first, then run this again.")
             try:
-                webbrowser.open(f"http://127.0.0.1:{port}/status")
+                webbrowser.open(status_link)
             except Exception:
                 pass
             input("\npress Enter to close this window ")
@@ -230,7 +266,7 @@ def main() -> int:
     rule("starting")
     procs["relay"] = spawn(python, ["-m", "relay"], "relay server")
 
-    if not wait_for_relay(port, procs["relay"]):
+    if not wait_for_relay(port, procs["relay"], token):
         say("\nthe relay did not start. its error is above.")
         if procs["relay"].poll() is None:
             procs["relay"].terminate()
@@ -239,9 +275,10 @@ def main() -> int:
 
     procs["capture"] = spawn(python, ["-m", "capture"], "capture client")
 
-    ip = relay_ip(port)
+    ip = relay_ip(port, token)
     rule("ready")
-    say(f"  status page   http://{ip}:{port}/status      <- open this")
+    say(f"  status page   http://{ip}:{port}/status?token={token}")
+    say(f"                ^ open this; the link signs your browser in for a month")
     say(f"  wall view     http://{ip}:{port}/wall        <- ProPresenter")
     say(f"  phone view    http://{ip}:{port}/phone       <- audience")
     say()
@@ -252,7 +289,7 @@ def main() -> int:
     say("=" * 68)
 
     try:
-        webbrowser.open(f"http://127.0.0.1:{port}/status")
+        webbrowser.open(status_link)
     except Exception:
         pass
 

@@ -30,14 +30,19 @@ REPLAY_BUFFER = 200
 CLIENT_QUEUE_MAX = 256
 
 MAX_TEXT_CHARS = 2000
+# A source frame larger than this is not a caption. Refused before json.loads
+# so a hostile peer cannot park the event loop on a megabyte of brackets.
+MAX_FRAME_CHARS = 16 * 1024
 SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
 CONTROL_ACTIONS = {
     "open_stream", "close_stream", "clear", "reload_keyterms",
     "select_audio_device", "refresh_audio_devices", "select_backend",
     "set_deepgram_key",
 }
-# Handled by the relay itself, not forwarded to a capture client.
-RELAY_ACTIONS = {"mark_video_start", "reset_transcript"}
+# Handled by the relay itself, not forwarded to a capture client. `caption`
+# is a line the operator typed - [Applause], a speaker's name, a correction -
+# committed exactly like a final from the recognizer.
+RELAY_ACTIONS = {"mark_video_start", "reset_transcript", "caption"}
 
 _counter = itertools.count(1)
 
@@ -103,6 +108,11 @@ class Hub:
         # itself; the server contributes the rest here so the websocket feed
         # and the HTTP endpoint cannot drift apart.
         self.snapshot_extra = None
+        # Where the event is (relay/event.py); set by server.py. Goes out in
+        # hello, in every heartbeat, and as an `event` frame on change, so a
+        # viewer always knows whether a blank screen means "not started yet",
+        # "paused", "ended", or "something is wrong".
+        self.event = None
         # When the current utterance began: the first interim after the last
         # commit. A final only tells you when it landed, and an .srt needs to
         # know how long the line was actually being spoken.
@@ -157,6 +167,43 @@ class Hub:
             self.on_source_final(msg)
         return msg
 
+    def health(self) -> dict:
+        """The one thing a viewer needs to know about the pipeline: is
+        something wrong that the operator can see but the audience cannot?
+        `fault` is a short code, or None. A deaf attendee has no other
+        channel, so a dead microphone must not look like a pause."""
+        now = time.time()
+        st = self.state
+        audio = st.audio_status(now)
+        asr = st.asr_status(now)
+        fault = None
+        if not st.source_connected:
+            fault = "no_source"
+        elif st.error:
+            fault = "source_error"
+        elif audio == "stale":
+            fault = "audio_stalled"
+        elif not st.stream_open:
+            fault = "stream_closed"
+        return {"source": st.source_connected, "audio": audio, "asr": asr, "fault": fault}
+
+    def broadcast_event(self) -> None:
+        if self.event is not None:
+            self.broadcast({"type": "event", **self.event.public()})
+
+    def announce(self, text: str) -> dict:
+        """A caption the operator typed. Committed like any final - wall,
+        phones, replay buffer, transcript, translation, YouTube - so
+        "[Applause]" or "Dr. Vasquez:" lands everywhere the words do."""
+        text = clean_text(text)
+        if not text:
+            return {}
+        self.state.note_final(text)
+        msg = self.broadcast({"type": "final", "text": text, "kind": "note"})
+        if self.youtube is not None and self.youtube.enabled:
+            asyncio.create_task(self.youtube.push(text))
+        return msg
+
     def push_status(self) -> None:
         if not self.status_clients:
             return
@@ -191,6 +238,8 @@ class Hub:
 
     def ingest(self, raw: str, peer: str) -> None:
         """Handle one frame from a capture client. Never raises on bad input."""
+        if len(raw) > MAX_FRAME_CHARS:
+            return
         try:
             msg = json.loads(raw)
         except (ValueError, TypeError):
@@ -224,6 +273,12 @@ class Hub:
             payload = {"type": "final", "text": text}
             if started is not None:
                 payload["t0"] = round(started, 3)
+            if msg.get("late"):
+                # Held by the capture client through a relay outage. Its own
+                # timestamp is the real one; keep it for the transcript.
+                payload["late"] = True
+                if isinstance(msg.get("t"), (int, float)):
+                    payload["t"] = round(float(msg["t"]), 3)
             self.broadcast(payload)
             if self.youtube is not None and self.youtube.enabled:
                 asyncio.create_task(self.youtube.push(text))
@@ -242,7 +297,8 @@ class Hub:
             "server_time": round(time.time(), 3),
             "protocol": 1,
             "lang": lang,
-        }))
+            "event": self.event.public() if self.event is not None else None,
+        }, ensure_ascii=False))
         depth = REPLAY_FOR_ROLE[role]
         buffer = self.finals.get(lang) or deque()
         for msg in list(buffer)[-depth:] if depth else []:
@@ -296,4 +352,6 @@ class Hub:
             "type": "heartbeat",
             "session_id": self.session_id,
             "viewers": len(self.viewers),
+            "event": self.event.public() if self.event is not None else None,
+            "health": self.health(),
         })

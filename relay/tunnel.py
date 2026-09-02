@@ -46,6 +46,23 @@ NOT_INSTALLED = (
 
 _cached_binary: str | None = None
 
+# What a child process gets to see. The relay's own environment holds the
+# Deepgram key, the Azure key, the operator token and the YouTube ingestion
+# URLs; cloudflared needs none of them, and cloudflared also reads every one
+# of its own flags from TUNNEL_* variables, so a leaked TUNNEL_* would
+# reconfigure it. Pass only what a process needs to run at all.
+CHILD_ENV_KEYS = (
+    "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "LOGNAME",
+    "SystemRoot", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SSL_CERT_FILE", "SSL_CERT_DIR",
+)
+
+
+def child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k in CHILD_ENV_KEYS}
+    if extra:
+        env.update(extra)
+    return env
+
 
 def find_binary() -> str | None:
     """Cached once found - cloudflared isn't going anywhere mid-event - but
@@ -106,7 +123,7 @@ class CloudflareTunnel:
             return
         self.error = None
         try:
-            env = {**os.environ, "TUNNEL_TOKEN": self.token}
+            env = child_env({"TUNNEL_TOKEN": self.token})
             self._proc = await asyncio.create_subprocess_exec(
                 binary, "tunnel", "run",
                 stdout=asyncio.subprocess.PIPE,

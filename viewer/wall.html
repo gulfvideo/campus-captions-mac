@@ -36,7 +36,9 @@
     transition: opacity var(--fade) linear;
     will-change: opacity;
   }
-  #bar.on { opacity: 1; }
+  /* In fast, out slow: the first words after a pause must not ramp up from
+     invisible, but a bar that vanishes abruptly looks like a fault. */
+  #bar.on { opacity: 1; transition-duration: 80ms; }
 
   .line {
     display: block;
@@ -46,10 +48,32 @@
     font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
     font-weight: 600;
     color: var(--color);
-    text-align: center;
+    /* Left by default, like broadcast roll-up captions: a centred live row
+       moves both ends on every word. ?align=center for the old look. */
+    text-align: var(--align, left);
     white-space: nowrap;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
+    /* Always an edge: whatever the operator does to the bar opacity, the
+       glyphs keep a dark outline against bright video. */
+    text-shadow: 0 0 0.06em rgba(0,0,0,0.9), 0 0.04em 0.12em rgba(0,0,0,0.9);
+  }
+
+  /* One short line, bottom corner, for the states a hearing audience never
+     needs and a deaf audience cannot do without: reconnecting, paused, a
+     fault. Off with ?nostatus=1 for a venue that insists on a clean layer. */
+  #status {
+    position: fixed; right: 2vw; bottom: 2vh; max-width: 70vw;
+    padding: 0.8vh 1.8vh; border-radius: 1vh;
+    background: rgba(0,0,0,0.85); color: #ffffff;
+    font: 600 2.6vh/1.3 "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 0; transition: opacity 300ms linear;
+  }
+  #status.on { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #bar, #status { transition-duration: 0ms !important; }
   }
 
   #dbg {
@@ -63,17 +87,22 @@
 </style>
 </head>
 <body>
-<div id="bar"><span class="line" id="l0"></span><span class="line" id="l1"></span></div>
+<div id="bar"></div>
+<div id="status"></div>
 <div id="dbg"></div>
 <script>
 (function () {
   'use strict';
 
-  // Nothing in here may ever paint a message. Every failure path ends in an
-  // empty transparent page plus a console line.
+  // The caption bar never paints an error. The one exception to "blank on
+  // failure" is the small #status line, which exists precisely because a
+  // deaf audience cannot tell a blank bar from a broken one.
 
-  var P, cfg, elBar, elTop, elBot, elDbg;
-  var top = '', bot = '', awaitNewLine = false;
+  var P, cfg, elBar, elStatus, elDbg;
+  var rows = [], rowEls = [], awaitNewLine = false;
+  var queue = [], pendingInterim = null, drainTimer = null;
+  var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0, statusText = '';
+  var fittedChars = 0, resizeTimer = null;
   var barOn = false, lastTextAt = 0, lastMsgAt = 0, startedAt = 0;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, clipped = false;
@@ -115,17 +144,21 @@
       width:    num('width', 86, 10, 100),        // vw
       pad:      num('pad', 2, 0, 12),             // vh
       radius:   num('radius', 1.5, 0, 20),        // vh
-      opacity:  num('opacity', 0.85, 0, 1),
+      opacity:  num('opacity', 0.85, 0.6, 1),     // floor: white on 60% black over white video is still 5.7:1
       bar:      hex('bar', '#000000'),
       color:    hex('color', '#ffffff'),
-      idle:     num('idle', 5, 0, 3600),          // seconds, 0 = never fade
+      lines:    Math.round(num('lines', 3, 2, 4)), // 3 gives a slow reader ~8 s per line at speech rate
+      idle:     num('idle', 15, 0, 3600),         // seconds, 0 = never fade
+      nostatus: flag('nostatus'),                 // hide the reconnecting/paused line
+      welcome:  flag('welcome'),                  // also show the welcome/ended message
       fade:     num('fade', 600, 0, 10000),       // ms
-      maxchars: Math.round(num('maxchars', 42, 8, 200)),
+      maxchars: Math.round(num('maxchars', 36, 8, 200)),   // ceiling; the real limit is measured, see fitMaxChars
+      align:    P.get('align') === 'center' ? 'center' : 'left',
       watchdog: num('watchdog', 120, 10, 86400),  // seconds dead before reload
       debug:    flag('debug'),
       text:     P.get('text'),
       soak:     P.get('soak'),
-      relay:    P.get('relay')
+      relay:    location.protocol === 'file:' ? P.get('relay') : null   // file:// use only, see phone.html
     };
   }
 
@@ -139,6 +172,29 @@
     r.setProperty('--fade', cfg.fade + 'ms');
     r.setProperty('--color', cfg.color);
     r.setProperty('--bar', rgba(cfg.bar, cfg.opacity));
+    r.setProperty('--align', cfg.align);
+  }
+
+  // Characters per line used to be a number the operator guessed; a line
+  // that did not fit was clipped at its end, losing the last words. Now the
+  // row is measured with the real font and the limit is whichever is smaller:
+  // the operator's ceiling or what actually fits.
+  var FIT_SAMPLE = 'The quick brown fox jumps over the lazy dog, 1234 times.';
+  function fitMaxChars() {
+    try {
+      var row = rowEls[0];
+      if (!row) return;
+      var inner = row.clientWidth;
+      var canvas = fitMaxChars._c || (fitMaxChars._c = document.createElement('canvas'));
+      var ctx = canvas.getContext('2d');
+      ctx.font = getComputedStyle(row).font;
+      var avg = ctx.measureText(FIT_SAMPLE).width / FIT_SAMPLE.length;
+      if (!(avg > 0) || !(inner > 0)) return;
+      fittedChars = Math.max(8, Math.floor(inner / avg) - 1);
+    } catch (e) { fittedChars = 0; }
+  }
+  function maxChars() {
+    return fittedChars ? Math.min(cfg.maxchars, fittedChars) : cfg.maxchars;
   }
 
   // ---- text shaping ------------------------------------------------------
@@ -176,11 +232,26 @@
 
   // ---- render ------------------------------------------------------------
 
+  function buildRows() {
+    elBar.textContent = '';
+    rowEls = []; rows = [];
+    for (var i = 0; i < cfg.lines; i++) {
+      var s = document.createElement('span');
+      s.className = 'line';
+      elBar.appendChild(s);
+      rowEls.push(s); rows.push('');
+    }
+  }
+  function last() { return rows.length - 1; }
+  function shiftRows() { rows.shift(); rows.push(''); }
+
   function paint() {
-    elTop.textContent = top;
-    elBot.textContent = bot;
+    for (var i = 0; i < rowEls.length; i++) rowEls[i].textContent = rows[i];
     if (cfg.debug) {
-      clipped = elBot.scrollWidth > elBot.clientWidth || elTop.scrollWidth > elTop.clientWidth;
+      clipped = false;
+      for (var j = 0; j < rowEls.length; j++) {
+        if (rowEls[j].scrollWidth > rowEls[j].clientWidth) clipped = true;
+      }
     }
   }
   function wake() {
@@ -191,33 +262,114 @@
     if (barOn) { barOn = false; elBar.className = ''; }
   }
   function resetLines() {
-    top = ''; bot = ''; awaitNewLine = false;
+    for (var i = 0; i < rows.length; i++) rows[i] = '';
+    awaitNewLine = false;
+    queue.length = 0; pendingInterim = null;
+    clearTimeout(drainTimer); drainTimer = null;
     paint();
     hideBar();
   }
 
+  // A committed line longer than one row used to be walked through in a
+  // single pass and painted once, so only its last rows ever appeared - the
+  // opening of every long sentence was lost. Now the rows go out one at a
+  // time, each held long enough to read (700 ms floor, ~40 ms per
+  // character, 2 s cap), and live interim text waits its turn behind them.
+  function holdFor(text) { return Math.min(2000, Math.max(700, text.length * 40)); }
+
+  function drain() {
+    drainTimer = null;
+    if (!queue.length) {
+      if (pendingInterim !== null) {
+        var t = pendingInterim; pendingInterim = null;
+        onInterim(t);
+      }
+      return;
+    }
+    var part = queue.shift();
+    shiftRows(); rows[last()] = part;
+    paint(); wake();
+    if (queue.length) drainTimer = setTimeout(drain, holdFor(part));
+    else if (pendingInterim !== null) drainTimer = setTimeout(drain, Math.min(holdFor(part), 900));
+  }
+
   function onInterim(text) {
-    var t = tail(text, cfg.maxchars);
+    var t = tail(text, maxChars());
     if (!t) return;
-    if (awaitNewLine) { top = bot; awaitNewLine = false; }
-    bot = t;
+    if (queue.length || drainTimer) { pendingInterim = text; return; }
+    if (awaitNewLine) { shiftRows(); awaitNewLine = false; }
+    rows[last()] = t;
     paint();
     wake();
   }
 
-  function onFinal(text) {
-    var parts = chunk(text, cfg.maxchars);
+  function onFinal(text, replay) {
+    var parts = chunk(text, maxChars());
     if (!parts.length) return;
-    for (var i = 0; i < parts.length; i++) {
-      if (i === 0 && !awaitNewLine) {
-        bot = parts[0];               // the final commits the line already showing
-      } else {
-        top = bot; bot = parts[i];    // push the older line up and out
+    if (replay) {
+      // History for a viewer that just (re)connected: fill the rows so the
+      // next live line has context above it, but do not light the bar -
+      // minutes-old text must not appear as though it was just said.
+      for (var i = 0; i < parts.length; i++) {
+        if (awaitNewLine || rows[last()]) shiftRows();
+        rows[last()] = parts[i];
+        awaitNewLine = true;
       }
+      paint();
+      return;
     }
+    if (queue.length || drainTimer) {
+      // Still rolling out the previous final: these rows follow, in order.
+      Array.prototype.push.apply(queue, parts);
+      pendingInterim = null;
+      return;
+    }
+    if (awaitNewLine) shiftRows();
+    rows[last()] = parts[0];        // the final commits the line already showing
     awaitNewLine = true;
     paint();
     wake();
+    if (parts.length > 1) {
+      Array.prototype.push.apply(queue, parts.slice(1));
+      drainTimer = setTimeout(drain, holdFor(parts[0]));
+    }
+  }
+
+  // ---- status line -------------------------------------------------------
+
+  function setStatus(text) {
+    if (text === statusText) return;
+    statusText = text;
+    elStatus.textContent = text || '';
+    elStatus.className = text ? 'on' : '';
+  }
+
+  function computeStatus(n) {
+    if (cfg.nostatus || mode !== 'live') return '';
+    var linkDown = !sock || sock.readyState !== 1 || (n - lastMsgAt) > 20000;
+    if (linkDown) {
+      if (!linkDownAt) linkDownAt = n;
+      if ((n - linkDownAt) > 2500) return 'Captions reconnecting…';
+    } else {
+      linkDownAt = 0;
+    }
+    var ev = eventInfo || {};
+    if (ev.state === 'paused') return ev.pause_message || 'Captions paused';
+    if (ev.state === 'starting') return cfg.welcome ? (ev.message || 'Captions will begin shortly') : '';
+    if (ev.state === 'ended') return cfg.welcome ? 'Captions have ended' : '';
+    if (health && health.fault) {
+      if (!faultSince) faultSince = n;
+      if ((n - faultSince) > 2500) return 'Captions paused — technical difficulty';
+    } else {
+      faultSince = 0;
+    }
+    return '';
+  }
+
+  function applyEvent(ev) {
+    var prev = eventInfo ? eventInfo.state : null;
+    eventInfo = ev;
+    if (prev !== ev.state && (ev.state === 'starting' || ev.state === 'ended')) resetLines();
   }
 
   // ---- websocket ---------------------------------------------------------
@@ -243,6 +395,7 @@
     sock.onopen = function () {
       attempts = 0;
       lastMsgAt = now();
+      linkDownAt = 0;
       log('open');
     };
     sock.onmessage = onMessage;
@@ -286,6 +439,7 @@
       }
       sessionId = m.session_id || null;
       lastSeq = -1;                        // the replay burst carries older seqs
+      if (m.event) applyEvent(m.event);
       return;
     }
     if (typeof m.seq === 'number') {
@@ -294,13 +448,16 @@
     }
     switch (m.type) {
       case 'interim':   onInterim(m.text || ''); break;
-      case 'final':     onFinal(m.text || ''); break;
+      case 'final':     onFinal(m.text || '', !!m.replay); break;
       case 'clear':     resetLines(); break;
+      case 'event':     applyEvent(m); break;
       case 'heartbeat':
         if (m.session_id && sessionId && m.session_id !== sessionId) {
           sessionId = m.session_id;
           resetLines();
         }
+        if (m.event) applyEvent(m.event);
+        if (m.health) health = m.health;
         break;
       default: break;                      // unknown types ignored, silently
     }
@@ -343,11 +500,18 @@
   function tick() {
     var n = now();
     if (cfg.idle > 0 && barOn && (n - lastTextAt) > cfg.idle * 1000) hideBar();
+    if (mode === 'live' && sock && sock.readyState === 1 && (n - lastMsgAt) > 20000) {
+      // Heartbeats are every 5 s; 20 s of silence is a dead link the socket
+      // has not noticed. Reconnect now rather than sit blank for two minutes.
+      log('stale link, forcing reconnect');
+      teardown();
+    }
     if (mode === 'live' && (n - lastMsgAt) > cfg.watchdog * 1000) {
       log('watchdog: no traffic for', cfg.watchdog, 's - reloading');
       try { location.reload(); } catch (e) {}
       return;
     }
+    setStatus(computeStatus(n));
     if (cfg.debug) paintDebug(n);
   }
 
@@ -363,7 +527,11 @@
       'attempts  ' + attempts + '   next backoff ' + lastDelay + 'ms\n' +
       'bar       ' + (barOn ? 'visible' : 'faded') +
         '   idle ' + ((n - lastTextAt) / 1000).toFixed(1) + 's\n' +
-      'maxchars  ' + cfg.maxchars + (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
+      'maxchars  ' + maxChars() + ' (ceiling ' + cfg.maxchars + ', fits ' + (fittedChars || '?') + ')' +
+        (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
+      'rows      ' + cfg.lines + '   queued ' + queue.length +
+        '   event ' + (eventInfo ? eventInfo.state : '-') +
+        '   fault ' + (health && health.fault ? health.fault : '-') + '\n' +
       'size      ' + cfg.size + 'vh   width ' + cfg.width + 'vw\n' +
       'uptime    ' + ((n - startedAt) / 1000).toFixed(0) + 's';
   }
@@ -374,10 +542,15 @@
     P = new URLSearchParams(location.search);
     cfg = readConfig();
     elBar = document.getElementById('bar');
-    elTop = document.getElementById('l0');
-    elBot = document.getElementById('l1');
+    elStatus = document.getElementById('status');
     elDbg = document.getElementById('dbg');
     applyStyle();
+    buildRows();
+    fitMaxChars();
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(fitMaxChars, 150);
+    });
     if (cfg.debug) { elDbg.className = 'on'; document.body.style.cursor = 'default'; }
     startedAt = lastMsgAt = lastTextAt = now();
 

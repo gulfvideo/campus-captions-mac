@@ -9,7 +9,9 @@
 <title>Captions</title>
 <style>
   :root {
-    --size: 24px;
+    /* rem, not px: the OS / browser text-size preference that older and
+       low-vision readers set once should apply here too. */
+    --size: 1.5rem;
     --color: #f2f2f2;
     --bg: #000000;
     --dim: #8b8b8b;
@@ -18,12 +20,26 @@
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: var(--bg); color: var(--color);
-    -webkit-text-size-adjust: 100%;
   }
   body {
     font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
     overscroll-behavior: none;
+    /* A column: status banner, then the logo row, then the captions. The
+       first two are in normal flow above the scroller, so a banner pushes
+       the logo down and neither ever covers a caption. */
+    display: flex; flex-direction: column;
   }
+
+  /* Logo row, only while captions are live and only when the operator set
+     one. Height is capped at one caption line so it never takes reading
+     space; it scales with zoom like everything else. */
+  #brand {
+    flex: none; display: none; align-items: center; justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 8px) 16px 8px;
+  }
+  #brand.on { display: flex; }
+  #brand img { display: block; height: 2.75rem; max-width: 100%; width: auto; }
+  #brand.on + #scroll { padding-top: 10px; }
 
   /* Connection state, deliberately almost invisible: a hairline at the top
      edge. Amber while the link is down. The phone view may hint; the wall
@@ -35,15 +51,22 @@
   #link.down { background: #b8860b; }
 
   #scroll {
-    height: 100%;
+    flex: 1 1 auto; min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    /* Bottom padding clears the fixed buttons, so the newest line is never
+       hidden behind them. */
     padding:
       calc(env(safe-area-inset-top) + 18px)
       calc(env(safe-area-inset-right) + 18px)
-      calc(env(safe-area-inset-bottom) + 26px)
+      calc(env(safe-area-inset-bottom) + 84px)
       calc(env(safe-area-inset-left) + 18px);
+    scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 84px);
   }
+  #lang-note {
+    color: var(--dim); font-size: 0.9375rem; margin: 0 0 1em;
+  }
+  #lang-note[hidden] { display: none; }
 
   #lines > div {
     font-size: var(--size);
@@ -54,6 +77,49 @@
   }
   #lines > div.new { animation: fadein 260ms ease-out; }
   @keyframes fadein { from { opacity: 0.35; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #lines > div.new { animation: none; } }
+  /* Where the operator cleared the display: the reader keeps their history,
+     with a mark where the segment ended. */
+  #lines > div.divider {
+    height: 0; margin: 0.4em 0 1.1em; border-top: 1px solid rgba(255,255,255,0.28);
+  }
+  #scroll:focus-visible { outline: 3px solid #ffffff; outline-offset: -3px; }
+
+  /* Status banner: reconnecting, paused, a fault. Real text in a live
+     region - the old two-pixel hairline told a deaf reader nothing. Amber
+     edge for trouble, blue edge for an operator's intentional pause. */
+  #status {
+    flex: none; z-index: 8;
+    padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+    background: #2a2a2a; color: #ffffff; border-bottom: 3px solid #ffd54a;
+    font-size: 16px; font-weight: 600; text-align: center; line-height: 1.3;
+    display: none;
+  }
+  #status.on { display: block; }
+  #status.calm { border-bottom-color: #8ab4ff; }
+
+  /* Welcome / ended screen. The photo is decorative: a scrim plus a dark
+     panel keep the words at high contrast over any image the operator
+     picks, and every word is real text for screen readers and zoom. */
+  #event {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 4;
+    display: none; background: #000000 center / cover no-repeat;
+  }
+  #event.on { display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #event::before {
+    content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    background: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.75));
+  }
+  #event .panel {
+    position: relative; max-width: 34rem; width: 100%;
+    background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 16px; padding: 22px 24px; color: #ffffff; text-align: center;
+    overflow-wrap: break-word;
+  }
+  #event h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 10px; }
+  #event p { font-size: 1.05rem; line-height: 1.45; margin: 0 0 10px; }
+  #event .notice { color: #d9d9d9; font-size: 0.95rem; margin: 0; }
+  #event .notice:empty { display: none; }
 
   #interim {
     font-size: var(--size);
@@ -72,22 +138,41 @@
     padding: 12px 20px;
     border-radius: 999px;
     background: #2a2a2a; color: #fff; border: 1px solid #454545;
-    font-size: 16px; font-family: inherit;
+    font-size: 1rem; font-family: inherit;
     display: none;
   }
   #latest.on { display: block; }
 
-  /* Settings trigger. One 44px target, low contrast, bottom right - the
-     only thing visible on the page until someone taps it. */
+  /* Pause auto-scroll: an explicit control, not just "scroll up". */
+  #pause {
+    position: fixed;
+    left: calc(env(safe-area-inset-left) + 14px);
+    bottom: calc(env(safe-area-inset-bottom) + 14px);
+    z-index: 7;
+    height: 44px; min-width: 44px; padding: 0 14px; border-radius: 22px;
+    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.62);
+    border: 1px solid rgba(255,255,255,0.35); font-family: inherit;
+    font-size: 0.9375rem; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #pause[aria-pressed="true"] { background: #ffd54a; color: #000; border-color: #ffd54a; }
+
+  /* Settings trigger. One 44px target, bottom right. Quiet, but it is the
+     control a low-vision reader needs to find, so its text clears 4.5:1 and
+     its edge is visible against the page. */
   #settings-btn {
     position: fixed;
     right: calc(env(safe-area-inset-right) + 14px);
     bottom: calc(env(safe-area-inset-bottom) + 14px);
     z-index: 7;
     width: 44px; height: 44px; border-radius: 22px;
-    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.42);
-    border: 0; font-family: inherit; font-size: 15px; font-weight: 600;
+    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.62);
+    border: 1px solid rgba(255,255,255,0.35); font-family: inherit; font-size: 0.9375rem; font-weight: 600;
     -webkit-tap-highlight-color: transparent;
+  }
+  #settings-btn:focus-visible, #pause:focus-visible, #lang:focus-visible, #latest:focus-visible,
+  #settings button:focus-visible, #settings input:focus-visible {
+    outline: 3px solid #ffffff; outline-offset: 2px;
   }
   #settings-btn.open { background: rgba(255,255,255,0.16); color: rgba(255,255,255,0.75); }
 
@@ -99,13 +184,17 @@
     right: calc(env(safe-area-inset-right) + 66px);
     bottom: calc(env(safe-area-inset-bottom) + 14px);
     z-index: 6;
-    height: 44px; padding: 0 14px; border-radius: 22px;
-    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.55);
-    border: 0; font-family: inherit; font-size: 15px; font-weight: 600;
+    height: 44px; padding: 0 30px 0 14px; border-radius: 22px;
+    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.35); font-family: inherit; font-size: 0.9375rem; font-weight: 600;
     -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%23bbb'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
     display: none;
   }
   #lang.on { display: block; }
+  #lang option { color: #000; }
 
   /* Settings panel: a small card anchored above the trigger, not a
      full-screen takeover - captions keep scrolling behind it. Width is
@@ -123,13 +212,14 @@
     padding: 16px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.5);
     display: none;
-    font-size: 15px;
+    font-size: 0.9375rem;
   }
   #settings.open { display: block; }
-  #settings .row { margin-bottom: 16px; }
+  #settings .row { margin: 0 0 16px; padding: 0; border: 0; min-width: 0; }
   #settings .row:last-child { margin-bottom: 0; }
   #settings .label {
-    color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600;
+    display: block; padding: 0;
+    color: rgba(255,255,255,0.6); font-size: 0.8125rem; font-weight: 600;
     letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 9px;
   }
   #settings .size-row {
@@ -145,7 +235,7 @@
   #size-dec { font-size: 13px; }
   #size-inc { font-size: 20px; }
   #size-value {
-    flex: 1; text-align: center; color: rgba(255,255,255,0.75); font-size: 14px;
+    flex: 1; text-align: center; color: rgba(255,255,255,0.75); font-size: 0.875rem;
   }
   #settings .swatches {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -178,34 +268,45 @@
 </head>
 <body>
 <div id="link"></div>
-<div id="scroll">
-  <div id="lines"></div>
-  <div id="interim"></div>
+<div id="status" role="status" aria-live="polite"></div>
+<header id="brand"><img id="brand-img" alt=""></header>
+<div id="scroll" tabindex="0" role="region" aria-label="Captions">
+  <div id="lang-note" hidden></div>
+  <div id="lines" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
+  <div id="interim" aria-hidden="true"></div>
+</div>
+<div id="event" aria-hidden="true">
+  <div class="panel">
+    <h1 id="event-title">Live captions</h1>
+    <p id="event-message">Live captions will begin when the program starts.</p>
+    <p id="event-notice" class="notice"></p>
+  </div>
 </div>
 <button id="latest" type="button">Jump to latest</button>
-<button id="lang" type="button" aria-label="Language"></button>
+<button id="pause" type="button" aria-pressed="false" aria-label="Pause automatic scrolling">Pause</button>
+<select id="lang" aria-label="Caption language"></select>
 <button id="settings-btn" type="button" aria-label="Caption display settings"
         aria-expanded="false" aria-controls="settings">Aa</button>
 <div id="settings" role="group" aria-label="Caption display settings">
-  <div class="row">
-    <div class="label">Text size</div>
+  <fieldset class="row">
+    <legend class="label">Text size</legend>
     <div class="size-row">
       <button id="size-dec" class="size-btn" type="button" aria-label="Smaller text">A</button>
-      <span id="size-value">24px</span>
+      <span id="size-value" aria-live="polite">Medium</span>
       <button id="size-inc" class="size-btn" type="button" aria-label="Larger text">A</button>
     </div>
-  </div>
-  <div class="row">
-    <div class="label">Text color</div>
-    <div class="swatches" id="swatches">
-      <button class="swatch" type="button" data-color="#f2f2f2" style="background:#f2f2f2" aria-label="White"></button>
-      <button class="swatch" type="button" data-color="#ffd54a" style="background:#ffd54a" aria-label="Amber"></button>
-      <button class="swatch" type="button" data-color="#8ee08a" style="background:#8ee08a" aria-label="Green"></button>
-      <button class="swatch" type="button" data-color="#8ab4ff" style="background:#8ab4ff" aria-label="Blue"></button>
-      <button class="swatch" type="button" data-color="#ff9b9b" style="background:#ff9b9b" aria-label="Red"></button>
+  </fieldset>
+  <fieldset class="row">
+    <legend class="label" id="lbl-color">Text color</legend>
+    <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="lbl-color">
+      <button class="swatch" type="button" role="radio" aria-checked="false" data-color="#f2f2f2" style="background:#f2f2f2" aria-label="White"></button>
+      <button class="swatch" type="button" role="radio" aria-checked="false" data-color="#ffd54a" style="background:#ffd54a" aria-label="Amber"></button>
+      <button class="swatch" type="button" role="radio" aria-checked="false" data-color="#8ee08a" style="background:#8ee08a" aria-label="Green"></button>
+      <button class="swatch" type="button" role="radio" aria-checked="false" data-color="#8ab4ff" style="background:#8ab4ff" aria-label="Blue"></button>
+      <button class="swatch" type="button" role="radio" aria-checked="false" data-color="#ff9b9b" style="background:#ff9b9b" aria-label="Red"></button>
       <input id="color-custom" class="swatch-custom" type="color" aria-label="Custom color">
     </div>
-  </div>
+  </fieldset>
 </div>
 <div id="dbg"></div>
 <script>
@@ -214,21 +315,54 @@
 
   var P, cfg, elScroll, elLines, elInterim, elLatest, elLang, elLink, elDbg;
   var elSettings, elSettingsBtn, elSizeDec, elSizeInc, elSizeValue, elSwatches, elColorCustom;
+  var elStatus, elEvent, elEventTitle, elEventMessage, elEventNotice, elBrand, elBrandImg;
+  var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0;
+  var statusText = '', bannerReason = '', resumedTimer = null, replayMute = null;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, lastMsgAt = 0, startedAt = 0;
   var seenIds = Object.create(null), seenOrder = [], pinned = true, lineCount = 0;
-  var SIZES = [19, 22, 26, 31, 37];
+  var holdScroll = false, elPause, elLangNote, siteSource = 'en';
+  // Steps go up to 64 px: arm's-length reading for low vision needs more
+  // than the old 37 px ceiling. Names, not pixel counts, in the panel.
+  var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
+  var SIZE_NAMES = ['Small', 'Medium', 'Large', 'Larger', 'Extra large', 'Huge', 'Giant', 'Maximum'];
   var chosenLang = '', availableLangs = [];
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
   var LANG_NAMES = {
-    en: 'English', es: 'Espanol', pt: 'Portugues', fr: 'Francais',
+    en: 'English', es: 'Español', pt: 'Português', fr: 'Français',
     de: 'Deutsch', it: 'Italiano', ko: '한국어',
     ja: '日本語', ar: 'العربية',
     zh: '中文', 'zh-Hans': '简体中文',
-    'zh-Hant': '繁體中文', vi: 'Tieng Viet', ru: 'Русский'
+    'zh-Hant': '繁體中文', vi: 'Tiếng Việt', ru: 'Русский'
   };
+
+  // WCAG relative luminance and contrast ratio, for the custom colour guard.
+  function luminance(hexColor) {
+    var h = hexColor.replace('#', '');
+    if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    var n = parseInt(h, 16), parts = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    var lin = parts.map(function (c) {
+      c = c / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
+  function contrast(a, b) {
+    var la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+  function mix(a, b, amount) {   // amount of a, the rest b
+    function rgb(hexColor) {
+      var h = hexColor.replace('#', ''), n = parseInt(h.length === 3 ? h.replace(/(.)/g, '$1$1') : h, 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    var x = rgb(a), y = rgb(b), out = [0, 1, 2].map(function (i) {
+      return Math.round(amount * x[i] + (1 - amount) * y[i]);
+    });
+    return '#' + out.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+  }
   function langLabel(code) { return LANG_NAMES[code] || code; }
 
   function now() { return Date.now(); }
@@ -257,7 +391,10 @@
       bg:    hex('bg', '#000000'),
       lines: Math.round(num('lines', 200, 10, 2000)),  // scrollback cap, bounded DOM
       debug: flag('debug'),
-      relay: P.get('relay'),
+      // A relay override is honoured only when the page was opened as a
+      // file (ProPresenter's web layer, testing). Served from the relay it
+      // would let a crafted link point every phone at a stranger's server.
+      relay: location.protocol === 'file:' ? P.get('relay') : null,
       lang: P.get('lang') || ''
     };
   }
@@ -272,9 +409,14 @@
     return cfg.size;
   }
   function setSize(px) {
-    document.documentElement.style.setProperty('--size', px + 'px');
+    // Stored and stepped in px for a stable scale, applied in rem so the
+    // device's own text-size setting still multiplies it.
+    document.documentElement.style.setProperty('--size', (px / 16) + 'rem');
     try { localStorage.setItem('cc.size', String(px)); } catch (e) {}
-    if (elSizeValue) elSizeValue.textContent = Math.round(px) + 'px';
+    if (elSizeValue) {
+      var name = SIZE_NAMES[closestSizeIndex(px)] || '';
+      elSizeValue.textContent = name + ' (' + Math.round(px) + ' px)';
+    }
     if (elSizeDec) elSizeDec.disabled = px <= SIZES[0];
     if (elSizeInc) elSizeInc.disabled = px >= SIZES[SIZES.length - 1];
   }
@@ -286,8 +428,7 @@
     return best;
   }
   function stepSize(delta) {
-    var cur = parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue('--size')) || cfg.size;
+    var cur = loadSize();
     var next = closestSizeIndex(cur) + delta;
     if (next < 0 || next >= SIZES.length) return;
     var wasPinned = pinned;
@@ -305,15 +446,26 @@
     return cfg.color;
   }
   function setColor(hexColor) {
+    // A colour that vanishes against the background would be saved and
+    // persist until the reader finds the settings button again by feel.
+    if (contrast(hexColor, cfg.bg) < 4.5) {
+      announce('That colour is too faint against the background');
+      markSelectedSwatch(loadColor());
+      return;
+    }
     document.documentElement.style.setProperty('--color', hexColor);
+    // Interim text is the chosen colour dimmed toward the background, so it
+    // stays distinguishable whatever pair the reader picked.
+    document.documentElement.style.setProperty('--dim', mix(hexColor, cfg.bg, 0.6));
     try { localStorage.setItem('cc.color', hexColor); } catch (e) {}
     markSelectedSwatch(hexColor);
   }
   function markSelectedSwatch(hexColor) {
     var swatches = elSwatches ? elSwatches.querySelectorAll('.swatch') : [];
     for (var i = 0; i < swatches.length; i++) {
-      swatches[i].classList.toggle('selected',
-        swatches[i].getAttribute('data-color').toLowerCase() === hexColor.toLowerCase());
+      var on = swatches[i].getAttribute('data-color').toLowerCase() === hexColor.toLowerCase();
+      swatches[i].classList.toggle('selected', on);
+      swatches[i].setAttribute('aria-checked', on ? 'true' : 'false');
     }
     if (elColorCustom) elColorCustom.value = hexColor;
   }
@@ -329,7 +481,8 @@
     if (code === chosenLang) return;
     chosenLang = code;
     try { localStorage.setItem('cc.lang', code); } catch (e) {}
-    elLang.textContent = langLabel(code);
+    elLang.value = code;
+    updateLangNote();
     // A different language is a different stream, so start clean and let the
     // relay replay that language's history on reconnect. teardown() schedules
     // that reconnect itself.
@@ -337,10 +490,27 @@
     teardown();
   }
 
-  function cycleLang() {
-    if (availableLangs.length < 2) return;
-    var i = availableLangs.indexOf(chosenLang);
-    setLang(availableLangs[(i + 1) % availableLangs.length]);
+  // Machine translation is a different thing from the source captions, and
+  // captioning practice says so up front so readers can calibrate trust.
+  function updateLangNote() {
+    var translated = !!chosenLang && chosenLang !== siteSource;
+    elLangNote.hidden = !translated;
+    elLangNote.textContent = translated
+      ? 'Automatic translation from ' + langLabel(siteSource) + '. Wording may be imperfect.'
+      : '';
+    elLangNote.setAttribute('lang', chosenLang || 'en');
+  }
+
+  function fillLangSelect() {
+    elLang.textContent = '';
+    availableLangs.forEach(function (code) {
+      var o = document.createElement('option');
+      o.value = code;
+      o.textContent = langLabel(code);
+      o.setAttribute('lang', code);
+      elLang.appendChild(o);
+    });
+    elLang.value = chosenLang;
   }
 
   function loadLanguages() {
@@ -348,14 +518,107 @@
       .then(function (r) { return r.json(); })
       .then(function (site) {
         availableLangs = site.available || [];
+        siteSource = site.source || 'en';
         if (!chosenLang || availableLangs.indexOf(chosenLang) < 0) {
-          chosenLang = site.source || 'en';
+          chosenLang = siteSource;
         }
-        elLang.textContent = langLabel(chosenLang);
+        fillLangSelect();
+        updateLangNote();
         // Only show the control when there is a real choice. One language
-        // means the button would do nothing, so it stays hidden.
+        // means the picker would do nothing, so it stays hidden.
         elLang.className = availableLangs.length > 1 ? 'on' : '';
+        // Interims are always in the source language, whatever stream was
+        // picked - a screen reader needs to know which rules to read by.
+        elInterim.setAttribute('lang', site.source || 'en');
+        if (site.event) applyEvent(site.event);   // welcome screen before the socket is even up
       })['catch'](function () {});
+  }
+
+  // ---- event state and status banner --------------------------------------
+
+  function setStatus(text, calm) {
+    if (text === statusText) return;
+    statusText = text;
+    elStatus.textContent = text || '';
+    elStatus.className = text ? ('on' + (calm ? ' calm' : '')) : '';
+  }
+  // A one-shot announcement that clears itself: "Captions started".
+  function announce(text) {
+    setStatus(text, true);
+    clearTimeout(resumedTimer);
+    resumedTimer = setTimeout(function () { if (statusText === text) setStatus(''); }, 4000);
+  }
+
+  function renderEvent() {
+    var ev = eventInfo || {};
+    var overlay = ev.state === 'starting' || ev.state === 'ended';
+    if (overlay) {
+      elEventTitle.textContent = ev.title || 'Live captions';
+      elEventMessage.textContent = ev.state === 'ended'
+        ? 'This event has ended. Thank you for attending.'
+        : (ev.message || 'Live captions will begin when the program starts.');
+      elEventNotice.textContent = ev.notice || '';
+      elEvent.style.backgroundImage = ev.image
+        ? 'url("/api/event/image?v=' + encodeURIComponent(String(ev.image_v || 0)) + '")'
+        : 'none';
+    }
+    elEvent.className = overlay ? 'on' : '';
+    elEvent.setAttribute('aria-hidden', overlay ? 'false' : 'true');
+
+    // The logo row: live or paused only (the welcome screen has the title
+    // already), and only when a logo is set. Named for screen readers by
+    // the operator; without a name it is decorative.
+    var showLogo = !overlay && !!ev.logo;
+    if (showLogo) {
+      var src = '/api/event/logo?v=' + encodeURIComponent(String(ev.logo_v || 0));
+      if (elBrandImg.getAttribute('src') !== src) elBrandImg.src = src;
+      elBrandImg.alt = ev.logo_alt || '';
+    }
+    elBrand.className = showLogo ? 'on' : '';
+  }
+
+  function applyEvent(ev) {
+    if (!ev || typeof ev.state !== 'string') return;
+    var prev = eventInfo ? eventInfo.state : null;
+    eventInfo = ev;
+    renderEvent();
+    if (prev && prev !== ev.state && ev.state === 'live') {
+      announce(prev === 'paused' ? 'Captions resumed' : 'Captions started');
+    }
+  }
+
+  // Decides, once a second, whether the reader needs to be told something
+  // the captions themselves cannot say. A 2.5 s grace keeps a quick
+  // reconnect or a momentary hiccup from flashing a banner.
+  function updateBanner(n) {
+    var ev = eventInfo || {};
+    var reason = '', calm = false;
+    var linkDown = !sock || sock.readyState !== 1 || (n - lastMsgAt) > 20000;
+    if (linkDown) {
+      if (!linkDownAt) linkDownAt = n;
+      if ((n - linkDownAt) > 2500) reason = 'Captions paused — reconnecting…';
+    } else {
+      linkDownAt = 0;
+    }
+    if (!reason && ev.state === 'paused') {
+      reason = ev.pause_message || 'Captions paused';
+      calm = true;
+    }
+    var faulted = !!(health && health.fault);
+    if (!reason && ev.state === 'live' && faulted) {
+      if (!faultSince) faultSince = n;
+      if ((n - faultSince) > 2500) reason = 'Captions paused — technical difficulty';
+    }
+    if (!faulted) faultSince = 0;
+
+    if (reason) {
+      bannerReason = reason;
+      clearTimeout(resumedTimer);
+      setStatus(reason, calm);
+    } else if (bannerReason) {
+      bannerReason = '';
+      announce('Captions resumed');
+    }
   }
 
   // ---- settings panel -----------------------------------------------------
@@ -366,6 +629,8 @@
     elSettingsBtn.setAttribute('aria-expanded', 'true');
   }
   function closeSettings() {
+    // Focus must not fall to the body when the panel hides under it.
+    if (elSettings.contains(document.activeElement)) elSettingsBtn.focus();
     elSettings.classList.remove('open');
     elSettingsBtn.classList.remove('open');
     elSettingsBtn.setAttribute('aria-expanded', 'false');
@@ -381,13 +646,22 @@
     return (elScroll.scrollHeight - elScroll.scrollTop - elScroll.clientHeight) < 90;
   }
   function scrollToBottom() {
+    if (holdScroll) return;
     elScroll.scrollTop = elScroll.scrollHeight;
     pinned = true;
     elLatest.className = '';
   }
   function onScroll() {
-    pinned = atBottom();
+    pinned = atBottom() && !holdScroll;
     elLatest.className = pinned ? '' : 'on';
+  }
+  function togglePause() {
+    holdScroll = !holdScroll;
+    elPause.setAttribute('aria-pressed', holdScroll ? 'true' : 'false');
+    elPause.textContent = holdScroll ? 'Resume' : 'Pause';
+    elPause.setAttribute('aria-label', holdScroll ? 'Resume automatic scrolling' : 'Pause automatic scrolling');
+    if (holdScroll) { pinned = false; elLatest.className = 'on'; }
+    else scrollToBottom();
   }
 
   // ---- render ------------------------------------------------------------
@@ -398,6 +672,18 @@
     if (!isReplay) d.className = 'new';
     elLines.appendChild(d);
     lineCount++;
+    trimScrollback();
+  }
+
+  function addDivider() {
+    var d = document.createElement('div');
+    d.className = 'divider';
+    d.setAttribute('aria-hidden', 'true');
+    elLines.appendChild(d);
+    trimScrollback();
+  }
+
+  function trimScrollback() {
     // Bounded DOM: an all-day service must not grow without limit.
     while (elLines.childNodes.length > cfg.lines) {
       elLines.removeChild(elLines.firstChild);
@@ -446,6 +732,7 @@
 
   function setLink(up) {
     elLink.className = up ? '' : 'down';
+    if (up) linkDownAt = 0;
   }
 
   function connect() {
@@ -504,6 +791,14 @@
       }
       sessionId = m.session_id || null;
       lastSeq = -1;
+      // The replay burst that follows would be read out as thirty lines in
+      // a row; a screen reader user wants the live ones, so the log stays
+      // quiet for a moment.
+      elLines.setAttribute('aria-live', 'off');
+      clearTimeout(replayMute);
+      replayMute = setTimeout(function () { elLines.setAttribute('aria-live', 'polite'); }, 1500);
+      if (m.lang) elLines.setAttribute('lang', m.lang);
+      if (m.event) applyEvent(m.event);
       return;
     }
     if (typeof m.seq === 'number') {
@@ -520,13 +815,21 @@
         setInterimText('');
         break;
       case 'clear':
-        resetAll();
+        // The wall goes blank; the reader keeps what they were reading, with
+        // a mark where the operator drew the line.
+        addDivider();
+        setInterimText('');
+        break;
+      case 'event':
+        applyEvent(m);
         break;
       case 'heartbeat':
         if (m.session_id && sessionId && m.session_id !== sessionId) {
           sessionId = m.session_id;
           resetAll();
         }
+        if (m.event) applyEvent(m.event);
+        if (m.health) health = m.health;
         break;
       default: break;
     }
@@ -558,6 +861,7 @@
       log('stale link, forcing reconnect');
       teardown();
     }
+    updateBanner(n);
     if (cfg.debug) {
       elDbg.textContent =
         'ws       ' + (sock ? WS_NAMES[sock.readyState] : 'none') + '\n' +
@@ -590,6 +894,15 @@
     elSizeValue = document.getElementById('size-value');
     elSwatches = document.getElementById('swatches');
     elColorCustom = document.getElementById('color-custom');
+    elStatus = document.getElementById('status');
+    elPause = document.getElementById('pause');
+    elLangNote = document.getElementById('lang-note');
+    elEvent = document.getElementById('event');
+    elBrand = document.getElementById('brand');
+    elBrandImg = document.getElementById('brand-img');
+    elEventTitle = document.getElementById('event-title');
+    elEventMessage = document.getElementById('event-message');
+    elEventNotice = document.getElementById('event-notice');
 
     document.documentElement.style.setProperty('--bg', cfg.bg);
     setSize(loadSize());
@@ -597,8 +910,9 @@
     if (cfg.debug) elDbg.className = 'on';
 
     elScroll.addEventListener('scroll', onScroll, { passive: true });
-    elLatest.addEventListener('click', scrollToBottom);
-    elLang.addEventListener('click', cycleLang);
+    elLatest.addEventListener('click', function () { if (holdScroll) togglePause(); else scrollToBottom(); });
+    elPause.addEventListener('click', togglePause);
+    elLang.addEventListener('change', function () { setLang(this.value); });
     elSettingsBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       toggleSettings();

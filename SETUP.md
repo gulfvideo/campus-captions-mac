@@ -47,7 +47,7 @@ real file is gitignored so machine-specific settings never travel with the code.
 [relay]
 host = "0.0.0.0"      # all interfaces - leave this alone or phones cannot connect
 port = 8000
-source_token = ""     # optional shared secret; empty is fine on a booth LAN
+source_token = ""     # leave empty: one is generated into .env on first start
 
 [capture]
 backend = "mock"                        # mock | deepgram | apple_speech
@@ -212,8 +212,11 @@ actually changes the relay's behavior: anyone reaching the relay through that
 exact hostname only ever gets the phone view - `/status` and everything that
 can change what's happening (opening/closing the stream, switching backends,
 the Deepgram key field, the YouTube toggle) reject them with a plain 404, as
-if those routes didn't exist. The operator dashboard stays fully usable from
-the booth LAN or localhost, unaffected by this setting entirely.
+if those routes didn't exist, even with the operator token. The operator
+dashboard stays usable from the booth LAN or localhost with the operator link
+(section 6). Two guard rails: the tunnel will not auto-start at boot until a
+hostname is set, and the hostname cannot be cleared while the tunnel is
+enabled - press Disable first.
 
 ---
 
@@ -309,6 +312,9 @@ of whether live YouTube pushing (3b) is set up. On the status page, under
    begins - captions are timed from there, not from whenever the relay
    happened to start.
 2. After the event, download the `.srt` for each language that was recorded.
+   Cues are already wrapped to two lines of 42 characters with readable
+   durations. If they land a beat late against the video, add `&offset=0.8`
+   to the download link to shift everything earlier by the recognizer's delay.
 3. Optionally upload it to a YouTube video's caption track:
 
    ```bash
@@ -434,8 +440,38 @@ mics pick up the PA and the audience and the transcript suffers badly.
 
 ## 6. Running an event
 
-Open the status page — **`http://<relay-ip>:8000/status`**. It is the only page
-you need. Four tiles:
+Open the status page from the link the launcher window prints —
+**`http://<relay-ip>:8000/status?token=…`** — or from the menu bar app's
+**Open Status Page**. That link signs the browser in for a month; after that
+plain `http://<relay-ip>:8000/status` works in the same browser. Opening it
+without the token shows a short page saying where to find the link, not the
+dashboard: the status page controls the event, and anyone the QR code let onto
+the wifi can reach the same address. The token is `CAPTIONS_OPERATOR_TOKEN` in
+`.env`, generated on first start.
+
+It is the only page you need.
+
+**Before the doors open**, expand **Event & welcome screen** at the top. Type
+the event title, an optional welcome message, and a notice line - the
+accommodation contact belongs here, and so does "Captions are automatic" -
+then press Save; optionally choose a background photo, and a logo to sit above
+the captions while they are live (a transparent PNG, with a description typed
+in so screen readers announce the name). Anyone who scans the QR
+code early sees that welcome screen instead of a blank page, and their phone
+stays connected. Press **Start event** when the program begins and every phone
+switches to captions at once. **Pause** puts your pause message ("Intermission")
+over the captions; **End event** shows that the event is over. If something
+breaks while live - the microphone, the recognizer, the capture client -
+attendees automatically see "Captions paused - technical difficulty" and then
+"Captions resumed", so a deaf attendee can tell an outage from a pause.
+
+**During the program**, the caption row under the stream buttons sends what the
+recognizer cannot hear: **[Applause]**, **[Laughter]**, **[Music]**,
+**[Inaudible]**, or anything you type. Type a name and press **Speaker change**
+to put `>> Name:` on the next line. With the Deepgram backend, a change of
+voice is marked with `>>` automatically; the name still has to come from you.
+
+Four tiles:
 
 | Tile | Green means |
 |---|---|
@@ -624,7 +660,7 @@ Roughly 30 minutes before doors.
 
 - [ ] Relay host is on, on the network, at its expected IP address
 - [ ] `Start Captions.bat` run — window shows `--- ready ---`
-- [ ] Status page open in the booth: `http://<relay-ip>:8000/status`
+- [ ] Status page open in the booth, via the launcher's link (`/status?token=…`)
 - [ ] `config/event.toml` has `backend = "deepgram"` for a real event
 - [ ] `.env` has the Deepgram key — the capture client says
       `DEEPGRAM_API_KEY found` at startup

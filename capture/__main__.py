@@ -169,9 +169,13 @@ class CaptureApp:
                     await self.switch_backend(payload.get("backend", ""))
                 elif action == "set_deepgram_key":
                     key = str(payload.get("key", "")).strip()
-                    if key:
-                        os.environ["DEEPGRAM_API_KEY"] = key
+                    if key and config_mod.has_control_chars(key):
+                        print("[capture] ignored Deepgram key: contains control characters")
+                    elif key:
+                        # Save first: if the write is refused, the environment
+                        # never learns a key that would not survive a restart.
                         config_mod.save_env_var("DEEPGRAM_API_KEY", key)
+                        os.environ["DEEPGRAM_API_KEY"] = key
                         print("[capture] Deepgram API key updated")  # never the key itself
             except Exception as exc:
                 print(f"[capture] control {action} failed: {exc!r}")
