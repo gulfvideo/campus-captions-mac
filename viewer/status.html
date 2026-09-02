@@ -166,6 +166,11 @@
     padding: 10px 12px;
   }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+  /* Transcript downloads: one row per recorded language, a link per format. */
+  .export-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-top: 8px; font-size: 14px; }
+  .export-lang { color: var(--text); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .export-link { color: #7fb2f0; text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .export-link:hover, .export-link:focus-visible { text-decoration: underline; }
   .disclosure-header .badge.paused { color: var(--warn); }
 
   #caption-row input[type=text] {
@@ -477,15 +482,27 @@
       none.textContent = 'Nothing recorded yet.';
       container.appendChild(none);
     } else {
+      // One row per recorded language, one link per export format. The
+      // format list mirrors relay/transcript.py's FORMATS. .srt and .vtt
+      // are for a video's caption track, .txt is the readable transcript,
+      // .json and .csv carry the timing as data.
+      var FORMATS = ['srt', 'vtt', 'txt', 'json', 'csv'];
       langs.forEach(function (lang) {
-        var a = document.createElement('a');
-        a.href = '/api/transcript.srt?lang=' + encodeURIComponent(lang);
-        a.textContent = 'Download .srt (' + lang + ', ' + t.lines[lang] + ')';
-        a.style.color = '#7fb2f0';
-        a.style.fontSize = '14px';
-        a.style.textDecoration = 'none';
-        a.style.marginRight = '16px';
-        container.appendChild(a);
+        var row = document.createElement('div');
+        row.className = 'export-row';
+        var label = document.createElement('span');
+        label.className = 'export-lang';
+        label.textContent = lang + ' · ' + t.lines[lang] + ' line' + (t.lines[lang] === 1 ? '' : 's');
+        row.appendChild(label);
+        FORMATS.forEach(function (fmt) {
+          var a = document.createElement('a');
+          a.href = '/api/transcript.' + fmt + '?lang=' + encodeURIComponent(lang);
+          a.textContent = '.' + fmt;
+          a.className = 'export-link';
+          a.setAttribute('aria-label', 'Download .' + fmt + ' for ' + lang);
+          row.appendChild(a);
+        });
+        container.appendChild(row);
       });
     }
   }

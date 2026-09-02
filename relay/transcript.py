@@ -1,8 +1,12 @@
-"""Recording committed lines, and writing them out as SubRip (.srt).
+"""Recording committed lines, and writing them out as caption and transcript
+files: SubRip (.srt), WebVTT (.vtt), plain text, JSON and CSV.
 
 Every committed line is kept with the wall-clock window it was spoken in, per
-language. That single record feeds both YouTube paths: the file you upload to a
-video afterwards, and the live ingestion posts during the broadcast.
+language. That single record feeds every export and both YouTube paths: the
+file you upload to a video afterwards, and the live ingestion posts during the
+broadcast. All five formats are views of the same cue list - `cues()` does the
+timing and display-splitting work once and each `to_*` only formats, so a cue
+has the same number, start and end in every file.
 
 ## The zero point
 
@@ -16,6 +20,9 @@ way that is easy to see and fix by re-exporting.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -45,6 +52,19 @@ class Cue:
     start: float            # seconds from the zero point
     end: float
     text: str
+    utterance: str = ""     # id shared by a source line and its translations
+
+
+# Export formats: extension -> (media type, method name on TranscriptRecorder).
+# One table so the HTTP route, the status page links and the docs agree on
+# exactly which files exist.
+FORMATS = {
+    "srt":  ("application/x-subrip; charset=utf-8", "to_srt"),
+    "vtt":  ("text/vtt; charset=utf-8", "to_vtt"),
+    "txt":  ("text/plain; charset=utf-8", "to_txt"),
+    "json": ("application/json; charset=utf-8", "to_json"),
+    "csv":  ("text/csv; charset=utf-8", "to_csv"),
+}
 
 
 def wrap_lines(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
@@ -81,15 +101,16 @@ def split_for_display(text: str) -> list[str]:
     return ["\n".join(lines[i:i + MAX_LINES]) for i in range(0, len(lines), MAX_LINES)]
 
 
-def format_timestamp(seconds: float) -> str:
-    """SubRip wants HH:MM:SS,mmm - comma, not a full stop."""
+def format_timestamp(seconds: float, decimal: str = ",") -> str:
+    """HH:MM:SS,mmm. SubRip wants a comma before the milliseconds; WebVTT
+    wants a full stop - pass `decimal="."` for that."""
     if seconds < 0:
         seconds = 0.0
     millis = int(round(seconds * 1000))
     hours, millis = divmod(millis, 3_600_000)
     minutes, millis = divmod(millis, 60_000)
     secs, millis = divmod(millis, 1000)
-    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}{decimal}{millis:03d}"
 
 
 @dataclass
@@ -163,8 +184,9 @@ class TranscriptRecorder:
 
         # First pass: one window per recorded line, split into display-sized
         # pieces that share the window in proportion to their length.
-        pieces: list[tuple[float, float, str]] = []
+        pieces: list[tuple[float, float, str, str]] = []
         for entry in raw:
+            utterance = str(entry.get("utterance") or entry.get("id") or "")
             start = entry["started"] - zero - offset
             end = entry["committed"] - zero - offset
             # Lines finished before the video began are not part of the video.
@@ -184,14 +206,14 @@ class TranscriptRecorder:
             for i, text in enumerate(texts):
                 share = (end - start) * len(text) / total
                 piece_end = end if i == len(texts) - 1 else cursor + share
-                pieces.append((cursor, piece_end, text))
+                pieces.append((cursor, piece_end, text, utterance))
                 cursor = piece_end
 
         # Second pass: durations a reader can manage, no overlaps, a gap
         # between neighbours, and nothing longer than MAX_CUE_SECONDS.
         cues: list[Cue] = []
         previous_end = -MIN_GAP_SECONDS
-        for i, (start, end, text) in enumerate(pieces):
+        for i, (start, end, text, utterance) in enumerate(pieces):
             wanted = max(MIN_CUE_SECONDS, len(text.replace("\n", " ")) / READ_CHARS_PER_SECOND)
             if start < previous_end + MIN_GAP_SECONDS:
                 start = previous_end + MIN_GAP_SECONDS
@@ -205,8 +227,20 @@ class TranscriptRecorder:
             if end <= start:
                 end = start + MIN_CUE_SECONDS
             previous_end = end
-            cues.append(Cue(index=len(cues) + 1, start=start, end=end, text=text))
+            cues.append(Cue(index=len(cues) + 1, start=start, end=end, text=text,
+                            utterance=utterance))
         return cues
+
+    def export(self, lang: str, fmt: str, offset: float = 0.0, **options) -> str:
+        """Render one language in one of FORMATS. Empty string means nothing
+        was recorded for that language, in any format."""
+        try:
+            _, method = FORMATS[fmt]
+        except KeyError:
+            raise ValueError(f"unknown export format {fmt!r}") from None
+        if not self.cues(lang, offset=offset):
+            return ""
+        return getattr(self, method)(lang, offset=offset, **options)
 
     def to_srt(self, lang: str, offset: float = 0.0) -> str:
         blocks = []
@@ -217,6 +251,91 @@ class TranscriptRecorder:
                 f"{cue.text}\n"
             )
         return "\n".join(blocks)
+
+    def to_vtt(self, lang: str, offset: float = 0.0) -> str:
+        """WebVTT: same cues, a header line, full stops in the timestamps, and
+        the cue number as an identifier line so a player that shows them
+        lines up with the .srt."""
+        blocks = ["WEBVTT\n"]
+        for cue in self.cues(lang, offset=offset):
+            blocks.append(
+                f"{cue.index}\n"
+                f"{format_timestamp(cue.start, '.')} --> "
+                f"{format_timestamp(cue.end, '.')}\n"
+                f"{cue.text}\n"
+            )
+        return "\n".join(blocks)
+
+    def to_txt(self, lang: str, offset: float = 0.0, timestamps: bool = True) -> str:
+        """A readable transcript, one recorded line per line - not split for
+        display like the caption files, since nobody reads a document two
+        lines at a time. With timestamps each line is prefixed by its start
+        as [HH:MM:SS]; without, it is the bare text."""
+        out = []
+        for stamp, text in self._recorded_lines(lang, offset):
+            if timestamps:
+                out.append(f"[{format_timestamp(stamp)[:8]}] {text}")
+            else:
+                out.append(text)
+        return "\n".join(out) + ("\n" if out else "")
+
+    def _recorded_lines(self, lang: str, offset: float) -> list[tuple[float, str]]:
+        """(start seconds, text) per recorded line, same zero point and cutoff
+        rules as cues() but without the display split."""
+        raw = self.lines.get(lang) or []
+        if not raw:
+            return []
+        zero = self.zero_time if self.zero_time is not None else raw[0]["started"]
+        out = []
+        for entry in raw:
+            if entry["committed"] - zero - offset <= 0:
+                continue
+            out.append((max(0.0, entry["started"] - zero - offset), entry["text"]))
+        return out
+
+    def to_json(self, lang: str, offset: float = 0.0) -> str:
+        cues = self.cues(lang, offset=offset)
+        raw = self.lines.get(lang) or []
+        zero = self.zero_time if self.zero_time is not None else (raw[0]["started"] if raw else None)
+        payload = {
+            "language": lang,
+            "zero_time": zero,                 # unix seconds the cues count from
+            "zero_marked": self.zero_time is not None,
+            "offset": offset,
+            "cue_count": len(cues),
+            "cues": [
+                {
+                    "index": cue.index,
+                    "start": round(cue.start, 3),
+                    "end": round(cue.end, 3),
+                    "text": cue.text,
+                    "utterance": cue.utterance,
+                }
+                for cue in cues
+            ],
+        }
+        return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+    def to_csv(self, lang: str, offset: float = 0.0) -> str:
+        """One row per cue. Timestamps twice: formatted for a person reading
+        the sheet, and as plain seconds for anything doing arithmetic on it.
+        A cue's display line break becomes a space."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["index", "start", "end", "start_seconds", "end_seconds",
+                         "language", "utterance", "text"])
+        for cue in self.cues(lang, offset=offset):
+            writer.writerow([
+                cue.index,
+                format_timestamp(cue.start, "."),
+                format_timestamp(cue.end, "."),
+                f"{cue.start:.3f}",
+                f"{cue.end:.3f}",
+                lang,
+                cue.utterance,
+                cue.text.replace("\n", " "),
+            ])
+        return buf.getvalue()
 
     def stats(self) -> dict:
         now = time.time()

@@ -38,7 +38,7 @@ its own replay buffer, so joining `lang=es` replays Spanish history, not
 English translated on the fly. It changes nothing else.
 
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
-`GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.srt`,
+`GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.{srt,vtt,txt,json,csv}`,
 `POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`,
 `POST /api/tunnel`.
 
@@ -338,7 +338,14 @@ phones and for the ProPresenter URL.
 ## Transcript export
 
 ```
-GET /api/transcript.srt?lang=en&offset=0.8
+GET /api/transcript.srt?lang=en&offset=0.8      SubRip           application/x-subrip
+GET /api/transcript.vtt?lang=en&offset=0.8      WebVTT           text/vtt
+GET /api/transcript.txt?lang=en                 [HH:MM:SS] text  text/plain   (?timestamps=0 for bare text)
+GET /api/transcript.json?lang=en                cue list         application/json
+GET /api/transcript.csv?lang=en                 one row per cue  text/csv
+  ->  200 with Content-Disposition: attachment; filename="captions-YYYYMMDD-HHMM-<lang>.<fmt>"
+  ->  404 if nothing has been recorded for that language, or the extension is unknown
+  ->  400 if lang is not a plain language code, or offset is outside 0-10
 ```
 
 Cues follow the DCMP presentation rules: at most two lines of at most 42
@@ -347,6 +354,25 @@ window, a duration a reader can manage (17 characters per second, at least
 1.2 s, at most 7 s), and an 80 ms gap between neighbours. Translated lines
 inherit the source line's window. `offset` (seconds, 0-10) shifts every cue
 earlier to take the recognizer's own delay back out; about 0.8 suits Deepgram.
+
+All five formats are the same cue list (`relay/transcript.py`,
+`TranscriptRecorder.cues()`) rendered differently, so a cue has the same
+number, start and end in every file. The exception is `.txt`: it is a
+transcript to read, not captions to display, so it keeps one recorded line
+per line rather than the display split. `lang` defaults to the source
+language. All operator-only, like `/api/status`.
+
+The `.json` shape:
+
+```json
+{"language": "es", "zero_time": 1756590000.0, "zero_marked": true, "offset": 0.0,
+ "cue_count": 1,
+ "cues": [{"index": 1, "start": 3.5, "end": 6.9,
+           "text": "Bienvenidos a la capilla.", "utterance": "7f3a1c9e:44"}]}
+```
+
+`utterance` is the id shared between a source line and its translations (see
+`final` above), which is how a Spanish `.json` lines up with the English one.
 
 ## Operator authentication
 

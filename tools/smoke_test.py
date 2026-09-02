@@ -254,6 +254,41 @@ try:
     st, h, b = http("GET", "/api/transcript.srt?lang=en&offset=99", headers=bearer)
     check("  offset out of range -> 400", st == 400, f"{st}")
 
+    # --- the other export formats are views of the same cue list -----------------
+    st, h, b = http("GET", "/api/transcript.vtt?lang=en&offset=0.5", headers=bearer)
+    vtt = b.decode("utf-8", "replace")
+    vtt_timings = [l for l in vtt.splitlines() if "-->" in l]
+    check("GET /api/transcript.vtt -> WEBVTT header, full-stop timestamps, same cue count",
+          st == 200 and vtt.startswith("WEBVTT\n") and vtt_timings
+          and all("." in l and "," not in l for l in vtt_timings)
+          and len(vtt_timings) == srt.count("-->") and "text/vtt" in h.get("content-type", ""),
+          f"{st} {h.get('content-type')} {vtt[:40]!r}")
+    st, h, b = http("GET", "/api/transcript.txt?lang=en&offset=0.5", headers=bearer)
+    txt = b.decode("utf-8", "replace")
+    check("GET /api/transcript.txt -> one [HH:MM:SS] line per recorded caption, unsplit",
+          st == 200 and txt.startswith("[00:00:") and txt.count("\n") == 1 and "science building" in txt,
+          f"{st} {txt[:60]!r}")
+    st, h, b = http("GET", "/api/transcript.txt?lang=en&offset=0.5&timestamps=0", headers=bearer)
+    check("  ?timestamps=0 -> bare text", st == 200 and b.decode("utf-8", "replace").startswith("We expect"), f"{st}")
+    st, h, b = http("GET", "/api/transcript.json?lang=en&offset=0.5", headers=bearer)
+    try:
+        payload = json.loads(b)
+    except ValueError:
+        payload = {}
+    check("GET /api/transcript.json -> cue list with start/end/text/utterance",
+          st == 200 and payload.get("language") == "en" and payload.get("cue_count") == srt.count("-->")
+          and {"index", "start", "end", "text", "utterance"} <= set((payload.get("cues") or [{}])[0]),
+          f"{st} {str(payload)[:80]}")
+    st, h, b = http("GET", "/api/transcript.csv?lang=en&offset=0.5", headers=bearer)
+    csv_rows = b.decode("utf-8", "replace").splitlines()
+    check("GET /api/transcript.csv -> header plus one row per cue",
+          st == 200 and csv_rows[0].startswith("index,start,end,start_seconds") and len(csv_rows) == 1 + srt.count("-->"),
+          f"{st} {csv_rows[:1]}")
+    st, h, b = http("GET", "/api/transcript.docx?lang=en", headers=bearer)
+    check("  unknown export format -> 404", st == 404, f"{st}")
+    st, h, b = http("GET", "/api/transcript.vtt")
+    check("  .vtt without auth -> 401", st == 401, f"{st}")
+
     # --- websockets -------------------------------------------------------------
     async def ws_checks():
         async def try_ws(path, **kw):
