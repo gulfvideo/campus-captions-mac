@@ -92,6 +92,11 @@ class DeepgramBackend(ASRBackend):
         self._connected = False
         self._sent_bytes = 0
         self._opened_at: float | None = None
+        # Wall clock when the first audio byte of the current connection went
+        # out. Deepgram times its results from that byte, so this converts a
+        # result's `start + duration` into "when those words were spoken" for
+        # the relay's latency measurement. Reset on every (re)connect.
+        self._audio_started_at: float | None = None
 
     # -- connection ------------------------------------------------------
 
@@ -180,6 +185,8 @@ class DeepgramBackend(ASRBackend):
                     self._connected = True
                     self._error = None
                     self._opened_at = time.time()
+                    self._audio_started_at = None
+                    self._sent_bytes = 0
                     backoff = 0.5
                     keeper = asyncio.create_task(self._keepalive(ws))
                     try:
@@ -223,7 +230,7 @@ class DeepgramBackend(ASRBackend):
                 is_final = bool(msg.get("is_final"))
                 text = self._text_with_speakers(alts[0] or {}, is_final)
                 if text:
-                    self._emit(text, is_final=is_final)
+                    self._emit(text, is_final=is_final, speech_end=self._speech_end(msg))
             elif kind == "Error":
                 self._error = str(msg.get("description") or msg.get("message") or msg)
             # Metadata, SpeechStarted and UtteranceEnd need no action here.
@@ -272,6 +279,25 @@ class DeepgramBackend(ASRBackend):
             self._last_speaker = prev
         return " ".join(out)
 
+    def _speech_end(self, msg: dict) -> float | None:
+        """When the last word of this result was spoken, as wall-clock time.
+
+        `start` and `duration` are seconds into the audio we have sent on this
+        connection. Audio goes out as it is captured, in 100 ms blocks, so
+        "first byte sent" is within a block of "first byte heard" - close
+        enough for a latency figure whose interesting range is whole seconds.
+        """
+        if self._audio_started_at is None:
+            return None
+        try:
+            start = float(msg.get("start", 0.0))
+            duration = float(msg.get("duration", 0.0))
+        except (TypeError, ValueError):
+            return None
+        if start < 0 or duration < 0:
+            return None
+        return self._audio_started_at + start + duration
+
     # -- audio -----------------------------------------------------------
 
     async def send_audio(self, frames: bytes) -> None:
@@ -280,6 +306,8 @@ class DeepgramBackend(ASRBackend):
             return                     # closed, or reconnecting: drop, never queue
         try:
             await ws.send(frames)
+            if self._audio_started_at is None:
+                self._audio_started_at = time.time()
             self._sent_bytes += len(frames)
         except Exception as exc:
             self._error = f"send failed: {exc.__class__.__name__}"

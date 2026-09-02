@@ -8,7 +8,9 @@ local backend later changes nothing in this file.
 
 from __future__ import annotations
 
+import statistics
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 # How long a signal stays meaningful before the status page should stop
@@ -17,6 +19,13 @@ STATUS_STALE_AFTER = 6.0        # no status frame from capture in this long
 AUDIO_SILENT_BELOW = 0.008      # RMS under this is silence, not speech
 AUDIO_QUIET_AFTER = 3.0         # no audio above the floor in this long
 ASR_IDLE_AFTER = 30.0           # stream open but no text in this long
+
+# Caption latency: seconds from the words being spoken (the backend's
+# `speech_end`) to the text reaching the relay. Kept as a rolling window so
+# the figure describes the last few minutes, not the whole event; anything
+# outside the sane range is a clock problem, not a latency, and is ignored.
+LATENCY_WINDOW = 200
+LATENCY_MAX_SANE = 60.0
 
 # The level is smoothed before it decides anything. One stray sample of room
 # tone crossing the floor must not make the status page claim audio is live -
@@ -43,6 +52,8 @@ class RelayState:
     stream_open: bool = False
     audio_level: float = 0.0
     audio_ema: float = 0.0
+    audio_peak: float = 0.0
+    clipping: bool = False
     error: str | None = None
 
     # observed by the relay
@@ -53,6 +64,10 @@ class RelayState:
     last_final_text: str = ""
     finals: int = 0
     interims: int = 0
+    # speech-to-relay latency samples, seconds; finals are what a viewer reads,
+    # interims are how soon the first words appear
+    final_latency: deque = field(default_factory=lambda: deque(maxlen=LATENCY_WINDOW))
+    interim_latency: deque = field(default_factory=lambda: deque(maxlen=LATENCY_WINDOW))
 
     def note_status(self, msg: dict, peer: str) -> None:
         now = time.time()
@@ -68,6 +83,10 @@ class RelayState:
             )
             if self.audio_ema >= AUDIO_SILENT_BELOW:
                 self.last_audio_at = now
+        peak = msg.get("audio_peak")
+        if isinstance(peak, (int, float)) and not isinstance(peak, bool):
+            self.audio_peak = max(0.0, min(1.0, float(peak)))
+        self.clipping = bool(msg.get("clipping"))
         self.stream_open = bool(msg.get("stream_open"))
         self.has_deepgram_key = bool(msg.get("has_deepgram_key"))
         self.mask_profanity = bool(msg.get("mask_profanity"))
@@ -110,14 +129,40 @@ class RelayState:
         err = msg.get("error")
         self.error = err[:512] if isinstance(err, str) and err else None
 
-    def note_interim(self) -> None:
+    def note_interim(self, speech_end: float | None = None) -> None:
         self.interims += 1
         self.last_interim_at = time.time()
+        self._note_latency(self.interim_latency, speech_end, self.last_interim_at)
 
-    def note_final(self, text: str) -> None:
+    def note_final(self, text: str, speech_end: float | None = None) -> None:
         self.finals += 1
         self.last_final_at = time.time()
         self.last_final_text = text
+        self._note_latency(self.final_latency, speech_end, self.last_final_at)
+
+    @staticmethod
+    def _note_latency(bucket: deque, speech_end: float | None, arrived: float) -> None:
+        if speech_end is None:
+            return
+        latency = arrived - speech_end
+        # Negative means the two clocks disagree (capture and relay on
+        # different machines); huge means a stale timestamp. Neither is a
+        # caption latency, so neither goes in the window.
+        if 0.0 <= latency <= LATENCY_MAX_SANE:
+            bucket.append(latency)
+
+    @staticmethod
+    def _latency_stats(bucket: deque) -> dict | None:
+        if not bucket:
+            return None
+        values = sorted(bucket)
+        p95_index = min(len(values) - 1, int(round(0.95 * (len(values) - 1))))
+        return {
+            "samples": len(values),
+            "last": round(bucket[-1], 2),
+            "median": round(statistics.median(values), 2),
+            "p95": round(values[p95_index], 2),
+        }
 
     def source_dropped(self) -> None:
         self.source_connected = False
@@ -125,6 +170,8 @@ class RelayState:
         self.stream_open = False
         self.audio_level = 0.0
         self.audio_ema = 0.0
+        self.audio_peak = 0.0
+        self.clipping = False
 
     # -- derived health -------------------------------------------------
     # One place decides what "green" means, so the status page only renders.
@@ -137,6 +184,8 @@ class RelayState:
             return "no_source"
         if self.last_status_at is None or (now - self.last_status_at) > STATUS_STALE_AFTER:
             return "stale"
+        if self.clipping:
+            return "clipping"           # audio is arriving, and too hot to use well
         if self.last_audio_at is None or (now - self.last_audio_at) > AUDIO_QUIET_AFTER:
             return "silent"
         return "live"
@@ -191,6 +240,8 @@ class RelayState:
             "audio": {
                 "level": round(self.audio_level, 4),
                 "smoothed": round(self.audio_ema, 4),
+                "peak": round(self.audio_peak, 4),
+                "clipping": self.clipping,
                 "state": self.audio_status(now),
                 "age": self._age(self.last_audio_at, now),
             },
@@ -201,6 +252,10 @@ class RelayState:
                 "interims": self.interims,
                 "last_final_age": self._age(self.last_final_at, now),
                 "last_final_text": self.last_final_text,
+            },
+            "latency": {
+                "final": self._latency_stats(self.final_latency),
+                "interim": self._latency_stats(self.interim_latency),
             },
             "viewers": viewers,
         }

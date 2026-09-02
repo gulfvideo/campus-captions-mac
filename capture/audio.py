@@ -58,6 +58,14 @@ ERROR_TTL = 6.0
 # then a missing permission. So describe the symptom and list the causes.
 DIGITAL_SILENCE_AFTER = 5.0
 
+# Clipping: samples pinned at (or within a hair of) full scale. A single
+# sample can be a click; a run of them in one 100 ms block is a level that is
+# too hot for the interface, which ASR handles badly. The flag stays raised a
+# few seconds after the last hit so the status page can be read, not caught.
+CLIP_THRESHOLD = 32200               # of 32767 - allows for interfaces that limit
+CLIP_MIN_SAMPLES = 8                 # per block, before a block counts as clipped
+CLIP_HOLD_SECONDS = 3.0
+
 NO_SIGNAL_HINT = (
     "no signal at all from this device - every sample is silent. Check that "
     "something is actually feeding it (a virtual input like Loopback or NDI "
@@ -206,6 +214,9 @@ class AudioInput:
         self.device = device
         self.block_frames = max(160, int(device.sample_rate * block_ms / 1000))
         self.level = 0.0
+        self.peak = 0.0                      # loudest sample in the last block, 0..1
+        self.clipped_blocks = 0
+        self._last_clip_at = 0.0
         self.blocks_dropped = 0
         self.blocks_read = 0
         self.overflows = 0
@@ -239,6 +250,12 @@ class AudioInput:
             # RMS of int16 normalised to 0..1, for the status page meter.
             samples = mono.astype(np.float32) / 32768.0
             self.level = float(math.sqrt(float(np.mean(samples * samples)) + 1e-12))
+            # Peak and clipping, from the raw int16 so full scale is exact.
+            magnitude = np.abs(mono.astype(np.int32))
+            self.peak = float(magnitude.max()) / 32768.0 if magnitude.size else 0.0
+            if int(np.count_nonzero(magnitude >= CLIP_THRESHOLD)) >= CLIP_MIN_SAMPLES:
+                self.clipped_blocks += 1
+                self._last_clip_at = time.monotonic()
             self._queue.put_nowait(mono.tobytes())
             self.blocks_read += 1
         except queue.Full:
@@ -308,6 +325,12 @@ class AudioInput:
         return (time.monotonic() - self._started_at) > DIGITAL_SILENCE_AFTER
 
     @property
+    def clipping(self) -> bool:
+        """The input hit full scale within the last few seconds."""
+        return bool(self._last_clip_at) and \
+            (time.monotonic() - self._last_clip_at) < CLIP_HOLD_SECONDS
+
+    @property
     def error(self) -> str | None:
         if self._error and (time.monotonic() - self._error_at) > ERROR_TTL:
             self._error = None
@@ -331,6 +354,8 @@ class SilentInput:
     def __init__(self, sample_rate: int = PREFERRED_RATE):
         self.device = DeviceChoice(-1, "no audio device", "none", sample_rate, 1)
         self.level = 0.0
+        self.peak = 0.0
+        self.clipping = False
         self.blocks_dropped = 0
         self.blocks_read = 0
         self.error = None

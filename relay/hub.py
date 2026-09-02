@@ -267,15 +267,21 @@ class Hub:
         text = clean_text(msg.get("text"))
         if not text:
             return
+        # When the words were spoken, if the backend can say (see
+        # TranscriptEvent.speech_end). Feeds the latency figure only; it is
+        # never forwarded to viewers.
+        speech_end = msg.get("speech_end")
+        if isinstance(speech_end, bool) or not isinstance(speech_end, (int, float)):
+            speech_end = None
         if kind == "interim":
             if self._utterance_started is None:
                 self._utterance_started = time.time()
-            self.state.note_interim()
+            self.state.note_interim(speech_end)
             self.broadcast({"type": "interim", "text": text})
         elif kind == "final":
             started = self._utterance_started
             self._utterance_started = None
-            self.state.note_final(text)
+            self.state.note_final(text, speech_end)
             payload = {"type": "final", "text": text}
             if started is not None:
                 payload["t0"] = round(started, 3)

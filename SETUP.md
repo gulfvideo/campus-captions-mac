@@ -511,8 +511,8 @@ Four tiles:
 
 | Tile | Green means |
 |---|---|
-| **Audio input** | speech is arriving from the device |
-| **Captions** | the backend is producing text |
+| **Audio input** | speech is arriving from the device. Amber **Clipping** means the level is too hot - turn the gain down at the board or interface; the transcript suffers otherwise |
+| **Captions** | the backend is producing text. The small line underneath shows caption latency - how long after words are spoken they reach the relay - as a median and a 95th percentile over the last couple of hundred lines. Deepgram and the mock report it; a backend that cannot say when words were spoken shows "not measured" rather than a guess |
 | **ASR stream** | the connection is open — **and billing** |
 | **Viewers** | how many wall and phone views are connected |
 
