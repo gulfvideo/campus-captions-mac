@@ -142,12 +142,34 @@ class ASRBackend(ABC):
         return " ".join(text.split())
 
     def events(self) -> AsyncIterator[TranscriptEvent]:
-        """Async iterator of transcript events. One consumer."""
+        """Async iterator of transcript events. One consumer.
+
+        Only safe while the backend cannot be replaced underneath the
+        consumer - switching backends builds a new instance with a new
+        queue, and an iterator opened here stays parked on the old one.
+        Anything that survives a switch should use next_event() instead.
+        """
         return self._iterate()
 
     async def _iterate(self) -> AsyncIterator[TranscriptEvent]:
         while True:
             yield await self._queue.get()
+
+    async def next_event(self, timeout: float | None = None) -> TranscriptEvent | None:
+        """One event, or None once `timeout` passes with nothing to report.
+
+        The timeout is the whole point: it hands control back often enough
+        for the caller to notice that the backend it is reading has been
+        swapped. A closed backend never emits again, so a consumer parked on
+        its queue would wait forever - which is exactly how a backend switch
+        used to silence captions until the app was restarted.
+        """
+        if timeout is None:
+            return await self._queue.get()
+        try:
+            return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
 
     def _emit(self, text: str, is_final: bool) -> None:
         text = " ".join(str(text).split())

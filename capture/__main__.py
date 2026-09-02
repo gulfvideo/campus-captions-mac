@@ -23,6 +23,10 @@ from .backends import BACKENDS, create as create_backend
 from .relay_client import RelayClient
 
 STATUS_HZ = 4.0
+# How long a pump waits on the current backend before looking again at which
+# backend that is. Short enough that a switch is imperceptible, long enough
+# that an idle capture client is not spinning.
+BACKEND_POLL_SECONDS = 0.25
 
 
 class CaptureApp:
@@ -197,7 +201,16 @@ class CaptureApp:
                     await self.backend.send_audio(block)
 
     async def pump_events(self) -> None:
-        async for event in self.backend.events():
+        # Re-read self.backend every pass. Switching backends builds a whole
+        # new instance with a new queue, and an `async for` over the old
+        # one's events() would stay parked on a queue nothing writes to
+        # again - the new backend then transcribed into a queue nobody
+        # drained, which looked like "stream OPEN, no text yet" until the
+        # app was restarted. Same hazard pump_audio guards against above.
+        while True:
+            event = await self.backend.next_event(timeout=BACKEND_POLL_SECONDS)
+            if event is None:
+                continue
             self.relay.send({
                 "type": "final" if event.is_final else "interim",
                 "text": event.text,
@@ -205,12 +218,21 @@ class CaptureApp:
             })
 
     async def pump_mock_clears(self) -> None:
-        """The mock script can ask for a clear; forward it like an operator would."""
-        queue = getattr(self.backend, "clear_requests", None)
-        if queue is None:
-            return
+        """The mock script can ask for a clear; forward it like an operator would.
+
+        Also re-read per pass: the backend in use when this started may not
+        be the one running now, and switching *to* mock has to start working
+        without a restart.
+        """
         while True:
-            await queue.get()
+            queue = getattr(self.backend, "clear_requests", None)
+            if queue is None:
+                await asyncio.sleep(BACKEND_POLL_SECONDS)
+                continue
+            try:
+                await asyncio.wait_for(queue.get(), timeout=BACKEND_POLL_SECONDS)
+            except asyncio.TimeoutError:
+                continue
             self.relay.send({"type": "clear"})
 
     async def pump_status(self) -> None:
