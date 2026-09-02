@@ -1,0 +1,19 @@
+# Words or short phrases to strip out of every caption, on every backend.
+#
+# One term per line. Lines starting with # are comments. Blank lines ignored.
+# Matched whole-word and case-insensitively - "cash" here never touches
+# "cashier". A multi-word phrase like "acme corp" is matched as that whole
+# phrase, not each word separately. Edit this per event - no code changes,
+# no restart. After editing, press "Reload keyterms" on the status page (it
+# reloads this file too).
+#
+# This is separate from the profanity filter (a status-page toggle backed by
+# a small built-in list of common strong language) - use this file for
+# anything specific to this event: a name that must not be broadcast, an
+# unannounced sponsor, a working title that leaked early.
+#
+# Unlike keyterms.txt, this applies after transcription, the same way on
+# every backend - deepgram, whisper, apple_speech, and mock all use it.
+
+# --- example (delete before an event) --------------------------------------
+# working title

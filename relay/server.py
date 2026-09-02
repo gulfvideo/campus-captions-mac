@@ -720,6 +720,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             fields["backend"] = backend
         elif action == "set_deepgram_key":
             fields["key"] = text_field(body, "key", 200)
+        elif action == "set_profanity_filter":
+            enabled = body.get("enabled")
+            if not isinstance(enabled, bool):
+                raise HTTPException(status_code=400, detail="enabled must be a boolean")
+            fields["enabled"] = enabled
         delivered = hub.send_control(action, fields)
         print(f"[relay] control {action} -> {delivered} capture client(s)")
         return JSONResponse(
@@ -730,8 +735,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.post("/api/event")
     async def api_event(request: Request) -> JSONResponse:
         """Relay-local. {"state": "live"} and/or the welcome-screen text:
-        title, message, notice, pause_message - any subset. Every change is
-        pushed to viewers at once and saved to event.toml."""
+        title, message, notice, pause_message, disclaimer - any subset.
+        Every change is pushed to viewers at once and saved to event.toml."""
         require_operator(request)
         body = await read_json(request)
         body = body or {}
@@ -744,12 +749,14 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                     detail=f"state must be one of {', '.join(event_module.STATES)}")
             fields["state"] = state
         for name, limit in (("title", 80), ("message", 300),
-                            ("notice", 300), ("pause_message", 120), ("logo_alt", 80)):
+                            ("notice", 300), ("pause_message", 120), ("logo_alt", 80),
+                            ("disclaimer", 200)):
             if name in body:
                 fields[name] = text_field(body, name, limit, allow_empty=True)
         if not fields:
             raise HTTPException(status_code=400,
-                                detail="send state, title, message, notice, and/or pause_message")
+                                detail="send state, title, message, notice, pause_message, "
+                                        "and/or disclaimer")
         event.update(**fields)
         try:
             config_module.save_event_settings(config_target(), fields)

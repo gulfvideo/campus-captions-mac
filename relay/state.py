@@ -35,6 +35,8 @@ class RelayState:
     backend: str | None = None
     available_backends: list[str] = field(default_factory=list)
     has_deepgram_key: bool = False
+    mask_profanity: bool = False
+    blocked_word_count: int = 0
     device: str | None = None
     device_index: int | None = None
     audio_devices: list[dict] = field(default_factory=list)
@@ -68,6 +70,10 @@ class RelayState:
                 self.last_audio_at = now
         self.stream_open = bool(msg.get("stream_open"))
         self.has_deepgram_key = bool(msg.get("has_deepgram_key"))
+        self.mask_profanity = bool(msg.get("mask_profanity"))
+        count = msg.get("blocked_word_count")
+        if isinstance(count, int) and not isinstance(count, bool):
+            self.blocked_word_count = max(0, count)
         for key in ("backend", "device"):
             val = msg.get(key)
             if isinstance(val, str):
@@ -162,6 +168,8 @@ class RelayState:
                 "backend": self.backend,
                 "available_backends": self.available_backends,
                 "has_deepgram_key": self.has_deepgram_key,
+                "mask_profanity": self.mask_profanity,
+                "blocked_word_count": self.blocked_word_count,
                 "device": self.device,
                 "device_index": self.device_index,
                 "audio_devices": self.audio_devices,

@@ -236,7 +236,17 @@ def load(path: Path | None = None) -> CaptureConfig:
         f"whisper_{key}": value
         for key, value in (data.get("whisper", {}) or {}).items()
     })
-    for key in ("keyterms_file", "mock_script"):
+    # Backend-agnostic, unlike keyterms: blocking happens on already-
+    # transcribed text (see ASRBackend._filter_words), so every backend gets
+    # it for free rather than needing its own support for it.
+    keywords_section = data.get("keywords", {}) or {}
+    backend_config["blocklist_file"] = str(
+        keywords_section.get("blocklist_file", "config/blocklist.txt"))
+    # "mask_profanity", not "profanity_filter": [deepgram] already has its own
+    # key by that name (a native API-level filter, unrelated to this one),
+    # and both land in this same flat dict.
+    backend_config["mask_profanity"] = bool(keywords_section.get("profanity_filter", False))
+    for key in ("keyterms_file", "blocklist_file", "mock_script"):
         if isinstance(backend_config.get(key), str):
             backend_config[key] = resolve_path(backend_config[key])
     if "keyterms_file" not in backend_config:

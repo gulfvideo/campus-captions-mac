@@ -134,6 +134,7 @@ connecting afterwards gets nothing rather than pre-clear text.
 {"type":"event","seq":46,"t":1756590106.0,"state":"live","title":"Fall Convocation",
  "message":"","notice":"Captions are automatic.","pause_message":"","image":true,
  "image_v":1756589000,"logo":true,"logo_v":1756589100,"logo_alt":"Faulkner University",
+ "disclaimer":"Captions are auto-generated and may not be 100% accurate.",
  "changed_at":1756590106.0}
 ```
 
@@ -142,6 +143,12 @@ connecting afterwards gets nothing rather than pre-clear text.
 row above the captions while the state is `live` or `paused` - never over the
 welcome screen, which has the title already. `logo_alt` is the accessible
 name the operator gave it; empty means decorative.
+
+`disclaimer`, unlike every other field here, is not read fresh off this
+message every time - the phone view shows it once, with a dismiss button, the
+first time a device sees a given piece of text (`localStorage`, keyed to the
+disclaimer string itself), regardless of `state`. Changing the wording makes
+it reappear; re-saving the same wording does not. Empty disables it.
 
 Where the event is, sent to every viewer the moment the operator changes it,
 and also carried in `hello` (as `event`) and in every `heartbeat`. `state` is
@@ -213,11 +220,17 @@ inputs, backends, and the Deepgram key at runtime.
 | `open_stream` | connect the ASR backend — for Deepgram this starts billing |
 | `close_stream` | disconnect the backend, keep capturing audio levels |
 | `clear` | emit a `clear` to viewers |
-| `reload_keyterms` | re-read `config/keyterms.txt` and reopen the stream with the new list |
+| `reload_keyterms` | re-read `config/keyterms.txt` (reopens the stream with the new list) and `config/blocklist.txt` (no reopen needed - see below) |
 | `select_audio_device` | switch to the integer `device` index; reopen ASR automatically if needed |
 | `refresh_audio_devices` | query the capture machine's current input list again |
 | `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, or is `deepgram` with no API key set |
 | `set_deepgram_key` | set `DEEPGRAM_API_KEY` (the `key` field) in the environment and save it into `.env` on disk; takes effect on the next `open_stream`, no restart needed |
+| `set_profanity_filter` | set the boolean `enabled` field on the backend's built-in profanity filter (bleeps common strong language); takes effect on the next line, no reopen |
+
+`reload_keyterms` reloading the blocklist needs no reconnect because blocking
+happens in `ASRBackend._emit()`, after transcription, the same way on every
+backend - unlike keyterms, which a specific backend has to be told about at
+connect time.
 
 Originates from the status page via `POST /api/control`. `set_deepgram_key` is
 the one action whose field is a credential: `hub.py`'s own logging and the
@@ -377,6 +390,9 @@ POST /api/control    {"action": "select_backend", "backend": "apple_speech"}
 POST /api/control    {"action": "set_deepgram_key", "key": "..."}
   ->  200 {"ok": true, "action": "set_deepgram_key", "delivered_to": 1}
   ->  400 if the action is unknown or key is not a short string
+POST /api/control    {"action": "set_profanity_filter", "enabled": true}
+  ->  200 {"ok": true, "action": "set_profanity_filter", "delivered_to": 1}
+  ->  400 if enabled is not a boolean
 ```
 
 ```
@@ -418,6 +434,8 @@ PUT / DELETE / GET /api/event/logo   ->  the same, for the logo (stored as confi
 ```
 
 `logo_alt` is one more text field on `POST /api/event`, up to 80 characters.
+So is `disclaimer`, up to 200 - see the `event` message above for how it
+differs in how viewers treat it (shown once per device, not per state).
 
 All operator-only except the `GET`. Any subset of fields may be sent. Every
 change is broadcast as an `event` frame and written to `[event]` in

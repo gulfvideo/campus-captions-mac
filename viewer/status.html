@@ -241,6 +241,11 @@
                aria-label="Notice shown under the welcome message">
         <input id="event-pause-message" type="text" autocomplete="off" style="flex:0 1 300px"
                placeholder="Message while paused, e.g. Intermission" aria-label="Message shown while paused">
+      </div>
+      <div class="row">
+        <input id="event-disclaimer" type="text" autocomplete="off"
+               placeholder="Caption accuracy disclaimer, shown once per device on the phone view. Blank disables it."
+               aria-label="Caption accuracy disclaimer, shown once per device">
         <button id="btn-event-save" type="button">Save</button>
       </div>
       <div class="row">
@@ -268,7 +273,9 @@
         &ldquo;Captions paused &mdash; technical difficulty&rdquo; on its own.
         The logo sits in a slim row above the captions while they are live &mdash; a transparent
         PNG works best, since readers choose their own background colour. Give it a description
-        so screen readers announce the name, not the file.
+        so screen readers announce the name, not the file. The disclaimer appears once per device
+        the first time someone opens the phone view, with a dismiss button &mdash; it reappears
+        if you change the wording, but not just because you saved the field again.
       </div>
     </div>
   </div></div>
@@ -431,11 +438,35 @@
   </div></div>
 </div>
 
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="keywords-toggle" aria-expanded="false" aria-controls="keywords-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Keywords &amp; profanity filter</span>
+    <span class="badge" id="keywords-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="keywords-body">
+      <div class="disclosure-sub">
+        Boosted vocabulary (<code>config/keyterms.txt</code>) and words to strip out of
+        every caption (<code>config/blocklist.txt</code>) are both plain text files, one
+        term or short phrase per line &mdash; edit either by hand, then press Reload.
+        Blocking works the same way on every backend; the profanity filter below
+        catches common strong language with no list to maintain.
+      </div>
+      <div class="row">
+        <button id="btn-keyterms" type="button">Reload keyterms &amp; blocklist</button>
+        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
+        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
+      </div>
+      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
 <div class="controls">
   <button id="btn-open" class="go">Open ASR stream</button>
   <button id="btn-close" class="stop">Close ASR stream</button>
   <button id="btn-clear">Clear captions</button>
-  <button id="btn-keyterms">Reload keyterms</button>
 </div>
 
 <div class="device-control" id="caption-row">
@@ -512,7 +543,7 @@
   var azureLangsDirty = false;
   var tunnelHostnameDirty = false;
   var eventDirty = {};
-  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt'];
+  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt', 'disclaimer'];
   var EVENT_LABELS = { starting: 'Starting soon', live: 'Live', paused: 'Paused', ended: 'Ended' };
   var FAULT_TEXT = {
     no_source: 'no capture client is connected',
@@ -792,6 +823,24 @@
     }
   }
 
+  function renderKeywords(source) {
+    source = source || {};
+    var count = source.blocked_word_count || 0;
+    var masked = !!source.mask_profanity;
+    var badge = $('keywords-badge');
+    var parts = [];
+    parts.push(count ? count + ' blocked term' + (count === 1 ? '' : 's') : 'no blocked terms');
+    parts.push(masked ? 'profanity filter on' : 'profanity filter off');
+    badge.textContent = parts.join(' · ');
+    badge.className = 'badge' + (masked ? ' live' : '');
+    $('keywords-sub').textContent = count
+      ? count + ' term' + (count === 1 ? '' : 's') + ' loaded from config/blocklist.txt.'
+      : 'config/blocklist.txt is empty or not found — nothing to block yet.';
+    $('btn-keyterms').disabled = !source.connected;
+    $('btn-profanity-enable').disabled = !source.connected || masked;
+    $('btn-profanity-disable').disabled = !source.connected || !masked;
+  }
+
   function render(s) {
     lastSnap = s;
     renderEvent(s.event, s.health);
@@ -801,6 +850,7 @@
     renderDeepgram(s.source || {});
     renderTranscript(s);
     renderTunnel(s.public_hostname, s.tunnel);
+    renderKeywords(s.source || {});
 
     var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
     setCard('c-audio', a[0],
@@ -840,7 +890,6 @@
 
     $('btn-open').disabled = open || !s.source.connected;
     $('btn-close').disabled = !open || !s.source.connected;
-    $('btn-keyterms').disabled = !s.source.connected;
 
     $('last-line').innerHTML = 'Last caption: <b></b>';
     $('last-line').getElementsByTagName('b')[0].textContent =
@@ -876,6 +925,7 @@
     $('btn-tunnel-save').disabled = $('btn-tunnel-enable').disabled =
       $('btn-tunnel-disable').disabled = $('tunnel-hostname').disabled =
       $('tunnel-token').disabled = true;
+    $('btn-profanity-enable').disabled = $('btn-profanity-disable').disabled = true;
     $('btn-event-start').disabled = $('btn-event-pause').disabled = $('btn-event-resume').disabled =
       $('btn-event-end').disabled = $('btn-event-save').disabled = $('event-image').disabled =
       $('btn-event-image-remove').disabled = $('event-logo').disabled =
@@ -1180,6 +1230,7 @@
     setupDisclosure('deepgram-toggle', 'deepgram-expanded');
     setupDisclosure('transcript-toggle', 'transcript-expanded');
     setupDisclosure('tunnel-toggle', 'tunnel-expanded');
+    setupDisclosure('keywords-toggle', 'keywords-expanded');
     $('btn-mark-start').onclick = function () {
       relayAction('mark_video_start', 'Video start marked');
     };
@@ -1189,7 +1240,13 @@
     $('btn-open').onclick = function () { control('open_stream', 'Open stream'); };
     $('btn-close').onclick = function () { control('close_stream', 'Close stream'); };
     $('btn-clear').onclick = function () { control('clear', 'Clear'); };
-    $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Reload keyterms'); };
+    $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Keyterms & blocklist reloaded'); };
+    $('btn-profanity-enable').onclick = function () {
+      control('set_profanity_filter', 'Profanity filter enabled', { enabled: true });
+    };
+    $('btn-profanity-disable').onclick = function () {
+      control('set_profanity_filter', 'Profanity filter disabled', { enabled: false });
+    };
     $('btn-refresh-devices').onclick = function () {
       control('refresh_audio_devices', 'Refresh audio devices');
     };

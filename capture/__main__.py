@@ -159,7 +159,12 @@ class CaptureApp:
                     self.relay.send({"type": "clear"})
                 elif action == "reload_keyterms":
                     await self.backend.reload_keyterms()
-                    print("[capture] keyterms reloaded")
+                    self.backend.reload_wordlist()
+                    print("[capture] keyterms and blocklist reloaded")
+                elif action == "set_profanity_filter":
+                    enabled = bool(payload.get("enabled"))
+                    self.backend.mask_profanity = enabled
+                    print(f"[capture] profanity filter {'enabled' if enabled else 'disabled'}")
                 elif action == "select_audio_device":
                     await self.switch_audio_device(payload.get("device", ""))
                 elif action == "refresh_audio_devices":
@@ -223,6 +228,8 @@ class CaptureApp:
                 "device": str(self.input.device),
                 "device_index": self.input.device.index,
                 "audio_devices": self.audio_devices,
+                "mask_profanity": self.backend.mask_profanity,
+                "blocked_word_count": self.backend.blocked_word_count,
                 "error": error,
             })
             await self._apply_control()

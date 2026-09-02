@@ -461,6 +461,7 @@ docs/MESSAGES.md              the message contract
 .env.example                  copy to .env: Deepgram/Azure keys, YouTube URLs
 config/event.example.toml     copy to event.toml and edit
 config/keyterms.txt           institution vocabulary, edited per event
+config/blocklist.txt          words/phrases stripped from every caption, edited per event
 config/mock_script.txt        transcript the mock backend plays
 requirements-whisper.txt      optional: the whisper backend's ~200MB of deps
 requirements-youtube.txt      optional: tools/youtube_upload.py's deps

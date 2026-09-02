@@ -37,7 +37,7 @@ SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
 CONTROL_ACTIONS = {
     "open_stream", "close_stream", "clear", "reload_keyterms",
     "select_audio_device", "refresh_audio_devices", "select_backend",
-    "set_deepgram_key",
+    "set_deepgram_key", "set_profanity_filter",
 }
 # Handled by the relay itself, not forwarded to a capture client. `caption`
 # is a line the operator typed - [Applause], a speaker's name, a correction -

@@ -19,6 +19,7 @@ datas = [
     (str(ROOT / "viewer"), "viewer"),
     (str(ROOT / "config" / "event.example.toml"), "config"),
     (str(ROOT / "config" / "keyterms.txt"), "config"),
+    (str(ROOT / "config" / "blocklist.txt"), "config"),
     (str(ROOT / "config" / "mock_script.txt"), "config"),
     (str(ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"),
      "capture/backends/native/build"),

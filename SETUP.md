@@ -465,6 +465,13 @@ breaks while live - the microphone, the recognizer, the capture client -
 attendees automatically see "Captions paused - technical difficulty" and then
 "Captions resumed", so a deaf attendee can tell an outage from a pause.
 
+The **disclaimer** field in that same panel is different from the notice line:
+it shows once per device, with a dismiss button, the first time someone opens
+the phone view - live, paused, or before the event starts, not just on the
+welcome screen - which makes it the right place for "These captions are
+auto-generated and may not be 100% accurate" rather than something tied to
+the welcome screen specifically. Blank disables it.
+
 **During the program**, the caption row under the stream buttons sends what the
 recognizer cannot hear: **[Applause]**, **[Laughter]**, **[Music]**,
 **[Inaudible]**, or anything you type. Type a name and press **Speaker change**
@@ -649,6 +656,36 @@ segments, not mid-sentence.
 
 Keyterm prompting is a Nova-3 feature. On an older model the same file is sent
 as keyword boosting instead, automatically.
+
+## 8a. Blocking words and the profanity filter
+
+`config/blocklist.txt` — same shape as keyterms.txt (one term or short phrase
+per line, `#` comments, blank lines ignored), but for words to strip out of
+every caption instead of boost. Unlike keyterms, this works the same way on
+every backend, not just Deepgram — a word or phrase on this list never
+reaches any viewer, on apple_speech, whisper, deepgram, or mock.
+
+```
+# --- example ---
+working title
+```
+
+A multi-word phrase like `working title` is matched as that whole phrase, not
+each word separately, and matching is whole-word and case-insensitive, so
+`cash` on the list never touches `cashier`. Edit the file, then press
+**Reload keyterms & blocklist** on the status page (it reloads both files
+together) — no stream reopen needed, since blocking happens after
+transcription rather than during it.
+
+Separately, the **profanity filter** toggle on that same panel catches common
+strong language from a small built-in list, with nothing to maintain. Turning
+it on replaces a caught word with `[bleep]` rather than deleting it — the
+broadcast-captioning convention for telling a deaf reader that something was
+said there without exposing the word itself. It is off by default: verbatim
+is the accessible choice, the same reasoning as Deepgram's own
+`profanity_filter` in `config/event.toml` — a separate, backend-specific
+setting from this one, since Deepgram's filters at the API level rather than
+after the fact.
 
 ---
 

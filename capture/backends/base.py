@@ -20,10 +20,52 @@ bills connection time, not speech time.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
+
+# The standard set a broadcast profanity filter catches - not exhaustive (an
+# operator with something event-specific to catch uses the blocklist file
+# instead, see reload_wordlist), just the common strong language a service
+# would want bleeped by default when the toggle is on.
+DEFAULT_PROFANITY = frozenset({
+    "fuck", "fucking", "fucked", "shit", "shitty", "bitch", "asshole",
+    "bastard", "damn", "goddamn", "dick", "piss", "cunt", "slut", "whore",
+})
+
+_WORD_RE = re.compile(r"[\w']+")
+
+
+def load_wordlist(path: Path) -> list[str]:
+    """One term per line, '#' comments and blank lines ignored - same shape
+    as deepgram.py's load_keyterms, for words to remove instead of boost."""
+    if not path.exists():
+        return []
+    terms = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        terms.append(line.lower())
+    return terms
+
+
+def _compile_block_pattern(terms: list[str]) -> re.Pattern | None:
+    """One regex for the whole blocklist, matching each term as whole words -
+    "cash" on the list must not eat the middle of "cashier". Longest first,
+    so a phrase like "acme corp" is consumed before a shorter overlapping
+    entry could take just "acme" and leave "corp" behind."""
+    if not terms:
+        return None
+    ordered = sorted(set(terms), key=len, reverse=True)
+    alternatives = [
+        r"\b" + r"\s+".join(re.escape(word) for word in term.split()) + r"\b"
+        for term in ordered
+    ]
+    return re.compile("|".join(alternatives), re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -45,6 +87,14 @@ class ASRBackend(ABC):
         self._queue: asyncio.Queue[TranscriptEvent] = asyncio.Queue(maxsize=512)
         self._open = False
         self._error: str | None = None
+        self.blocklist_file = Path(self.config.get("blocklist_file", "config/blocklist.txt"))
+        # Named distinctly from DeepgramBackend's own `profanity_filter` (its
+        # native API-level filter, deepgram-only): that one and this one both
+        # read `self.config`, and deepgram.py's __init__ runs after this one,
+        # so a shared attribute name would let it silently clobber this.
+        self.mask_profanity = bool(self.config.get("mask_profanity", False))
+        self._blocked_terms: list[str] = load_wordlist(self.blocklist_file)
+        self._block_pattern = _compile_block_pattern(self._blocked_terms)
 
     # -- lifecycle -------------------------------------------------------
 
@@ -64,7 +114,32 @@ class ASRBackend(ABC):
         """Re-read vocabulary. Backends without keyterms do nothing."""
         return None
 
+    def reload_wordlist(self) -> None:
+        """Re-read the blocklist file. Unlike keyterms this needs no backend
+        support and no reconnect: filtering happens on already-transcribed
+        text in _emit(), below, so every backend gets it for free."""
+        self._blocked_terms = load_wordlist(self.blocklist_file)
+        self._block_pattern = _compile_block_pattern(self._blocked_terms)
+
     # -- output ----------------------------------------------------------
+
+    def _filter_words(self, text: str) -> str:
+        """Applied to every event, interim and final alike, so a word caught
+        on the committed line was never flashed uncensored while still
+        interim. A custom-blocked term (word or short phrase) is removed
+        outright - the operator decided it should not appear at all; a
+        profanity match is replaced with "[bleep]" instead of deleted, the
+        broadcast-captioning convention for telling a deaf reader that
+        something was said there without exposing the word itself. Phrases
+        are matched first, whole, before the single-word profanity pass -
+        otherwise "Acme Corp" on the blocklist would only ever lose "Acme"."""
+        if self._block_pattern is not None:
+            text = self._block_pattern.sub("", text)
+        if self.mask_profanity:
+            text = _WORD_RE.sub(
+                lambda m: "[bleep]" if m.group(0).lower() in DEFAULT_PROFANITY else m.group(0),
+                text)
+        return " ".join(text.split())
 
     def events(self) -> AsyncIterator[TranscriptEvent]:
         """Async iterator of transcript events. One consumer."""
@@ -76,6 +151,9 @@ class ASRBackend(ABC):
 
     def _emit(self, text: str, is_final: bool) -> None:
         text = " ".join(str(text).split())
+        if not text:
+            return
+        text = self._filter_words(text)
         if not text:
             return
         event = TranscriptEvent(text=text, is_final=is_final)
@@ -125,3 +203,7 @@ class ASRBackend(ABC):
     @property
     def error(self) -> str | None:
         return self._error
+
+    @property
+    def blocked_word_count(self) -> int:
+        return len(self._blocked_terms)
