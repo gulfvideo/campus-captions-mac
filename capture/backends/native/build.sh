@@ -16,6 +16,10 @@ swiftc -O -parse-as-library "$here/speech_helper.swift" \
     -Xlinker __info_plist \
     -Xlinker "$here/Info.plist"
 
-codesign --force --sign - --entitlements "$here/Speech.entitlements" "$bin"
+# --options runtime (hardened runtime) is required for notarization (see
+# macapp/build.sh) and costs nothing here: tested with
+# disable-library-validation removed from Speech.entitlements, the helper
+# still loads the Speech frameworks and transcribes under it.
+codesign --force --sign - --options runtime --entitlements "$here/Speech.entitlements" "$bin"
 
 echo "built $bin"
