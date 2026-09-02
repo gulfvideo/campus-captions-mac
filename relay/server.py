@@ -708,6 +708,25 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         }
         return JSONResponse(snap, headers=NO_STORE)
 
+    def remember_audio_device(index: int) -> None:
+        """Persist the operator's input choice so the next launch comes up on
+        it, rather than making them re-pick before every event.
+
+        Stored by name, resolved here from the device list the capture client
+        already reports - the index is only meaningful until something is
+        plugged in or removed. An index we cannot name is not saved at all:
+        writing a stale number would be worse than remembering nothing.
+        """
+        name = next((d.get("name") for d in hub.state.audio_devices
+                     if d.get("index") == index), None)
+        if not name:
+            return
+        try:
+            config_module.save_audio_device(config_target(), name)
+            print(f"[relay] remembered audio input {name!r} for the next launch")
+        except OSError as exc:
+            print(f"[relay] could not save the audio device to disk: {exc}")
+
     @app.post("/api/control")
     async def api_control(request: Request) -> JSONResponse:
         require_operator(request)
@@ -756,6 +775,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             fields["enabled"] = enabled
         delivered = hub.send_control(action, fields)
         print(f"[relay] control {action} -> {delivered} capture client(s)")
+        if action == "select_audio_device":
+            remember_audio_device(fields["device"])
         return JSONResponse(
             {"ok": True, "action": action, "delivered_to": delivered},
             headers=NO_STORE,

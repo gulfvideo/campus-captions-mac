@@ -386,6 +386,56 @@ def save_youtube_url(path: Path, url: str, lang: str) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def save_audio_device(path: Path, device: str) -> None:
+    """Write the operator's chosen input into [capture] device, in place.
+
+    Saved by *name*, never by index: PortAudio numbers devices in
+    enumeration order, so today's index 5 is tomorrow's index 4 once
+    something is plugged in or removed, and silently listening to the wrong
+    input is the one failure this app must not have. resolve_device()
+    already accepts a name substring, so the name round-trips.
+
+    This only ever writes the per-machine event.toml (the checkout's when
+    running from source, ~/Library/Application Support/... when packaged).
+    The shipped example keeps `device = ""`, meaning the system default, so
+    a fresh install on someone else's Mac still comes up on their own
+    default rather than on whatever hardware this one happened to have.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+    # [capture], not [audio] - and scoped to that section on purpose, since
+    # [whisper] carries its own unrelated `device` (cpu/gpu) that must not be
+    # rewritten with the name of a microphone.
+    header = "[capture]"
+
+    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    end = len(lines)
+    if start is not None:
+        end = next(
+            (i for i in range(start + 1, len(lines))
+             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+            len(lines),
+        )
+
+    wanted = {"device": _quote(device)}
+    if start is not None:
+        for i in range(start + 1, end):
+            key = lines[i].split("=", 1)[0].strip()
+            if key in wanted:
+                lines[i] = f"{key} = {wanted.pop(key)}"
+        if wanted:
+            insertion = [f"{key} = {value}" for key, value in wanted.items()]
+            lines[start + 1:start + 1] = insertion
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(header)
+        lines.extend(f"{key} = {value}" for key, value in wanted.items())
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def save_translate_settings(path: Path, provider: str, offer_languages: list[str]) -> None:
     """Write provider into [translate] and the target list into [languages],
     in place - mirrors save_youtube_url above. The Azure key itself never

@@ -241,25 +241,44 @@ class CaptureApp:
             print("[capture] --no-audio: running without an input device")
             self.refresh_audio_devices()
             return
-        try:
-            device = audio_mod.resolve_device(self.cfg.device)
-            self.input = audio_mod.AudioInput(device)
-            self.input.start()
-            self.sample_rate = device.sample_rate
-            self.audio_error = None
-            print(f"[capture] input: {device}")
-        except Exception as exc:
-            self.audio_error = f"{exc}"
-            if self.cfg.backend == "deepgram":
-                # Deepgram with no audio would bill for silence. Refuse.
-                raise SystemExit(
-                    f"[capture] cannot open audio input: {exc}\n"
-                    f"          run 'python -m capture --list-devices' to see "
-                    f"this machine's inputs."
-                )
-            self.input = audio_mod.SilentInput()
-            print(f"[capture] no audio input ({exc}); continuing for the "
-                  f"{self.cfg.backend} backend")
+        # A remembered input can simply be gone - the interface it names was
+        # left at the last venue, or the dock is a different one today.
+        # Dropping straight to SilentInput would hand the operator a dead
+        # meter for hardware they no longer have, so fall back to the system
+        # default first, and say that is what happened.
+        saved = str(self.cfg.device or "").strip()
+        attempts = [self.cfg.device] + ([""] if saved else [])
+        failure: Exception | None = None
+        for spec in attempts:
+            try:
+                device = audio_mod.resolve_device(spec)
+                self.input = audio_mod.AudioInput(device)
+                self.input.start()
+                self.sample_rate = device.sample_rate
+                if spec == "" and saved:
+                    self.audio_error = (
+                        f"saved input {saved!r} is not on this machine - "
+                        f"using the system default instead")
+                    print(f"[capture] {self.audio_error}")
+                else:
+                    self.audio_error = None
+                print(f"[capture] input: {device}")
+                self.refresh_audio_devices()
+                return
+            except Exception as exc:
+                failure = exc
+
+        self.audio_error = f"{failure}"
+        if self.cfg.backend == "deepgram":
+            # Deepgram with no audio would bill for silence. Refuse.
+            raise SystemExit(
+                f"[capture] cannot open audio input: {failure}\n"
+                f"          run 'python -m capture --list-devices' to see "
+                f"this machine's inputs."
+            )
+        self.input = audio_mod.SilentInput()
+        print(f"[capture] no audio input ({failure}); continuing for the "
+              f"{self.cfg.backend} backend")
         self.refresh_audio_devices()
 
     async def run(self) -> None:
