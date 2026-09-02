@@ -84,6 +84,60 @@ MISSING_DEPS = (
 )
 
 
+# Whisper's temperature *ladder*, not a single value. faster-whisper decodes at
+# the first entry, and only if that result trips compression_ratio_threshold
+# ("too repetitive") or log_prob_threshold does it retry at the next one. Pass a
+# scalar and `temperatures` becomes a one-item list: the library still detects
+# the runaway repetition, still logs it, and then has nothing to fall back to
+# and returns it anyway. That is how "you're not sure if you're not sure if..."
+# reached the wall. Normal decoding is unaffected - the first pass is still 0.0.
+TEMPERATURE_LADDER = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+# Belt and braces for whatever still slips past the ladder. A caption wall is
+# the wrong place to find out that a decode looped.
+REPEAT_RUN_LIMIT = 4            # this many identical repeats in a row is not speech
+REPEAT_KEEP = 2                 # ...trim it back to this many
+REPEAT_MAX_PHRASE = 16          # longest repeating unit to look for, in words
+
+
+def collapse_repeats(text: str, run_limit: int = REPEAT_RUN_LIMIT,
+                     keep: int = REPEAT_KEEP,
+                     max_phrase: int = REPEAT_MAX_PHRASE) -> str:
+    """Trim runaway repetition, leaving ordinary speech alone.
+
+    Whisper loops on a phrase, not always a word - the two seen in the wild
+    were "you're not sure if" and a ten-word sentence - so this looks for a
+    repeating unit of any length up to max_phrase and takes the longest match
+    first, or "a b a b a b" would collapse on "a" and leave the b's stranded.
+
+    Only a run of `run_limit` or more is touched, and it is trimmed rather
+    than dropped: people really do stammer, and "I mean, I mean" or "No no"
+    is something a deaf reader is entitled to see.
+    """
+    words = text.split()
+    if len(words) < 4:
+        return text
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        collapsed = False
+        for n in range(min(max_phrase, (len(words) - i) // 2), 0, -1):
+            phrase = words[i:i + n]
+            reps, j = 1, i + n
+            while j + n <= len(words) and words[j:j + n] == phrase:
+                reps += 1
+                j += n
+            if reps >= run_limit:
+                out.extend(phrase * keep)
+                i = j
+                collapsed = True
+                break
+        if not collapsed:
+            out.append(words[i])
+            i += 1
+    return " ".join(out)
+
+
 def resample_to_16k(samples: np.ndarray, src_rate: int) -> np.ndarray:
     """Linear interpolation to 16 kHz.
 
@@ -251,13 +305,16 @@ class LocalWhisperBackend(ASRBackend):
             audio,
             language=self.language,
             beam_size=1,               # greedy: this runs every ~second
-            temperature=0.0,           # deterministic, no sampling wobble
+            # The ladder, not a bare 0.0 - see TEMPERATURE_LADDER above. Still
+            # decodes at 0.0 first, so an ordinary pass is unchanged; the rest
+            # only run when this one comes back too repetitive to believe.
+            temperature=TEMPERATURE_LADDER,
             condition_on_previous_text=False,   # stops runaway repetition when
                                                 # the same window is re-decoded
             initial_prompt=self._prompt,
             vad_filter=False,          # the RMS gate below already does this
         )
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        return collapse_repeats(" ".join(seg.text.strip() for seg in segments).strip())
 
     async def _decode(self, audio: np.ndarray) -> str:
         """Decode off the event loop - this is CPU-bound and blocking."""
