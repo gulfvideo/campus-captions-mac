@@ -3,6 +3,7 @@
 Endpoints (see docs/MESSAGES.md):
 
     GET  /wall /phone /status      the three pages
+    GET  /settings                 API keys, integrations, keywords, welcome-screen config
     GET  /tune                     build a wall-view URL with sliders
     GET  /qr                       QR code for the phone URL
     GET  /<name>                   any other viewer/<name>.html
@@ -17,8 +18,8 @@ Endpoints (see docs/MESSAGES.md):
     POST /api/youtube-captions     {"enabled": true} - relay-local, not forwarded
     POST /api/tunnel               {"token": "...", "enabled": true} - relay-local
 
-Everything operator-only (marked above, plus /status, /tune, and any other
-viewer page not explicitly public) needs the operator token - see
+Everything operator-only (marked above, plus /status, /settings, /tune, and
+any other viewer page not explicitly public) needs the operator token - see
 require_operator() below. The status page gets it once from the link the
 launcher opens (`/status?token=...`) and keeps it in a cookie; scripts send
 `Authorization: Bearer ...`. On top of that, none of it is ever reachable
@@ -60,8 +61,8 @@ from .youtube import YouTubeCaptionPusher, urls_from_env, valid_ingestion_url
 HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
 
-PAGES = {"wall": "wall.html", "phone": "phone.html",
-         "status": "status.html", "tune": "tune.html", "qr": "qr.html"}
+PAGES = {"wall": "wall.html", "phone": "phone.html", "status": "status.html",
+         "settings": "settings.html", "tune": "tune.html", "qr": "qr.html"}
 
 # Reachable through the public hostname. Everything else - the status page,
 # the tuner, any other named page - is operator-only, see require_local().
@@ -538,6 +539,10 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.get("/tune")
     async def tune_page(request: Request) -> Response:
         return operator_page(request, config_module.VIEWER_DIR / PAGES["tune"])
+
+    @app.get("/settings")
+    async def settings_page(request: Request) -> Response:
+        return operator_page(request, config_module.VIEWER_DIR / PAGES["settings"])
 
     @app.get("/qr")
     async def qr_page() -> FileResponse:

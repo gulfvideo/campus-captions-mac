@@ -77,7 +77,7 @@ The key lives in **`.env`** in the project folder, and nowhere else. It is
 gitignored, never written to a config file, never logged, and never sent to the
 relay or to any viewer.
 
-**From the status page (no text editor needed):** open the collapsed
+**From the Settings page (no text editor needed):** open the collapsed
 **Deepgram API key** section (click the row to expand it), paste the key, and
 press **Save**. This works while the capture client is already running — no
 restart needed — and writes it into `.env` for next time too.
@@ -138,7 +138,7 @@ same finalized captions there in real time, on top of everything else.
    turn it on. Set **Captions source** to **POST captions to URL**. Copy the
    **Captions ingestion URL** it shows you (it looks like
    `http://upload.youtube.com/closedcaption?cid=xxxx-xxxx-xxxx-xxxx`).
-2. On the status page, click the collapsed **YouTube Live captions** row to
+2. On the Settings page, click the collapsed **YouTube Live captions** row to
    open it, paste the URL into the box, and press **Save**. No config file to
    open or edit — Save writes it into `config/event.toml` for you, so it's
    still there next time the relay starts. Collapsing it back afterward is
@@ -182,7 +182,7 @@ than `.env` is fine.
 The phone view normally only works on the venue's own wifi, because the relay
 is only reachable at a LAN IP. To let someone outside that network view
 captions on a domain you own, expose the relay through a Cloudflare Tunnel -
-set up once on the Cloudflare side, then pasted into the status page here.
+set up once on the Cloudflare side, then pasted into the Settings page here.
 
 **One-time Cloudflare setup** (needs a free Cloudflare account with your
 domain's nameservers pointed at Cloudflare - if the domain isn't on
@@ -199,7 +199,7 @@ Cloudflare yet, add it there first):
 4. Copy the **token** shown in the install command on the next screen (a long
    string after `--token`) - that's the only thing to bring back to this app.
 
-**In this app**, open `/status`, expand **Public tunnel (Cloudflare)**, paste
+**In this app**, open `/settings`, expand **Public tunnel (Cloudflare)**, paste
 the hostname from step 3 and the token from step 4, press Save, then Enable.
 That's it - no restart, no editing `config/event.toml` by hand, no
 `cloudflared login` or `tunnel route dns`. The panel shows Connected once the
@@ -247,15 +247,15 @@ Deepgram or Apple on-device are both available.
 
 ## 3e. Multiple languages and live translation
 
-Optional, and the easiest way to set it up is the status page - open
-`/status`, expand **Transcript & translation**, and you'll find a spot to
+Optional, and the easiest way to set it up is the Settings page - open
+`/settings`, expand **Translation (Azure)**, and you'll find a spot to
 paste an Azure Translator key:
 
 1. Get a key: [portal.azure.com](https://portal.azure.com) &rarr; Create a
    resource &rarr; search "Translator" &rarr; Create (a free tier exists) &rarr;
    once it deploys, open the resource &rarr; **Keys and Endpoint** &rarr; copy
    **Key 1** and the **Region**.
-2. Paste the key (and region, if shown) into the status page, list the
+2. Paste the key (and region, if shown) into the Settings page, list the
    languages to translate into (e.g. `es, fr, zh-Hans`), and press Save.
 
 That's it - no restart needed, even mid-event. The key goes into `.env`
@@ -306,7 +306,7 @@ running a tunnel.
 
 The relay quietly records every finished caption line with timing, regardless
 of whether live YouTube pushing (3b) is set up. On the status page, under
-**Transcript & translation**:
+**Recording & transcript**:
 
 1. Press **Mark video start** the moment the actual recording or stream
    begins - captions are timed from there, not from whenever the relay
@@ -443,40 +443,54 @@ mics pick up the PA and the audience and the transcript suffers badly.
 Open the status page from the link the launcher window prints —
 **`http://<relay-ip>:8000/status?token=…`** — or from the menu bar app's
 **Open Status Page**. That link signs the browser in for a month; after that
-plain `http://<relay-ip>:8000/status` works in the same browser. Opening it
-without the token shows a short page saying where to find the link, not the
-dashboard: the status page controls the event, and anyone the QR code let onto
-the wifi can reach the same address. The token is `CAPTIONS_OPERATOR_TOKEN` in
-`.env`, generated on first start.
+plain `http://<relay-ip>:8000/status` works in the same browser, and so does
+`http://<relay-ip>:8000/settings` once you need it - the same sign-in covers
+both. Opening either without the token shows a short page saying where to
+find the link, not the dashboard: anyone the QR code let onto the wifi can
+reach the same address. The token is `CAPTIONS_OPERATOR_TOKEN` in `.env`,
+generated on first start.
 
-It is the only page you need.
+The status page is what you watch during the event: four status tiles, the
+backend/device pickers, the stream buttons, and the event state. Everything
+you set up once before doors open - API keys, YouTube, the tunnel, keyterms
+and the blocklist, the welcome-screen wording and photo - lives on the
+**Settings** page instead (linked from the top right of the status page), so
+the page you're glancing at all night isn't crowded with things you won't
+touch again until the next event.
 
-**Before the doors open**, expand **Event & welcome screen** at the top. Type
-the event title, an optional welcome message, and a notice line - the
-accommodation contact belongs here, and so does "Captions are automatic" -
-then press Save; optionally choose a background photo, and a logo to sit above
-the captions while they are live (a transparent PNG, with a description typed
-in so screen readers announce the name). Anyone who scans the QR
-code early sees that welcome screen instead of a blank page, and their phone
-stays connected. Press **Start event** when the program begins and every phone
-switches to captions at once. **Pause** puts your pause message ("Intermission")
-over the captions; **End event** shows that the event is over. If something
-breaks while live - the microphone, the recognizer, the capture client -
-attendees automatically see "Captions paused - technical difficulty" and then
-"Captions resumed", so a deaf attendee can tell an outage from a pause.
+**Before the doors open**, go to Settings and expand **Event & welcome
+screen**. Type the event title, an optional welcome message, and a notice
+line - the accommodation contact belongs here, and so does "Captions are
+automatic" - then press Save; optionally choose a background photo, and a
+logo to sit above the captions while they are live (a transparent PNG, with
+a description typed in so screen readers announce the name). Anyone who
+scans the QR code early sees that welcome screen instead of a blank page,
+and their phone stays connected.
 
-The **disclaimer** field in that same panel is different from the notice line:
-it shows once per device, with a dismiss button, the first time someone opens
-the phone view - live, paused, or before the event starts, not just on the
-welcome screen - which makes it the right place for "These captions are
-auto-generated and may not be 100% accurate" rather than something tied to
-the welcome screen specifically. Blank disables it.
+Back on the status page, the compact **Event** row has the buttons you'll
+actually press live: **Start event** when the program begins switches every
+phone to captions at once. **Pause** puts your pause message
+("Intermission") over the captions; **End event** shows that the event is
+over. If something breaks while live - the microphone, the recognizer, the
+capture client - attendees automatically see "Captions paused - technical
+difficulty" and then "Captions resumed", so a deaf attendee can tell an
+outage from a pause.
 
-**During the program**, the caption row under the stream buttons sends what the
-recognizer cannot hear: **[Applause]**, **[Laughter]**, **[Music]**,
-**[Inaudible]**, or anything you type. Type a name and press **Speaker change**
-to put `>> Name:` on the next line. With the Deepgram backend, a change of
-voice is marked with `>>` automatically; the name still has to come from you.
+The **disclaimer** field in Settings' welcome-screen panel is different from
+the notice line: it shows once per device, with a dismiss button, the first
+time someone opens the phone view - live, paused, or before the event starts,
+not just on the welcome screen - which makes it the right place for "These
+captions are auto-generated and may not be 100% accurate" rather than
+something tied to the welcome screen specifically. Blank disables it.
+
+**During the program**, expand the collapsed **Send a caption by hand** panel
+for what the recognizer cannot hear: **[Applause]**, **[Laughter]**,
+**[Music]**, **[Inaudible]**, or anything you type. Type a name and press
+**Speaker change** to put `>> Name:` on the next line. With the Deepgram
+backend, a change of voice is marked with `>>` automatically; the name still
+has to come from you. It's collapsed by default so it stays out of the way
+until you actually need it - the disclosure remembers whether you left it
+open, same as every other collapsible section here.
 
 Four tiles:
 
@@ -505,7 +519,8 @@ So the running order is:
 something is transcribed that should not stay on screen. It also empties the
 replay buffer, so someone joining afterwards does not see the cleared text.
 
-**Reload keyterms** re-reads `config/keyterms.txt` mid-event (section 8).
+**Reload keyterms & blocklist**, on the Settings page, re-reads both
+`config/keyterms.txt` and `config/blocklist.txt` mid-event (sections 8, 8a).
 
 ---
 
@@ -650,9 +665,9 @@ need to be there. A few dozen well-chosen terms beat hundreds of speculative
 ones. The cap is 200.
 
 Terms are sent to Deepgram when the stream opens. To change them mid-event, edit
-the file and press **Reload keyterms** on the status page — that reopens the
-stream with the new list, so captions stop for about a second. Do it between
-segments, not mid-sentence.
+the file and press **Reload keyterms & blocklist** on the Settings page — that
+reopens the stream with the new list, so captions stop for about a second. Do
+it between segments, not mid-sentence.
 
 Keyterm prompting is a Nova-3 feature. On an older model the same file is sent
 as keyword boosting instead, automatically.
@@ -673,9 +688,10 @@ working title
 A multi-word phrase like `working title` is matched as that whole phrase, not
 each word separately, and matching is whole-word and case-insensitive, so
 `cash` on the list never touches `cashier`. Edit the file, then press
-**Reload keyterms & blocklist** on the status page (it reloads both files
+**Reload keyterms & blocklist** on the Settings page (it reloads both files
 together) — no stream reopen needed, since blocking happens after
-transcription rather than during it.
+transcription rather than during it. The profanity filter toggle is on that
+same **Keywords & profanity filter** panel.
 
 Separately, the **profanity filter** toggle on that same panel catches common
 strong language from a small built-in list, with nothing to maintain. Turning

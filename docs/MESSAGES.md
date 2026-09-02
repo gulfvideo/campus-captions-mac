@@ -232,7 +232,8 @@ happens in `ASRBackend._emit()`, after transcription, the same way on every
 backend - unlike keyterms, which a specific backend has to be told about at
 connect time.
 
-Originates from the status page via `POST /api/control`. `set_deepgram_key` is
+Originates from the status or settings page via `POST /api/control`.
+`set_deepgram_key` is
 the one action whose field is a credential: `hub.py`'s own logging and the
 console prints in `capture/__main__.py` never include it, only that the
 action happened.

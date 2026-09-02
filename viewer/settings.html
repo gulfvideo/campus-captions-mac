@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Campus Captions — Settings</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1e2127;
+    --edge: #2c313a;
+    --text: #eceff4;
+    --dim: #939bab;
+    --ok: #3fbf6f;
+    --warn: #d8a33a;
+    --bad: #d95c5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    padding: 22px; max-width: 900px;
+  }
+  h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  header .meta { color: var(--dim); font-size: 13px; }
+  header a {
+    color: #7fb2f0; font-size: 14px; text-decoration: none; margin-left: auto;
+  }
+  header a:hover { text-decoration: underline; }
+
+  button {
+    font: inherit; font-weight: 600; font-size: 15px;
+    padding: 13px 21px; border-radius: 10px;
+    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  }
+  button:hover:not(:disabled) { background: #2f353f; }
+  button:disabled { opacity: .38; }
+  button.go { background: #1f6b3d; border-color: #2b8a51; }
+  button.go:hover:not(:disabled) { background: #248049; }
+  button.stop { background: #7a2f2f; border-color: #9a3d3d; }
+  button.stop:hover:not(:disabled) { background: #8d3737; }
+
+  /* Same disclosure-panel pattern as the status page, so a setting learned
+     there transfers here without relearning anything. */
+  .disclosure-panel {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+  }
+  button.disclosure-header {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; border-radius: 0; color: var(--text);
+    font: inherit; text-align: left; padding: 14px 16px; cursor: pointer;
+  }
+  button.disclosure-header:hover { background: #262b33; }
+  .disclosure-header .chevron {
+    display: inline-block; transition: transform 160ms ease;
+    color: var(--dim); font-size: 12px; width: 1em; flex: none;
+  }
+  .disclosure-header[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
+  .disclosure-header .title {
+    color: var(--dim); font-size: 11.5px; font-weight: 700;
+    letter-spacing: .13em; text-transform: uppercase; flex: 1;
+  }
+  .disclosure-header .badge { font-size: 13.5px; color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .disclosure-header .badge.live { color: var(--ok); }
+  .disclosure-body-wrap {
+    display: grid; grid-template-rows: 1fr;
+    transition: grid-template-rows 200ms ease;
+  }
+  .disclosure-header[aria-expanded="false"] + .disclosure-body-wrap { grid-template-rows: 0fr; }
+  .disclosure-body-wrap > div { overflow: hidden; min-height: 0; }
+  .disclosure-body {
+    display: flex; gap: 11px; flex-wrap: wrap; align-items: end;
+    padding: 0 16px 16px;
+  }
+  .disclosure-body .row { display: flex; gap: 11px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; }
+  .disclosure-body input[type=text], .disclosure-body input[type=password] {
+    flex: 1 1 340px; min-height: 48px; font: inherit; color: var(--text);
+    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 12px;
+  }
+  .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+
+  .file-label {
+    display: inline-block; font: inherit; font-weight: 600; font-size: 15px;
+    padding: 13px 21px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  }
+  .file-label:hover { background: #2f353f; }
+  .file-label:focus-within { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
+    padding: 11px 19px; border-radius: 9px; font-size: 14px;
+    opacity: 0; transition: opacity 220ms; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Settings</h1>
+  <div class="meta" id="meta">connecting to relay&hellip;</div>
+  <a href="/status">&larr; Back to status</a>
+</header>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="event-toggle" aria-expanded="true" aria-controls="event-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Event &amp; welcome screen</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="event-body">
+      <div class="row">
+        <input id="event-title" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Event title, e.g. Fall Convocation" aria-label="Event title">
+        <input id="event-message" type="text" autocomplete="off"
+               placeholder="Welcome message (default: Live captions will begin when the program starts.)"
+               aria-label="Welcome message">
+      </div>
+      <div class="row">
+        <input id="event-notice" type="text" autocomplete="off"
+               placeholder="Notice, e.g. Captions are automatic. Accommodations: Disability Services, 334-555-0100"
+               aria-label="Notice shown under the welcome message">
+        <input id="event-pause-message" type="text" autocomplete="off" style="flex:0 1 300px"
+               placeholder="Message while paused, e.g. Intermission" aria-label="Message shown while paused">
+      </div>
+      <div class="row">
+        <input id="event-disclaimer" type="text" autocomplete="off"
+               placeholder="Caption accuracy disclaimer, shown once per device on the phone view. Blank disables it."
+               aria-label="Caption accuracy disclaimer, shown once per device">
+        <button id="btn-event-save" type="button">Save</button>
+      </div>
+      <div class="row">
+        <label class="file-label">Choose background image
+          <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+        </label>
+        <button id="btn-event-image-remove" type="button">Remove image</button>
+        <span class="disclosure-sub" id="event-image-status" style="flex:1 1 200px">&mdash;</span>
+      </div>
+      <div class="row">
+        <label class="file-label">Choose logo
+          <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+        </label>
+        <button id="btn-event-logo-remove" type="button">Remove logo</button>
+        <input id="event-logo-alt" type="text" autocomplete="off" style="flex:1 1 220px"
+               placeholder="Logo description for screen readers, e.g. Faulkner University"
+               aria-label="Logo description for screen readers">
+        <span class="disclosure-sub" id="event-logo-status" style="flex:1 1 200px">&mdash;</span>
+      </div>
+      <div class="disclosure-sub">
+        Attendees who open the phone view see the welcome screen until you press <b>Start event</b>
+        on the status page, and again after <b>End event</b>. The words sit on a dark panel over
+        the image, so any photo keeps them readable. JPEG, PNG, or WebP, up to 5 MB. The logo sits
+        in a slim row above the captions while they are live &mdash; a transparent PNG works best,
+        since readers choose their own background colour. Give it a description so screen readers
+        announce the name, not the file. The disclaimer appears once per device the first time
+        someone opens the phone view, with a dismiss button &mdash; it reappears if you change the
+        wording, but not just because you saved the field again.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="deepgram-toggle" aria-expanded="true" aria-controls="deepgram-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Deepgram API key</span>
+    <span class="badge" id="deepgram-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="deepgram-body">
+      <div class="row">
+        <input id="deepgram-key" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Paste your Deepgram API key">
+        <button id="btn-deepgram-show" type="button">Show</button>
+        <button id="btn-deepgram-save" type="button">Save</button>
+      </div>
+      <div class="disclosure-sub" id="deepgram-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="azure-toggle" aria-expanded="false" aria-controls="azure-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Translation (Azure)</span>
+    <span class="badge" id="azure-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="azure-body">
+      <div class="disclosure-sub" id="translation-sub">&mdash;</div>
+      <div class="row">
+        <input id="azure-key" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Azure Translator API key">
+        <button id="btn-azure-show" type="button">Show</button>
+      </div>
+      <div class="row">
+        <input id="azure-region" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Region (optional)" style="flex:0 1 160px">
+        <input id="azure-langs" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Target languages, e.g. es, fr, zh-Hans">
+        <button id="btn-azure-save" type="button">Save</button>
+      </div>
+      <div class="disclosure-sub" id="azure-hint">
+        Get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
+        &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
+        <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
+        list the languages to translate into, then Save &mdash; no restart needed.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="youtube-toggle" aria-expanded="false" aria-controls="youtube-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">YouTube Live captions</span>
+    <span class="badge" id="youtube-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="youtube-body">
+      <div class="row">
+        <input id="youtube-url" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Paste the Captions ingestion URL from YouTube Studio">
+        <button id="btn-youtube-show" type="button">Show</button>
+        <button id="btn-youtube-save" type="button">Save</button>
+        <button id="btn-youtube-enable" class="go">Enable</button>
+        <button id="btn-youtube-disable" class="stop">Disable</button>
+      </div>
+      <div class="disclosure-sub" id="youtube-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="tunnel-toggle" aria-expanded="false" aria-controls="tunnel-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Public tunnel (Cloudflare)</span>
+    <span class="badge" id="tunnel-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="tunnel-body">
+      <div class="row">
+        <input id="tunnel-hostname" type="text" autocomplete="off" spellcheck="false"
+               placeholder="captions.yourdomain.com">
+      </div>
+      <div class="row">
+        <input id="tunnel-token" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Tunnel token from the Cloudflare dashboard">
+        <button id="btn-tunnel-show" type="button">Show</button>
+        <button id="btn-tunnel-save" type="button">Save</button>
+        <button id="btn-tunnel-enable" class="go">Enable</button>
+        <button id="btn-tunnel-disable" class="stop">Disable</button>
+      </div>
+      <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
+      <div class="disclosure-sub" id="tunnel-hint">
+        One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
+        Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
+        this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
+        the install command. Paste the hostname and token above, then Enable &mdash; no restart
+        needed. Needs the domain on Cloudflare's DNS and <code>cloudflared</code> installed
+        (<code>brew install cloudflared</code>) &mdash; see SETUP.md 3c.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="keywords-toggle" aria-expanded="false" aria-controls="keywords-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Keywords &amp; profanity filter</span>
+    <span class="badge" id="keywords-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="keywords-body">
+      <div class="disclosure-sub">
+        Boosted vocabulary (<code>config/keyterms.txt</code>) and words to strip out of
+        every caption (<code>config/blocklist.txt</code>) are both plain text files, one
+        term or short phrase per line &mdash; edit either by hand, then press Reload.
+        Blocking works the same way on every backend; the profanity filter below
+        catches common strong language with no list to maintain.
+      </div>
+      <div class="row">
+        <button id="btn-keyterms" type="button">Reload keyterms &amp; blocklist</button>
+        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
+        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
+      </div>
+      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
+    </div>
+  </div></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var sock = null, reconnTimer = null, attempts = 0, lastMsgAt = 0, signedOut = false;
+
+  function $(id) { return document.getElementById(id); }
+  function toast(text) {
+    var t = $('toast');
+    t.textContent = text;
+    t.className = 'on';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = ''; }, 2600);
+  }
+  function jsonOrThrow(r) {
+    if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+    return r.json();
+  }
+
+  var youtubeUrlDirty = false, youtubeConfigured = false;
+  var azureLangsDirty = false, tunnelHostnameDirty = false;
+  var eventDirty = {};
+  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt', 'disclaimer'];
+
+  function eventBox(field) { return $('event-' + field.replace('_', '-')); }
+
+  function renderEventConfig(ev) {
+    ev = ev || {};
+    EVENT_FIELDS.forEach(function (field) {
+      var box = eventBox(field);
+      box.disabled = false;
+      if (document.activeElement !== box && !eventDirty[field]) box.value = ev[field] || '';
+    });
+    $('btn-event-save').disabled = false;
+    $('event-image').disabled = false;
+    $('btn-event-image-remove').disabled = !ev.image;
+    $('event-image-status').textContent = ev.image
+      ? 'Background image set — attendees see it behind the welcome text.'
+      : 'No background image — the welcome screen is plain dark.';
+    $('event-logo').disabled = false;
+    $('btn-event-logo-remove').disabled = !ev.logo;
+    $('event-logo-status').textContent = ev.logo
+      ? 'Logo set — shown above the captions while live.' + (ev.logo_alt ? '' : ' Add a description for screen readers.')
+      : 'No logo.';
+  }
+
+  function renderDeepgram(source) {
+    source = source || {};
+    var hasKey = !!source.has_deepgram_key;
+    var badge = $('deepgram-badge');
+    badge.textContent = hasKey ? 'Key saved' : 'Not set';
+    badge.className = 'badge' + (hasKey ? ' live' : '');
+    $('deepgram-sub').textContent = hasKey
+      ? 'A key is saved on this machine — the Deepgram backend is ready to use.'
+      : 'Only needed if you pick Deepgram under Transcription backend on the status page. Get a key at console.deepgram.com.';
+    $('deepgram-key').disabled = false;
+    $('btn-deepgram-save').disabled = false;
+  }
+
+  function renderTranslation(s) {
+    var translation = s.translation || { provider: 'none', targets: [] };
+    var active = translation.provider && translation.provider !== 'none';
+    var badge = $('azure-badge');
+    badge.textContent = active ? 'Translating · ' + (translation.targets || []).length + ' language(s)' : 'Not set up';
+    badge.className = 'badge' + (active ? ' live' : '');
+    $('translation-sub').textContent = !active
+      ? 'No translation active yet — add an Azure Translator key and target languages below.'
+      : 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') +
+        (translation.error ? ' — last error: ' + translation.error : '') + '.';
+    $('btn-azure-save').disabled = $('azure-key').disabled =
+      $('azure-region').disabled = $('azure-langs').disabled = false;
+    var langsBox = $('azure-langs');
+    if (document.activeElement !== langsBox && !azureLangsDirty) {
+      langsBox.value = (translation.targets || []).join(', ');
+    }
+  }
+
+  function renderYoutube(youtube) {
+    youtube = youtube || {};
+    var badge = $('youtube-badge');
+    var sub;
+    if (!youtube.configured) {
+      sub = 'Paste a Captions ingestion URL above, then press Save.';
+      badge.textContent = 'Not set up';
+      badge.className = 'badge';
+    } else if (youtube.error) {
+      sub = 'Error: ' + youtube.error;
+      badge.textContent = 'Error';
+      badge.className = 'badge';
+    } else if (youtube.enabled) {
+      sub = 'Pushing to YouTube — ' + youtube.pushed + ' caption' + (youtube.pushed === 1 ? '' : 's') + ' sent';
+      badge.textContent = 'Pushing · ' + youtube.pushed + ' sent';
+      badge.className = 'badge live';
+    } else {
+      sub = 'Saved, not pushing yet' + (youtube.pushed ? ' (' + youtube.pushed + ' sent this session)' : '');
+      badge.textContent = 'Saved, off';
+      badge.className = 'badge';
+    }
+    $('youtube-sub').textContent = sub;
+    $('btn-youtube-enable').disabled = !youtube.configured || youtube.enabled;
+    $('btn-youtube-disable').disabled = !youtube.configured || !youtube.enabled;
+    $('youtube-url').disabled = false;
+    $('btn-youtube-save').disabled = false;
+
+    youtubeConfigured = !!youtube.configured;
+    var urlBox = $('youtube-url');
+    if (document.activeElement !== urlBox && !youtubeUrlDirty) {
+      urlBox.value = '';
+      urlBox.placeholder = youtubeConfigured && youtube.url_hint
+        ? 'Saved: ' + youtube.url_hint + ' — paste a new URL to replace it'
+        : 'Paste the Captions ingestion URL from YouTube Studio';
+    }
+  }
+
+  function renderTunnel(hostname, tunnel) {
+    tunnel = tunnel || {};
+    var badge = $('tunnel-badge');
+    var sub;
+    if (!tunnel.installed) {
+      sub = 'cloudflared not found on this Mac — install it (brew install cloudflared), then reload this page.';
+      badge.textContent = 'Not installed';
+      badge.className = 'badge';
+    } else if (!tunnel.configured) {
+      sub = 'Paste a hostname and tunnel token above, then press Save.';
+      badge.textContent = 'Not set up';
+      badge.className = 'badge';
+    } else if (tunnel.error) {
+      sub = 'Error: ' + tunnel.error;
+      badge.textContent = 'Error';
+      badge.className = 'badge';
+    } else if (tunnel.connected) {
+      sub = 'Connected — https://' + (hostname || '?') + ' reaches this relay.';
+      badge.textContent = 'Connected';
+      badge.className = 'badge live';
+    } else if (tunnel.running) {
+      sub = 'Starting…';
+      badge.textContent = 'Connecting';
+      badge.className = 'badge';
+    } else {
+      sub = 'Saved, not running' + (hostname ? ' (' + hostname + ')' : '');
+      badge.textContent = 'Saved, off';
+      badge.className = 'badge';
+    }
+    $('tunnel-sub').textContent = sub;
+    $('btn-tunnel-enable').disabled = !tunnel.configured || !tunnel.installed || tunnel.enabled;
+    $('btn-tunnel-disable').disabled = !tunnel.enabled;
+    $('tunnel-hostname').disabled = $('tunnel-token').disabled = $('btn-tunnel-save').disabled = false;
+    var hostBox = $('tunnel-hostname');
+    if (document.activeElement !== hostBox && !tunnelHostnameDirty) {
+      hostBox.value = hostname || '';
+    }
+  }
+
+  function renderKeywords(source) {
+    source = source || {};
+    var count = source.blocked_word_count || 0;
+    var masked = !!source.mask_profanity;
+    var badge = $('keywords-badge');
+    var parts = [];
+    parts.push(count ? count + ' blocked term' + (count === 1 ? '' : 's') : 'no blocked terms');
+    parts.push(masked ? 'profanity filter on' : 'profanity filter off');
+    badge.textContent = parts.join(' · ');
+    badge.className = 'badge' + (masked ? ' live' : '');
+    $('keywords-sub').textContent = count
+      ? count + ' term' + (count === 1 ? '' : 's') + ' loaded from config/blocklist.txt.'
+      : 'config/blocklist.txt is empty or not found — nothing to block yet.';
+    $('btn-keyterms').disabled = !source.connected;
+    $('btn-profanity-enable').disabled = !source.connected || masked;
+    $('btn-profanity-disable').disabled = !source.connected || !masked;
+  }
+
+  function render(s) {
+    renderEventConfig(s.event);
+    renderDeepgram(s.source || {});
+    renderTranslation(s);
+    renderYoutube(s.youtube);
+    renderTunnel(s.public_hostname, s.tunnel);
+    renderKeywords(s.source || {});
+    $('meta').textContent = 'session ' + s.session_id + '  ·  up ' + Math.round(s.uptime / 60) + 'm';
+  }
+
+  function renderOffline() {
+    $('meta').textContent = 'relay unreachable — retrying';
+    EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
+    $('btn-event-save').disabled = $('event-image').disabled = $('btn-event-image-remove').disabled =
+      $('event-logo').disabled = $('btn-event-logo-remove').disabled = true;
+    $('btn-deepgram-save').disabled = $('deepgram-key').disabled = true;
+    $('btn-azure-save').disabled = $('azure-key').disabled =
+      $('azure-region').disabled = $('azure-langs').disabled = true;
+    $('btn-youtube-enable').disabled = $('btn-youtube-disable').disabled = true;
+    $('btn-youtube-save').disabled = $('youtube-url').disabled = true;
+    $('btn-tunnel-save').disabled = $('btn-tunnel-enable').disabled =
+      $('btn-tunnel-disable').disabled = $('tunnel-hostname').disabled =
+      $('tunnel-token').disabled = true;
+    $('btn-keyterms').disabled = true;
+    $('btn-profanity-enable').disabled = $('btn-profanity-disable').disabled = true;
+  }
+
+  // ---- transport (same pattern as the status page) ------------------------
+
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var host = location.host || 'localhost:8000';
+    try {
+      sock = new WebSocket(proto + '//' + host + '/ws/status');
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+    sock.onopen = function () { attempts = 0; lastMsgAt = Date.now(); };
+    sock.onmessage = function (ev) {
+      lastMsgAt = Date.now();
+      try { render(JSON.parse(ev.data)); } catch (e) {}
+    };
+    function dropped() {
+      if (sock) { sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null; }
+      sock = null;
+      renderOffline();
+      if (signedOut) {
+        $('meta').textContent = 'not signed in — open Settings again from the status page';
+        return;
+      }
+      scheduleReconnect();
+    }
+    sock.onclose = function (ev) {
+      if (ev && ev.code === 4401) signedOut = true;
+      dropped();
+    };
+    sock.onerror = function () { dropped(); };
+  }
+  function scheduleReconnect() {
+    if (reconnTimer) return;
+    attempts++;
+    var d = Math.min(8000, 400 * Math.pow(2, Math.min(attempts, 5)));
+    reconnTimer = setTimeout(function () { reconnTimer = null; connect(); }, d);
+  }
+
+  function control(action, label, fields) {
+    var body = { action: action };
+    Object.keys(fields || {}).forEach(function (key) { body[key] = fields[key]; });
+    fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); }).then(function (out) {
+      toast(out.delivered_to
+        ? label + ' — sent to capture client'
+        : label + ' — no capture client connected');
+    })['catch'](function () { toast(label + ' — failed, relay unreachable'); });
+  }
+
+  function eventPost(fields, label) {
+    fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    }).then(jsonOrThrow).then(function () {
+      eventDirty = {};
+      toast(label);
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function saveEventText() {
+    var fields = {};
+    EVENT_FIELDS.forEach(function (field) { fields[field] = eventBox(field).value.trim(); });
+    eventPost(fields, 'Welcome screen saved');
+  }
+
+  function uploadEventImage(file, path, label) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast(label + ' — must be under 5 MB'); return; }
+    fetch(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file
+    }).then(jsonOrThrow).then(function () {
+      toast(label + ' saved');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function removeEventImage(path, label) {
+    fetch(path, { method: 'DELETE' }).then(jsonOrThrow).then(function () {
+      toast(label + ' removed');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
+  }
+
+  function saveDeepgramKey() {
+    var key = $('deepgram-key').value.trim();
+    if (!key) { toast('Deepgram key — paste a key first'); return; }
+    control('set_deepgram_key', 'Deepgram API key', { key: key });
+    $('deepgram-key').value = '';
+  }
+
+  function saveTranslationSettings() {
+    var key = $('azure-key').value.trim();
+    var region = $('azure-region').value.trim();
+    var langs = $('azure-langs').value.trim();
+    if (!key && !region && !langs) {
+      toast('Azure Translator — enter a key and/or target languages first');
+      return;
+    }
+    var body = {};
+    if (key) body.key = key;
+    if (region) body.region = region;
+    if (langs) body.languages = langs;
+    fetch('/api/translation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function (out) {
+      azureLangsDirty = false;
+      $('azure-key').value = '';
+      $('azure-region').value = '';
+      toast(out.provider && out.provider !== 'none'
+        ? 'Azure Translator — translating into ' + (out.targets || []).join(', ')
+        : 'Azure Translator — saved, but not active yet (need a key and at least one language)');
+    })['catch'](function (e) { toast('Azure Translator — ' + e.message); });
+  }
+
+  function setYoutubeEnabled(enabled) {
+    fetch('/api/youtube-captions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      toast(enabled ? 'YouTube captions — enabled' : 'YouTube captions — disabled');
+    })['catch'](function (e) { toast('YouTube captions — ' + e.message); });
+  }
+
+  function saveYoutubeUrl() {
+    var url = $('youtube-url').value.trim();
+    if (!url && youtubeConfigured && !confirm('Clear the saved YouTube ingestion URL?')) return;
+    fetch('/api/youtube-captions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      youtubeUrlDirty = false;
+      toast(url ? 'YouTube ingestion URL saved' : 'YouTube ingestion URL cleared');
+    })['catch'](function (e) { toast('YouTube URL — ' + e.message); });
+  }
+
+  function setTunnelEnabled(enabled) {
+    fetch('/api/tunnel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      toast(enabled ? 'Tunnel — enabling…' : 'Tunnel — disabled');
+    })['catch'](function (e) { toast('Tunnel — ' + e.message); });
+  }
+
+  function saveTunnelSettings() {
+    var hostname = $('tunnel-hostname').value.trim();
+    var token = $('tunnel-token').value.trim();
+    if (!hostname && !token) {
+      toast('Tunnel — enter a hostname and/or token first');
+      return;
+    }
+    var body = {};
+    if (hostname) body.hostname = hostname;
+    if (token) body.token = token;
+    fetch('/api/tunnel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    }).then(function () {
+      tunnelHostnameDirty = false;
+      $('tunnel-token').value = '';
+      toast('Tunnel settings saved');
+    })['catch'](function (e) { toast('Tunnel — ' + e.message); });
+  }
+
+  // A disclosure remembers its own open/closed state across reloads.
+  function setupDisclosure(headerId, storageKey) {
+    var header = $(headerId);
+    var key = 'campus-captions:' + storageKey;
+    var expanded = header.getAttribute('aria-expanded') === 'true';
+    try {
+      var saved = localStorage.getItem(key);
+      if (saved !== null) expanded = saved === '1';
+    } catch (e) {}
+    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    header.onclick = function () {
+      var next = header.getAttribute('aria-expanded') !== 'true';
+      header.setAttribute('aria-expanded', next ? 'true' : 'false');
+      try { localStorage.setItem(key, next ? '1' : '0'); } catch (e) {}
+    };
+  }
+
+  function boot() {
+    setupDisclosure('event-toggle', 'settings-event-expanded');
+    setupDisclosure('deepgram-toggle', 'settings-deepgram-expanded');
+    setupDisclosure('azure-toggle', 'settings-azure-expanded');
+    setupDisclosure('youtube-toggle', 'settings-youtube-expanded');
+    setupDisclosure('tunnel-toggle', 'settings-tunnel-expanded');
+    setupDisclosure('keywords-toggle', 'settings-keywords-expanded');
+
+    $('btn-event-save').onclick = saveEventText;
+    EVENT_FIELDS.forEach(function (field) {
+      var box = eventBox(field);
+      box.oninput = function () { eventDirty[field] = true; };
+      box.onkeydown = function (e) { if (e.key === 'Enter') saveEventText(); };
+    });
+    $('event-image').onchange = function () {
+      uploadEventImage(this.files && this.files[0], '/api/event/image', 'Background image');
+      this.value = '';
+    };
+    $('btn-event-image-remove').onclick = function () { removeEventImage('/api/event/image', 'Background image'); };
+    $('event-logo').onchange = function () {
+      uploadEventImage(this.files && this.files[0], '/api/event/logo', 'Logo');
+      this.value = '';
+    };
+    $('btn-event-logo-remove').onclick = function () { removeEventImage('/api/event/logo', 'Logo'); };
+
+    $('btn-deepgram-save').onclick = saveDeepgramKey;
+    $('btn-deepgram-show').onclick = function () {
+      var box = $('deepgram-key');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('deepgram-key').onkeydown = function (e) { if (e.key === 'Enter') saveDeepgramKey(); };
+
+    $('btn-azure-save').onclick = saveTranslationSettings;
+    $('btn-azure-show').onclick = function () {
+      var box = $('azure-key');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('azure-key').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('azure-region').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('azure-langs').oninput = function () { azureLangsDirty = true; };
+    $('azure-langs').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+
+    $('btn-youtube-enable').onclick = function () { setYoutubeEnabled(true); };
+    $('btn-youtube-disable').onclick = function () { setYoutubeEnabled(false); };
+    $('btn-youtube-save').onclick = saveYoutubeUrl;
+    $('btn-youtube-show').onclick = function () {
+      var box = $('youtube-url');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('youtube-url').oninput = function () { youtubeUrlDirty = true; };
+    $('youtube-url').onkeydown = function (e) { if (e.key === 'Enter') saveYoutubeUrl(); };
+
+    $('btn-tunnel-enable').onclick = function () { setTunnelEnabled(true); };
+    $('btn-tunnel-disable').onclick = function () { setTunnelEnabled(false); };
+    $('btn-tunnel-save').onclick = saveTunnelSettings;
+    $('btn-tunnel-show').onclick = function () {
+      var box = $('tunnel-token');
+      var showing = box.type === 'text';
+      box.type = showing ? 'password' : 'text';
+      this.textContent = showing ? 'Show' : 'Hide';
+    };
+    $('tunnel-hostname').oninput = function () { tunnelHostnameDirty = true; };
+    $('tunnel-hostname').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
+    $('tunnel-token').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
+
+    $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Keyterms & blocklist reloaded'); };
+    $('btn-profanity-enable').onclick = function () {
+      control('set_profanity_filter', 'Profanity filter enabled', { enabled: true });
+    };
+    $('btn-profanity-disable').onclick = function () {
+      control('set_profanity_filter', 'Profanity filter disabled', { enabled: false });
+    };
+
+    renderOffline();
+    connect();
+    setInterval(function () {
+      if (sock && sock.readyState === 1 && (Date.now() - lastMsgAt) > 6000) {
+        sock.close();
+      }
+    }, 2000);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

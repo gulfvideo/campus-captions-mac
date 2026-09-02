@@ -72,12 +72,17 @@ API key. Useful flags:
 .venv\Scripts\python.exe -m capture --no-audio          # no input device at all
 ```
 
-Then open the **status page** — <http://localhost:8000/status>. That is the only
-page an operator needs. It shows whether audio is arriving, whether the ASR
-backend is producing text, how many viewers are connected, whether the ASR
-stream is open, and it carries the buttons to open and close that stream.
+Then open the **status page** — <http://localhost:8000/status>. It shows
+whether audio is arriving, whether the ASR backend is producing text, how many
+viewers are connected, whether the ASR stream is open, and it carries the
+buttons to open and close that stream - everything an operator watches during
+an event. One-time setup - API keys, integrations, keyterms/blocklist, the
+welcome-screen wording and photo - lives on **Settings**
+(<http://localhost:8000/settings>, linked from the status page), so the page
+running all night isn't cluttered with things touched once before doors open.
 
 - status — <http://localhost:8000/status>
+- settings — <http://localhost:8000/settings>
 - wall — <http://localhost:8000/wall>
 - phone — <http://localhost:8000/phone>
 
@@ -211,7 +216,7 @@ a password:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /wall` `/phone` `/status` `/tune` | the four pages, served `no-store` (`/status` and `/tune` operator-only) |
+| `GET /wall` `/phone` `/status` `/settings` `/tune` | the five pages, served `no-store` (all but `/wall`/`/phone` are operator-only) |
 | `GET /<name>` | any other `viewer/<name>.html`, no code change needed (operator-only unless listed public) |
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
 | `WS /ws/source` | capture client, bidirectional; source token as `Authorization: Bearer` |
@@ -230,9 +235,9 @@ event, and an operator editing query params must always get the current file.
 ## Pushing captions to YouTube Live
 
 Optional, and lives entirely in the relay (`relay/youtube.py`) - it works no
-matter which ASR backend is running, and toggling it on the status page never
-touches the capture client. The status page's YouTube Live captions box pastes
-and saves the stream's Captions ingestion URL directly - no config file to
+matter which ASR backend is running, and toggling it on the settings page
+never touches the capture client. The settings page's YouTube Live captions
+box pastes and saves the stream's Captions ingestion URL directly - no config file to
 open - via `POST /api/youtube-captions`, which calls `relay/config.py`'s
 `save_youtube_url()` to patch just the `[youtube]` section of
 `config/event.toml` in place, so it survives a relay restart. Every `final`
@@ -246,7 +251,7 @@ correct or delete text once sent, unlike the general version of this protocol.
 Operator-facing setup is in `SETUP.md` section 3b, including the ~15+ second
 delay YouTube's own pipeline adds on top of everything else.
 
-The status page's box only ever controls the **source-language** track. A
+The settings page's box only ever controls the **source-language** track. A
 translated language (see below) can get its own YouTube broadcast caption
 track too, via a `YOUTUBE_CAPTION_URL_<LANG>` environment variable (e.g.
 `YOUTUBE_CAPTION_URL_ES`) - deliberately env-only with no status-page field,
@@ -256,7 +261,7 @@ for it. `relay/youtube.py`'s `urls_from_env()` finds these.
 ## Translation and multiple languages
 
 Optional. Easiest path: paste an Azure Translator key and a target language
-list into the status page's **Transcript & translation** panel - see SETUP.md
+list into the settings page's **Translation (Azure)** panel - see SETUP.md
 3e for where to get a key. That's `POST /api/translation`, which writes the
 key to `.env` and the languages to `config/event.toml` and reconnects the
 translator immediately, no restart. Equivalently, by hand: set
@@ -306,7 +311,7 @@ recording or stream actually begins - an `.srt` is timed from the start of
 the *video*, not the start of the world, so lines spoken before the mark are
 dropped from the export (they stay in the underlying record) rather than all
 piling up at `00:00:00`. `GET /api/transcript.srt?lang=es` downloads one
-language's file; the status page's "Transcript & translation" panel links to
+language's file; the status page's "Recording & transcript" panel links to
 whatever's been recorded so far.
 
 `tools/youtube_upload.py` is a separate, optional CLI - the relay never

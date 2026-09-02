@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -50,6 +51,24 @@ def status_request(port: int) -> urllib.request.Request:
 
 def status_link(port: int) -> str:
     return f"http://127.0.0.1:{port}/status?token={OPERATOR_TOKEN}"
+
+
+def settings_link(port: int) -> str:
+    return f"http://127.0.0.1:{port}/settings?token={OPERATOR_TOKEN}"
+
+
+def logs_dir() -> Path:
+    """Mirrors relay/config.py's own _log_dir(): the packaged app's logs
+    live in the standard per-user location, not next to the (nonexistent,
+    once frozen) source tree."""
+    if getattr(sys, "frozen", False):
+        return Path.home() / "Library" / "Logs" / "Campus Captions"
+    return relay_config.ROOT / "logs"
+
+
+def reveal_in_finder(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)  # nothing to show yet on a fresh install
+    subprocess.run(["open", str(path)], check=False)
 
 
 def _icons_dir() -> Path:
@@ -164,15 +183,17 @@ class CampusCaptionsApp(rumps.App):
         self.menu = [
             rumps.MenuItem("About Campus Captions", callback=self.show_about),
             rumps.separator,
-            # Cmd-, is the conventional Settings/Preferences shortcut; the
-            # status page is where every setting in this app actually lives
-            # (backend, audio device, API keys, YouTube, translation), so it
-            # gets that shortcut even though the item reads "Open", not
-            # "Preferences" - clearer for an operator who isn't a Mac power
-            # user, while still landing habit-driven Cmd-, in the right place.
-            rumps.MenuItem("Open Status Page", callback=self.open_status, key=","),
+            rumps.MenuItem("Open Status Page", callback=self.open_status),
+            # Cmd-, is the conventional Settings/Preferences shortcut, and now
+            # that API keys, integrations, and the welcome-screen config have
+            # their own page (see viewer/settings.html), this is the one it
+            # actually belongs on - not the operate dashboard.
+            rumps.MenuItem("Open Settings", callback=self.open_settings, key=","),
             rumps.MenuItem("Open Wall View", callback=self.open_wall),
             rumps.MenuItem("Open Phone View", callback=self.open_phone),
+            rumps.separator,
+            rumps.MenuItem("Show Config Folder in Finder", callback=self.show_config_folder),
+            rumps.MenuItem("Show Logs in Finder", callback=self.show_logs_folder),
             rumps.separator,
             rumps.MenuItem("Quit Campus Captions", callback=self.quit_app, key="q"),
         ]
@@ -194,13 +215,22 @@ class CampusCaptionsApp(rumps.App):
             "Campus Captions",
             f"Version {app_version()}\n\n"
             "Live captioning for campus events. Runs the relay and capture "
-            "client in this one menu bar app - see Open Status Page for "
-            "everything else.\n\n"
+            "client in this one menu bar app - see Open Status Page to run "
+            "an event, Open Settings for API keys and setup.\n\n"
             "github.com/koakley3/campus-captions",
         )
 
     def open_status(self, _sender) -> None:
         webbrowser.open(status_link(self.port))
+
+    def open_settings(self, _sender) -> None:
+        webbrowser.open(settings_link(self.port))
+
+    def show_config_folder(self, _sender) -> None:
+        reveal_in_finder(relay_config.DATA_DIR)
+
+    def show_logs_folder(self, _sender) -> None:
+        reveal_in_finder(logs_dir())
 
     def open_wall(self, _sender) -> None:
         webbrowser.open(f"http://127.0.0.1:{self.port}/wall")
