@@ -36,9 +36,12 @@ Claude Code to have it do the work and push the results to the same branch.
   carries the token). Upload a welcome photo and a logo; both must land in
   `~/Library/Application Support/Campus Captions/config/`.
 - Logs: `~/Library/Logs/Campus Captions/relay.log` and `capture.log`.
-- Keyterms: `config/keyterms.txt` is bundled; a copy placed in the
-  Application Support `config/` folder must win over the bundled one
-  (`resolve_path()` in `capture/config.py`).
+- Keyterms: `config/keyterms.txt` and `blocklist.txt` are bundled *and*
+  seeded into the Application Support `config/` folder on first launch
+  (`ensure_data_dir()` in `relay/config.py`); the seeded copy must win over
+  the bundled one (`resolve_path()` in `capture/config.py`). The bundled
+  copies cannot be edited in place - the `.app` is signed, and writing to
+  one gives "a sealed resource is missing or invalid".
 
 ### 3. Hardened runtime and the entitlement
 

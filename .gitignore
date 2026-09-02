@@ -34,6 +34,10 @@ env/
 .Python
 build/
 dist/
+# A built or unzipped bundle landing in the repo root - 70MB+ of binary that
+# must never reach a commit.
+*.app/
+__MACOSX/
 *.egg-info/
 .eggs/
 pip-wheel-metadata/

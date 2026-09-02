@@ -199,6 +199,13 @@ packaged macOS app keeps them, and any uploaded welcome photo or logo, in
 `~/Library/Application Support/Campus Captions/` — never inside the `.app`,
 which is signed and gets passed around as a zip.
 
+`keyterms.txt` and `blocklist.txt` are copied there too, on first launch, for
+the same reason: they are meant to be hand-edited, and the copies shipped
+inside the bundle cannot be — the `.app` is read-only, and changing a file in
+it invalidates the code signature. The menu bar's **Show Config Folder in
+Finder** opens the folder that actually gets read. An existing file is never
+overwritten, so edits survive an update.
+
 Two secrets gate the relay, and both are generated into `.env` on first start
 if nothing sets them, so a fresh checkout is protected without anyone inventing
 a password:
@@ -356,6 +363,8 @@ the field with no rebuild. The bare URL with no parameters works.
 | `opacity` | `0.85` | bar opacity |
 | `bar` | `000000` | bar colour, hex, no `#` |
 | `color` | `ffffff` | text colour, hex, no `#` |
+| `align` | `left` | text alignment: `left`, `center` or `right` |
+| `font` | — | `font=atkinson` for Atkinson Hyperlegible, served by the relay |
 | `idle` | `5` | seconds of no new text before the bar fades out; `0` never fades |
 | `fade` | `600` | fade duration, ms |
 | `maxchars` | `42` | characters per line |
@@ -408,12 +417,26 @@ the bottom.
 Auto-scrolls while the reader is at the bottom. Scrolling up unpins it and shows
 a **Jump to latest** button — the feed keeps arriving without yanking the view.
 The one visible control is a small **Aa** button in the bottom corner; tapping
-it opens a compact panel (five preset text sizes with clamped +/- stepping, five
-color swatches plus a native color picker for anything else) anchored above the
-button rather than a full-screen takeover, so captions keep scrolling behind it.
-Closes on an outside tap, Escape, or tapping **Aa** again. Both choices persist
-per device via `localStorage`, independent of anyone else viewing the same
-stream. The page requests a screen wake lock so phones do not sleep mid-service.
+it opens a compact panel anchored above the button rather than a full-screen
+takeover, so captions keep scrolling behind it:
+
+- **Text size** — eight steps from 19 px to 64 px, with clamped +/- stepping.
+  Shown as a plain px count rather than named sizes: labelling the large end
+  "Huge" reads as a judgment on whoever needs it.
+- **Text colour** — five swatches plus a native colour picker. A choice that
+  would fall below 4.5:1 against the background is refused, so nobody can
+  accidentally make their own captions unreadable and then be unable to find
+  the button again.
+- **Font** — the default system stack, or Atkinson Hyperlegible, designed by
+  the Braille Institute for legibility. The font ships inside the app and is
+  served by the relay, so choosing it never makes the page depend on the
+  internet.
+
+The panel closes on an outside tap, Escape, tapping **Aa** again, or five
+seconds after the last interaction with it. All three choices persist per
+device via `localStorage`, independent of anyone else viewing the same stream.
+The page holds a screen wake lock, re-acquiring it if the OS drops it, so
+phones do not sleep mid-service.
 
 | Param | Default | Effect |
 |---|---|---|

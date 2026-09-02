@@ -243,6 +243,14 @@ latency than Deepgram, and less stable interim text - it's a good fit for
 demos, rehearsal, or a venue with no internet, not a first choice when
 Deepgram or Apple on-device are both available.
 
+Whisper can also loop on ambiguous audio, repeating one phrase until the
+buffer commits. Two guards run against that: faster-whisper's own temperature
+fallback, which re-decodes when a result comes back too repetitive to believe,
+and a pass over the finished text that trims a phrase repeated four or more
+times back to two. Ordinary repetition is left alone - people stammer, and
+"I mean, I mean" is something a deaf reader is entitled to see. If you do see
+a loop reach the wall, it is worth reporting with the `.srt`.
+
 ---
 
 ## 3e. Multiple languages and live translation
@@ -416,8 +424,12 @@ You can also change the input after startup. Open the status page and choose an
 input under **Audio input device**. The capture client briefly pauses an open
 ASR stream, changes devices, and reopens the stream automatically with the new
 sample rate. If an interface is connected after startup, press **Refresh
-devices** first. This runtime choice lasts until the program is closed; put the
-device name in `event.toml` if it should also be the default next time.
+devices** first. The choice is remembered: it is written back to this machine's
+`event.toml` by name, so the next launch comes up on the same input without
+anyone re-picking it. The name rather than the index, because PortAudio
+renumbers devices whenever something is plugged in. If that device is missing
+next time — the interface stayed at the last venue — the app falls back to the
+system default and says so on the status page rather than starting deaf.
 
 The same status page has a **Transcription backend** dropdown, next to the
 device picker, for swapping between the local Apple backend and cloud Deepgram
@@ -606,6 +618,8 @@ parameters works.
 | `opacity` | `0.85` | bar opacity |
 | `bar` | `000000` | bar colour, hex, no `#` |
 | `color` | `ffffff` | text colour, hex, no `#` |
+| `align` | `left` | text alignment: `left`, `center` or `right`. Left matches broadcast roll-up captions; a centred live row moves both ends on every word |
+| `font` | — | `font=atkinson` selects Atkinson Hyperlegible, designed for legibility. Served by the relay, not fetched from the internet |
 | `idle` | `5` | seconds of no new text before the bar fades out; `0` = never |
 | `fade` | `600` | fade duration, ms |
 | `maxchars` | `42` | characters per line |
