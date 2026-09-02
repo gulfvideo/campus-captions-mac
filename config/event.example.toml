@@ -46,6 +46,7 @@ title = ""                # e.g. "Fall Convocation"
 message = ""              # default: "Live captions will begin when the program starts."
 notice = ""               # e.g. "Captions are automatic. Accommodations: Disability Services, 334-555-0100"
 pause_message = ""        # shown over the captions while paused; default "Captions paused"
+logo_alt = ""             # screen-reader name for the logo (config/logo.*), e.g. "Faulkner University"
 
 [translate]
 # "azure" or "none". The key is read from AZURE_TRANSLATOR_KEY in .env - never
@@ -73,6 +74,14 @@ keyterms_file = "config/keyterms.txt"
 # committed lines - the broadcast-caption convention. Names still have to
 # come from the operator (the status page's caption box). false to disable.
 diarize = true
+# A committed word the model itself doubts (confidence below this) is shown
+# as [inaudible] instead of a confident wrong guess. 0 disables.
+inaudible_below = 0.3
+# Verbatim is the accessible default: deaf attendees should receive what
+# hearing attendees hear. Turning the filter on changes that, so it is an
+# explicit choice here, never a surprise.
+profanity_filter = false
+filler_words = false
 
 # On-device, free, no key - but macOS 26+ only, and no keyterm boosting.
 # Running from source: first open() compiles capture/backends/native/speech_helper.swift
@@ -92,8 +101,8 @@ model = "base.en"        # tiny.en | base.en | small.en | medium.en, or a
                          # multilingual name like "small" for non-English audio
 compute_type = "int8"    # int8 is fastest on CPU; float16 needs a GPU
 device = "cpu"           # leave as cpu unless you have verified a GPU works
-interim_interval = 0.9   # seconds between interim re-decodes
-silence_commit = 0.7     # seconds of quiet that commits a line
+interim_interval = 0.9   # seconds between interim re-decodes (each decodes the last 8 s only)
+silence_commit = 0.7     # seconds of quiet that commits a line; utterances are forced at 12 s
 # model_dir = "models"   # pre-downloaded models, for a machine with no internet
 
 # Pushes finalized captions to a YouTube Live stream's caption ingestion URL

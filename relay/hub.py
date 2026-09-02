@@ -268,6 +268,12 @@ class Hub:
             payload = {"type": "final", "text": text}
             if started is not None:
                 payload["t0"] = round(started, 3)
+            if msg.get("late"):
+                # Held by the capture client through a relay outage. Its own
+                # timestamp is the real one; keep it for the transcript.
+                payload["late"] = True
+                if isinstance(msg.get("t"), (int, float)):
+                    payload["t"] = round(float(msg["t"]), 3)
             self.broadcast(payload)
             if self.youtube is not None and self.youtube.enabled:
                 asyncio.create_task(self.youtube.push(text))

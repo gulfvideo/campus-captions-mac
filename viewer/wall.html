@@ -48,7 +48,9 @@
     font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
     font-weight: 600;
     color: var(--color);
-    text-align: center;
+    /* Left by default, like broadcast roll-up captions: a centred live row
+       moves both ends on every word. ?align=center for the old look. */
+    text-align: var(--align, left);
     white-space: nowrap;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
@@ -100,6 +102,7 @@
   var rows = [], rowEls = [], awaitNewLine = false;
   var queue = [], pendingInterim = null, drainTimer = null;
   var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0, statusText = '';
+  var fittedChars = 0, resizeTimer = null;
   var barOn = false, lastTextAt = 0, lastMsgAt = 0, startedAt = 0;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, clipped = false;
@@ -149,7 +152,8 @@
       nostatus: flag('nostatus'),                 // hide the reconnecting/paused line
       welcome:  flag('welcome'),                  // also show the welcome/ended message
       fade:     num('fade', 600, 0, 10000),       // ms
-      maxchars: Math.round(num('maxchars', 42, 8, 200)),
+      maxchars: Math.round(num('maxchars', 36, 8, 200)),   // ceiling; the real limit is measured, see fitMaxChars
+      align:    P.get('align') === 'center' ? 'center' : 'left',
       watchdog: num('watchdog', 120, 10, 86400),  // seconds dead before reload
       debug:    flag('debug'),
       text:     P.get('text'),
@@ -168,6 +172,29 @@
     r.setProperty('--fade', cfg.fade + 'ms');
     r.setProperty('--color', cfg.color);
     r.setProperty('--bar', rgba(cfg.bar, cfg.opacity));
+    r.setProperty('--align', cfg.align);
+  }
+
+  // Characters per line used to be a number the operator guessed; a line
+  // that did not fit was clipped at its end, losing the last words. Now the
+  // row is measured with the real font and the limit is whichever is smaller:
+  // the operator's ceiling or what actually fits.
+  var FIT_SAMPLE = 'The quick brown fox jumps over the lazy dog, 1234 times.';
+  function fitMaxChars() {
+    try {
+      var row = rowEls[0];
+      if (!row) return;
+      var inner = row.clientWidth;
+      var canvas = fitMaxChars._c || (fitMaxChars._c = document.createElement('canvas'));
+      var ctx = canvas.getContext('2d');
+      ctx.font = getComputedStyle(row).font;
+      var avg = ctx.measureText(FIT_SAMPLE).width / FIT_SAMPLE.length;
+      if (!(avg > 0) || !(inner > 0)) return;
+      fittedChars = Math.max(8, Math.floor(inner / avg) - 1);
+    } catch (e) { fittedChars = 0; }
+  }
+  function maxChars() {
+    return fittedChars ? Math.min(cfg.maxchars, fittedChars) : cfg.maxchars;
   }
 
   // ---- text shaping ------------------------------------------------------
@@ -267,7 +294,7 @@
   }
 
   function onInterim(text) {
-    var t = tail(text, cfg.maxchars);
+    var t = tail(text, maxChars());
     if (!t) return;
     if (queue.length || drainTimer) { pendingInterim = text; return; }
     if (awaitNewLine) { shiftRows(); awaitNewLine = false; }
@@ -277,7 +304,7 @@
   }
 
   function onFinal(text, replay) {
-    var parts = chunk(text, cfg.maxchars);
+    var parts = chunk(text, maxChars());
     if (!parts.length) return;
     if (replay) {
       // History for a viewer that just (re)connected: fill the rows so the
@@ -500,7 +527,8 @@
       'attempts  ' + attempts + '   next backoff ' + lastDelay + 'ms\n' +
       'bar       ' + (barOn ? 'visible' : 'faded') +
         '   idle ' + ((n - lastTextAt) / 1000).toFixed(1) + 's\n' +
-      'maxchars  ' + cfg.maxchars + (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
+      'maxchars  ' + maxChars() + ' (ceiling ' + cfg.maxchars + ', fits ' + (fittedChars || '?') + ')' +
+        (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
       'rows      ' + cfg.lines + '   queued ' + queue.length +
         '   event ' + (eventInfo ? eventInfo.state : '-') +
         '   fault ' + (health && health.fault ? health.fault : '-') + '\n' +
@@ -518,6 +546,11 @@
     elDbg = document.getElementById('dbg');
     applyStyle();
     buildRows();
+    fitMaxChars();
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(fitMaxChars, 150);
+    });
     if (cfg.debug) { elDbg.className = 'on'; document.body.style.cursor = 'default'; }
     startedAt = lastMsgAt = lastTextAt = now();
 

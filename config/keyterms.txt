@@ -1,8 +1,17 @@
-# Keyterm prompting for Deepgram Nova-3.
+# Vocabulary the recognizer should get right: names, places, program terms.
 #
 # One term per line. Lines starting with # are comments. Blank lines ignored.
 # Edit this per event - no code changes, no restart of anything else. After
 # editing, press "Reload keyterms" on the status page.
+#
+# How each backend uses it:
+#   deepgram      keyterm prompting (Nova-3) - all terms, cap 200. A reload
+#                 reopens the stream; in-flight lines are drained first.
+#   whisper       the first 40 terms become the decoder's prompt. The library
+#                 cuts a long prompt from the FRONT, so put the most important
+#                 names at the TOP of this file.
+#   apple_speech  not supported by the on-device API; this file is ignored.
+#   mock          ignored.
 #
 # Put in the words the model will otherwise get wrong: people's names, building
 # names, program names, local jargon, hymn and book titles. Ordinary English

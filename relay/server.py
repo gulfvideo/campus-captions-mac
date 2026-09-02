@@ -235,9 +235,18 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             self.translator: translate_module.Translator | None = None
             self.worker: translate_module.TranslationWorker | None = None
 
-        def _emit(self, lang: str, text: str, utterance_id: str) -> None:
-            hub.broadcast({"type": "final", "text": text, "lang": lang,
-                           "utterance": utterance_id})
+        def _emit(self, lang: str, text: str, utterance_id: str,
+                  t0: float | None = None, t: float | None = None) -> None:
+            # The translated line inherits the source line's window, so its
+            # .srt cue spans the time it was spoken rather than collapsing to
+            # the minimum duration at the moment Azure answered.
+            msg = {"type": "final", "text": text, "lang": lang,
+                   "utterance": utterance_id}
+            if isinstance(t0, (int, float)):
+                msg["t0"] = round(float(t0), 3)
+            if isinstance(t, (int, float)):
+                msg["t"] = round(float(t), 3)
+            hub.broadcast(msg)
 
         async def apply(self, provider: str, targets: list[str]) -> None:
             if self.worker is not None:
@@ -250,7 +259,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                     self.translator, self.source_language, self.targets, self._emit)
                 self.worker.start()
             hub.on_source_final = (
-                (lambda msg: self.worker.submit(msg.get("text", ""), msg.get("id", "")))
+                (lambda msg: self.worker.submit(msg.get("text", ""), msg.get("id", ""),
+                                                msg.get("t0"), msg.get("t")))
                 if self.worker is not None else None
             )
 
@@ -493,25 +503,41 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "event": event.public(),
         }, headers=NO_STORE)
 
-    @app.get("/api/event/image")
-    async def api_event_image() -> Response:
-        """The welcome screen's background, public like the phone page it
-        decorates. Cached by URL: viewers append ?v=<image_v> so a replaced
-        image gets a new address."""
-        path = event.image_path
+    def serve_slot(slot: event_module.ImageSlot, what: str) -> Response:
+        """A public image, cached by URL: viewers append ?v=<version> so a
+        replaced file gets a new address."""
+        path = slot.path
         if path is None or not path.is_file():
-            raise HTTPException(status_code=404, detail="no welcome image")
-        return FileResponse(path, media_type=event.image_media_type,
+            raise HTTPException(status_code=404, detail=f"no {what}")
+        return FileResponse(path, media_type=slot.media_type,
                             headers={"Cache-Control": "public, max-age=86400"})
 
+    @app.get("/api/event/image")
+    async def api_event_image() -> Response:
+        """The welcome screen's background, public like the phone page it decorates."""
+        return serve_slot(event.welcome, "welcome image")
+
+    @app.get("/api/event/logo")
+    async def api_event_logo() -> Response:
+        """The logo shown above the captions while they are live."""
+        return serve_slot(event.logo, "logo")
+
     @app.get("/api/transcript.srt")
-    async def transcript_srt(request: Request, lang: str = "") -> Response:
-        """The event as a SubRip file, ready to upload to the video."""
+    async def transcript_srt(request: Request, lang: str = "", offset: float = 0.0) -> Response:
+        """The event as a SubRip file, ready to upload to the video.
+
+        `offset` (seconds) shifts every cue earlier, to take the recognizer's
+        own delay back out: a line is recorded when it was committed, which
+        is roughly a second after it was said. 0.8 is a fair value for
+        Deepgram; leave it at 0 if the timing looks right already.
+        """
         require_operator(request)
         lang = lang or cfg.source_language
         if not transcript_module.SAFE_LANG.match(lang):
             raise HTTPException(status_code=400, detail="bad language code")
-        body = recorder.to_srt(lang)
+        if not (0.0 <= offset <= 10.0):
+            raise HTTPException(status_code=400, detail="offset must be 0-10 seconds")
+        body = recorder.to_srt(lang, offset=offset)
         if not body:
             raise HTTPException(status_code=404,
                                 detail=f"nothing recorded for {lang!r}")
@@ -634,7 +660,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                     detail=f"state must be one of {', '.join(event_module.STATES)}")
             fields["state"] = state
         for name, limit in (("title", 80), ("message", 300),
-                            ("notice", 300), ("pause_message", 120)):
+                            ("notice", 300), ("pause_message", 120), ("logo_alt", 80)):
             if name in body:
                 fields[name] = text_field(body, name, limit, allow_empty=True)
         if not fields:
@@ -650,8 +676,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] event -> {fields['state']}")
         return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
 
-    @app.put("/api/event/image")
-    async def api_event_image_put(request: Request) -> JSONResponse:
+    async def store_image(request: Request, setter, what: str) -> JSONResponse:
         """The raw image bytes as the body (no multipart, no extra
         dependency). Type is sniffed from the bytes, never trusted from the
         header; size is capped before the body is read."""
@@ -663,20 +688,35 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if len(data) > event_module.MAX_IMAGE_BYTES:
             raise HTTPException(status_code=413, detail="image must be under 5 MB")
         try:
-            event.set_image(data)
+            setter(data)
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         hub.broadcast_event()
-        print("[relay] welcome image updated")
+        print(f"[relay] {what} updated")
         return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
+
+    def remove_image(request: Request, clearer, what: str) -> JSONResponse:
+        require_operator(request)
+        clearer()
+        hub.broadcast_event()
+        print(f"[relay] {what} removed")
+        return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
+
+    @app.put("/api/event/image")
+    async def api_event_image_put(request: Request) -> JSONResponse:
+        return await store_image(request, event.set_image, "welcome image")
 
     @app.delete("/api/event/image")
     async def api_event_image_delete(request: Request) -> JSONResponse:
-        require_operator(request)
-        event.clear_image()
-        hub.broadcast_event()
-        print("[relay] welcome image removed")
-        return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
+        return remove_image(request, event.clear_image, "welcome image")
+
+    @app.put("/api/event/logo")
+    async def api_event_logo_put(request: Request) -> JSONResponse:
+        return await store_image(request, event.set_logo, "logo")
+
+    @app.delete("/api/event/logo")
+    async def api_event_logo_delete(request: Request) -> JSONResponse:
+        return remove_image(request, event.clear_logo, "logo")
 
     @app.post("/api/youtube-captions")
     async def api_youtube_captions(request: Request) -> JSONResponse:
@@ -852,7 +892,17 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     async def pump(ws: WebSocket, client: Client) -> None:
         """The only writer for this socket."""
         while True:
-            payload = await client.queue.get()
+            try:
+                payload = await asyncio.wait_for(client.queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                if client.dropped:
+                    # The hub gave up on this viewer because its queue was
+                    # full. Close the socket so the page reconnects and
+                    # replays at once, instead of sitting silent for the
+                    # twenty seconds its stale-link timer takes to notice.
+                    await ws.close(code=1013)
+                    return
+                continue
             await ws.send_text(payload)
 
     async def serve(ws: WebSocket, client: Client, read: bool) -> None:

@@ -224,21 +224,26 @@ class TranslationWorker:
         self.translator = translator
         self.source = source
         self.targets = list(targets)
-        self.emit = emit                     # emit(lang, text, utterance_id)
+        self.emit = emit                     # emit(lang, text, utterance_id, t0, t)
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=64)
         self.translated = 0
         self.dropped = 0
         self._task: asyncio.Task | None = None
 
-    def submit(self, text: str, utterance_id: str) -> None:
+    def submit(self, text: str, utterance_id: str,
+               t0: float | None = None, t: float | None = None) -> None:
+        """Queue a committed source line. `t0`/`t` are when it was spoken and
+        committed; the translated line inherits them so its .srt cue covers
+        the same window instead of collapsing to the minimum duration."""
+        item = (text, utterance_id, t0, t)
         try:
-            self.queue.put_nowait((text, utterance_id))
+            self.queue.put_nowait(item)
         except asyncio.QueueFull:
             # Falling behind: the newest line matters more than the oldest.
             self.dropped += 1
             try:
                 self.queue.get_nowait()
-                self.queue.put_nowait((text, utterance_id))
+                self.queue.put_nowait(item)
             except (asyncio.QueueEmpty, asyncio.QueueFull):
                 pass
 
@@ -258,12 +263,12 @@ class TranslationWorker:
 
     async def _run(self) -> None:
         while True:
-            text, utterance_id = await self.queue.get()
+            text, utterance_id, t0, t = await self.queue.get()
             try:
                 results = await self.translator.translate(
                     text, self.source, self.targets)
                 for lang, translated in results.items():
-                    self.emit(lang, translated, utterance_id)
+                    self.emit(lang, translated, utterance_id, t0, t)
                 if results:
                     self.translated += 1
             except asyncio.CancelledError:

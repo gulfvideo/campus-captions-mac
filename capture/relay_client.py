@@ -1,9 +1,12 @@
 """The capture client's link to the relay.
 
 Sends transcript and status up, receives control down, and reconnects forever if
-the relay restarts mid-event. Transcript produced while the link is down is
-dropped rather than queued: a caption that arrives late is worse than one that
-never arrives.
+the relay restarts mid-event. Interim text produced while the link is down is
+dropped - it is rewritten several times a second and would be stale on arrival.
+Committed lines are kept and sent the moment the link is back, flagged `late`:
+a deaf reader has no other channel, so a sentence spoken during a ten-second
+reconnect must still reach their scrollback and the transcript, even if it
+arrives after the fact.
 """
 
 from __future__ import annotations
@@ -12,11 +15,15 @@ import asyncio
 import json
 import time
 import urllib.parse
+from collections import deque
 from collections.abc import Callable
 
 import websockets
 
 RECONNECT_CAP = 10.0
+# Finals held while the relay is unreachable. Two hundred lines is roughly
+# ten minutes of dense speech; beyond that the oldest go, bounded on purpose.
+PENDING_FINALS_MAX = 200
 
 
 class RelayClient:
@@ -31,6 +38,7 @@ class RelayClient:
         self._connected = False
         self._sent = 0
         self._last_error: str | None = None
+        self._pending: deque[str] = deque(maxlen=PENDING_FINALS_MAX)
 
     @property
     def connected(self) -> bool:
@@ -48,14 +56,27 @@ class RelayClient:
 
     def send(self, msg: dict) -> None:
         """Fire and forget. Never blocks the audio path, never raises."""
+        msg.setdefault("t", round(time.time(), 3))
         ws = self._ws
         if ws is None or not self._connected:
+            if msg.get("type") == "final":
+                msg["late"] = True
+                self._pending.append(json.dumps(msg, ensure_ascii=False))
             return
-        msg.setdefault("t", round(time.time(), 3))
         try:
             asyncio.create_task(self._send(ws, json.dumps(msg, ensure_ascii=False)))
         except RuntimeError:
             pass
+
+    async def _flush_pending(self, ws) -> None:
+        """Committed lines from the outage, oldest first, before anything new."""
+        if not self._pending:
+            return
+        count = len(self._pending)
+        while self._pending:
+            await ws.send(self._pending.popleft())
+            self._sent += 1
+        print(f"[capture] sent {count} caption line(s) held during the outage")
 
     async def _send(self, ws, payload: str) -> None:
         try:
@@ -75,6 +96,7 @@ class RelayClient:
                     self._last_error = None
                     print(f"[capture] connected to relay {self.display_url}")
                     backoff = 0.5
+                    await self._flush_pending(ws)
                     async for raw in ws:
                         self._handle(raw)
             except asyncio.CancelledError:

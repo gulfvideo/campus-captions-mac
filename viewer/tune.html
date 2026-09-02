@@ -135,7 +135,9 @@
         <input type="text" id="sample" style="flex:1;min-width:220px"
                value="Our next speaker is Doctor Amara Vasquez">
         <button id="ruler" title="Fill with the widest character to check the line length">Width ruler</button>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="soak"> Preview live motion</label>
       </div>
+      <div id="contrast" class="note" style="margin-top:8px"></div>
       <div id="warn">Text is being clipped — lower <b>Characters per line</b> or
         <b>Text size</b>, or raise <b>Bar width</b>.</div>
     </div>
@@ -163,8 +165,9 @@
         <button id="save">Save as…</button>
         <button id="delete">Delete</button>
       </div>
-      <p class="note">Saved in this browser on this machine. The URL itself is the
-        portable version — that is what travels to ProPresenter.</p>
+      <p class="note">The built-in presets are accessible starting points — <b>Chapel standard</b>
+        is the recommended default. Your own presets are saved in this browser on this machine.
+        The URL itself is the portable version — that is what travels to ProPresenter.</p>
     </div>
 
     <div class="card" style="margin-top:18px">
@@ -193,20 +196,20 @@
   // Defaults must match wall.html. Anything equal to these is left out of the
   // URL, so the result stays short and readable.
   var SPEC = [
-    { key: 'size',     label: 'Text size',           def: 6.5,  min: 2,  max: 20, step: 0.1,
-      hint: 'percent of output height — the main one' },
-    { key: 'bottom',   label: 'Distance from bottom', def: 9,   min: 0,  max: 40, step: 0.5,
-      hint: 'percent of output height' },
-    { key: 'width',    label: 'Bar width',           def: 86,   min: 20, max: 100, step: 1,
-      hint: 'percent of output width' },
-    { key: 'maxchars', label: 'Characters per line', def: 42,   min: 10, max: 90, step: 1,
-      hint: 'longer lines need a wider bar or smaller text' },
+    { key: 'size',     label: 'Text size',           def: 6.5,  min: 4,  max: 20, step: 0.1,
+      hint: 'percent of output height — the main one. 4 is the floor for a room; 7+ for deep rooms' },
+    { key: 'bottom',   label: 'Distance from bottom', def: 9,   min: 3,  max: 40, step: 0.5,
+      hint: 'percent of output height; 3 keeps the bar inside the safe area' },
+    { key: 'width',    label: 'Bar width',           def: 86,   min: 20, max: 94, step: 1,
+      hint: 'percent of output width; 94 is the safe-area limit' },
+    { key: 'maxchars', label: 'Characters per line', def: 36,   min: 10, max: 48, step: 1,
+      hint: 'a ceiling — the wall measures what really fits and uses the smaller number' },
     { key: 'lines',    label: 'Rows',                def: 3,    min: 2,  max: 4,  step: 1,
       hint: '3 gives slower readers about 8 s per line at speech rate; 2 is the old look' },
     { key: 'opacity',  label: 'Bar opacity',         def: 0.85, min: 0.6, max: 1, step: 0.01,
       hint: '1 is solid; 0.6 is the floor that keeps white text readable over a bright slide' },
-    { key: 'pad',      label: 'Bar padding',         def: 2,    min: 0,  max: 8,  step: 0.1,
-      hint: 'space inside the bar' },
+    { key: 'pad',      label: 'Bar padding',         def: 2,    min: 0.8, max: 8, step: 0.1,
+      hint: 'space inside the bar; below 0.8 rounded corners uncover the first and last letters' },
     { key: 'radius',   label: 'Corner radius',       def: 1.5,  min: 0,  max: 8,  step: 0.1,
       hint: '0 for square corners' },
     { key: 'idle',     label: 'Fade out after',      def: 15,   min: 0,  max: 60, step: 1,
@@ -215,6 +218,50 @@
   var COLORS = { color: '#ffffff', bar: '#000000' };
   var STORE_KEY = 'cc.tune.state';
   var PRESET_KEY = 'cc.tune.presets';
+
+  // Shipped presets. Each is a delta from the defaults; anything not listed
+  // stays default. All four keep white-or-yellow on black at 0.85, which is
+  // 14:1 or better over any video.
+  var BUILTIN = {
+    'Chapel standard (recommended)': {},
+    'High contrast yellow': { color: '#ffd700' },
+    'Large / low vision': { size: 8, maxchars: 30, width: 92 },
+    'Wide LED wall': { size: 7.5, width: 94, maxchars: 44 }
+  };
+  var BUILTIN_PREFIX = '★ ';
+
+  // WCAG contrast of the text against the bar composited over white and
+  // over black video - the two extremes the operator will actually meet.
+  function lum(hex) {
+    var h = hex.replace('#', ''), n = parseInt(h, 16);
+    var c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(function (v) {
+      v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+  function blendHex(fg, alpha, bg) {
+    var f = parseInt(fg.replace('#', ''), 16), b = parseInt(bg.replace('#', ''), 16), out = [];
+    [16, 8, 0].forEach(function (s) {
+      out.push(Math.round(alpha * ((f >> s) & 255) + (1 - alpha) * ((b >> s) & 255)));
+    });
+    return '#' + out.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+  }
+  function ratio(a, b) {
+    var x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  function showContrast() {
+    var box = $('contrast');
+    if (!box) return;
+    var overWhite = ratio(state.color, blendHex(state.bar, state.opacity, '#ffffff'));
+    var overBlack = ratio(state.color, blendHex(state.bar, state.opacity, '#000000'));
+    var worst = Math.min(overWhite, overBlack);
+    var verdict = worst >= 7 ? 'AAA' : worst >= 4.5 ? 'AA' : 'fails AA';
+    box.textContent = 'Contrast: ' + worst.toFixed(1) + ':1 worst case (' + verdict +
+      '; ' + overWhite.toFixed(1) + ':1 over a bright slide, ' + overBlack.toFixed(1) + ':1 over black). ' +
+      (worst < 4.5 ? 'Raise bar opacity or pick a brighter text colour.' : '');
+    box.style.color = worst < 4.5 ? '#f08a8a' : '';
+  }
 
   var state = {};
   var relayBase = location.protocol + '//' + location.host;
@@ -278,8 +325,13 @@
 
   function rebuild() {
     urlBox.value = finalUrl();
-    var q = paramString(true);
-    frame.src = '/wall?' + q;
+    var soak = $('soak') && $('soak').checked;
+    // Soak mode drives the real interim/final/fade code with synthetic
+    // speech, so the operator sees the live row move and the idle fade
+    // happen before the event does.
+    var q = soak ? paramString(false) + '&soak=1' : paramString(true);
+    frame.src = '/wall?' + q.replace(/^&/, '');
+    showContrast();
   }
 
   function scheduleRebuild() {
@@ -296,10 +348,10 @@
       var doc = frame.contentDocument;
       if (!doc) return;
       var clipped = false;
-      ['l0', 'l1'].forEach(function (id) {
-        var el = doc.getElementById(id);
-        if (el && el.scrollWidth > el.clientWidth + 1) clipped = true;
-      });
+      var rows = doc.querySelectorAll('.line');
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].scrollWidth > rows[i].clientWidth + 1) clipped = true;
+      }
       warnBox.className = clipped ? 'on' : '';
     } catch (e) { /* cross-origin: skip silently */ }
   }
@@ -325,6 +377,7 @@
       function show() {
         var unit = (s.key === 'idle') ? ' s'
                  : (s.key === 'maxchars') ? ' chars'
+                 : (s.key === 'lines') ? ' rows'
                  : (s.key === 'opacity') ? ''
                  : (s.key === 'width') ? ' vw' : ' vh';
         valEl.textContent = state[s.key] + unit +
@@ -361,11 +414,16 @@
   function refreshPresetList() {
     var sel = $('presets'), all = readPresets(), names = Object.keys(all).sort();
     sel.innerHTML = '';
-    if (!names.length) {
-      sel.appendChild(new Option('— none saved —', ''));
-      return;
-    }
+    Object.keys(BUILTIN).forEach(function (n) {
+      sel.appendChild(new Option(BUILTIN_PREFIX + n, BUILTIN_PREFIX + n));
+    });
     names.forEach(function (n) { sel.appendChild(new Option(n, n)); });
+  }
+  function presetValues(name) {
+    if (name.indexOf(BUILTIN_PREFIX) === 0) {
+      return BUILTIN[name.slice(BUILTIN_PREFIX.length)] || null;
+    }
+    return readPresets()[name] || null;
   }
 
   // ---- aspect ----------------------------------------------------------
@@ -443,21 +501,23 @@
     $('load').addEventListener('click', function () {
       var name = $('presets').value;
       if (!name) return;
-      var all = readPresets();
-      if (!all[name]) return;
+      var values = presetValues(name);
+      if (!values) return;
       var base = defaults(), k;
-      for (k in base) if (all[name][k] !== undefined) base[k] = all[name][k];
+      for (k in base) if (values[k] !== undefined) base[k] = values[k];
       state = base; syncControls(); save(); rebuild();
       toast('Loaded "' + name + '"');
     });
     $('delete').addEventListener('click', function () {
       var name = $('presets').value;
       if (!name) return;
+      if (name.indexOf(BUILTIN_PREFIX) === 0) { toast('Built-in presets cannot be deleted'); return; }
       var all = readPresets();
       delete all[name];
       writePresets(all); refreshPresetList();
       toast('Deleted "' + name + '"');
     });
+    $('soak').addEventListener('change', rebuild);
 
     frame.addEventListener('load', function () {
       // Give the wall page a moment to lay the text out before measuring.

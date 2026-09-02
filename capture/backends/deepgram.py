@@ -71,6 +71,16 @@ class DeepgramBackend(ASRBackend):
         # the operator (the status page's caption box) - ASR only knows
         # "speaker 0" and "speaker 1".
         self.diarize = bool(cfg.get("diarize", True))
+        # A word the model itself doubts is shown as [inaudible] rather than
+        # as a confident guess: a deaf reader cannot check it against the
+        # audio, and a marked gap is honest where a wrong name is not. 0
+        # disables it. Applies to committed lines only.
+        self.inaudible_below = float(cfg.get("inaudible_below", 0.3))
+        # Verbatim by default - the accessible choice. Both are explicit so
+        # nobody turns the filter on for a service without seeing that it
+        # changes what deaf attendees receive versus hearing ones.
+        self.profanity_filter = bool(cfg.get("profanity_filter", False))
+        self.filler_words = bool(cfg.get("filler_words", False))
         self.keyterms_file = Path(cfg.get("keyterms_file", "config/keyterms.txt"))
         self.keyterms: list[str] = []
         self.sample_rate = 16000
@@ -99,6 +109,10 @@ class DeepgramBackend(ASRBackend):
         ]
         if self.diarize:
             params.append(("diarize", "true"))
+        if self.profanity_filter:
+            params.append(("profanity_filter", "true"))
+        if self.filler_words:
+            params.append(("filler_words", "true"))
         # Nova-3 uses keyterm prompting; older models use keyword boosting.
         key = "keyterm" if self.model.startswith("nova-3") else "keywords"
         params += [(key, term) for term in self.keyterms]
@@ -124,9 +138,14 @@ class DeepgramBackend(ASRBackend):
         ws, self._ws = self._ws, None
         if ws is not None:
             try:
-                # Ask Deepgram to flush what it has before the socket goes away.
+                # Ask Deepgram to flush what it has, then keep listening until
+                # it closes the socket on us (it does, after the last final)
+                # or DRAIN_SECONDS pass. A quarter-second wait here used to
+                # lose the tail of every stream close, backend switch, and
+                # keyterm reload.
                 await ws.send(json.dumps({"type": "CloseStream"}))
-                await asyncio.sleep(0.25)
+                if self._tasks:
+                    await asyncio.wait(list(self._tasks), timeout=DRAIN_SECONDS)
             except Exception:
                 pass
             try:
@@ -210,19 +229,23 @@ class DeepgramBackend(ASRBackend):
             # Metadata, SpeechStarted and UtteranceEnd need no action here.
 
     def _text_with_speakers(self, alt: dict, is_final: bool) -> str:
-        """The transcript, with ">>" wherever the speaker changes.
+        """The committed transcript rebuilt from its words: ">>" wherever the
+        speaker changes, and "[inaudible]" where the model's own confidence
+        in a word falls below `inaudible_below`.
 
-        Only finals get markers: Deepgram's speaker labels on interim results
-        are still settling, and a marker that flickers in and out on the live
-        row would be worse than none. The last committed speaker carries
-        across segments, so a marker appears only on an actual change - not
-        at the start of every sentence from the same person.
+        Only finals are rebuilt: Deepgram's speaker labels and confidences on
+        interim results are still settling, and a marker that flickers in and
+        out on the live row would be worse than none. The last committed
+        speaker carries across segments, so a marker appears only on an
+        actual change - not at the start of every sentence from one person.
         """
         transcript = alt.get("transcript", "")
         words = alt.get("words") or []
-        if not self.diarize or not is_final or not words:
+        if not is_final or not words:
             return transcript
-        if not any(isinstance(w, dict) and "speaker" in w for w in words):
+        has_speakers = self.diarize and any(isinstance(w, dict) and "speaker" in w for w in words)
+        mark_doubt = self.inaudible_below > 0
+        if not has_speakers and not mark_doubt:
             return transcript
         out: list[str] = []
         prev = self._last_speaker
@@ -233,12 +256,20 @@ class DeepgramBackend(ASRBackend):
             if not token:
                 continue
             speaker = w.get("speaker")
-            if isinstance(speaker, int) and speaker != prev:
+            if has_speakers and isinstance(speaker, int) and speaker != prev:
                 if prev is not None or out:
                     out.append(">>")
                 prev = speaker
+            confidence = w.get("confidence")
+            if (mark_doubt and isinstance(confidence, (int, float))
+                    and confidence < self.inaudible_below):
+                # Collapse a run of doubtful words into one marker.
+                if not out or out[-1] != "[inaudible]":
+                    out.append("[inaudible]")
+                continue
             out.append(token)
-        self._last_speaker = prev
+        if has_speakers:
+            self._last_speaker = prev
         return " ".join(out)
 
     # -- audio -----------------------------------------------------------

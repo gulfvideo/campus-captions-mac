@@ -250,12 +250,25 @@
         <button id="btn-event-image-remove" type="button">Remove image</button>
         <span class="disclosure-sub" id="event-image-status" style="flex:1 1 200px">&mdash;</span>
       </div>
+      <div class="row">
+        <label class="file-label">Choose logo
+          <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+        </label>
+        <button id="btn-event-logo-remove" type="button">Remove logo</button>
+        <input id="event-logo-alt" type="text" autocomplete="off" style="flex:1 1 220px"
+               placeholder="Logo description for screen readers, e.g. Faulkner University"
+               aria-label="Logo description for screen readers">
+        <span class="disclosure-sub" id="event-logo-status" style="flex:1 1 200px">&mdash;</span>
+      </div>
       <div class="disclosure-sub">
         Attendees who open the phone view see the welcome screen until you press <b>Start event</b>,
         and again after <b>End event</b>. The words sit on a dark panel over the image, so any photo
         keeps them readable. JPEG, PNG, or WebP, up to 5 MB. <b>Pause</b> keeps captions on screen
         with your pause message on top; a fault while live shows attendees
         &ldquo;Captions paused &mdash; technical difficulty&rdquo; on its own.
+        The logo sits in a slim row above the captions while they are live &mdash; a transparent
+        PNG works best, since readers choose their own background colour. Give it a description
+        so screen readers announce the name, not the file.
       </div>
     </div>
   </div></div>
@@ -499,7 +512,7 @@
   var azureLangsDirty = false;
   var tunnelHostnameDirty = false;
   var eventDirty = {};
-  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message'];
+  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt'];
   var EVENT_LABELS = { starting: 'Starting soon', live: 'Live', paused: 'Paused', ended: 'Ended' };
   var FAULT_TEXT = {
     no_source: 'no capture client is connected',
@@ -715,6 +728,11 @@
     $('event-image-status').textContent = ev.image
       ? 'Background image set — attendees see it behind the welcome text.'
       : 'No background image — the welcome screen is plain dark.';
+    $('event-logo').disabled = false;
+    $('btn-event-logo-remove').disabled = !ev.logo;
+    $('event-logo-status').textContent = ev.logo
+      ? 'Logo set — shown above the captions while live.' + (ev.logo_alt ? '' : ' Add a description for screen readers.')
+      : 'No logo.';
 
     var fault = health && health.fault;
     var sub;
@@ -860,7 +878,8 @@
       $('tunnel-token').disabled = true;
     $('btn-event-start').disabled = $('btn-event-pause').disabled = $('btn-event-resume').disabled =
       $('btn-event-end').disabled = $('btn-event-save').disabled = $('event-image').disabled =
-      $('btn-event-image-remove').disabled = true;
+      $('btn-event-image-remove').disabled = $('event-logo').disabled =
+      $('btn-event-logo-remove').disabled = true;
     EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
     $('event-sub').textContent = 'Relay unreachable.';
   }
@@ -1050,22 +1069,22 @@
     eventPost(fields, 'Welcome screen saved');
   }
 
-  function uploadEventImage(file) {
+  function uploadEventImage(file, path, label) {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast('Background image — must be under 5 MB'); return; }
-    fetch('/api/event/image', {
+    if (file.size > 5 * 1024 * 1024) { toast(label + ' — must be under 5 MB'); return; }
+    fetch(path, {
       method: 'PUT',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       body: file
     }).then(jsonOrThrow).then(function () {
-      toast('Background image saved');
-    })['catch'](function (e) { toast('Background image — ' + e.message); });
+      toast(label + ' saved');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
   }
 
-  function removeEventImage() {
-    fetch('/api/event/image', { method: 'DELETE' }).then(jsonOrThrow).then(function () {
-      toast('Background image removed');
-    })['catch'](function (e) { toast('Background image — ' + e.message); });
+  function removeEventImage(path, label) {
+    fetch(path, { method: 'DELETE' }).then(jsonOrThrow).then(function () {
+      toast(label + ' removed');
+    })['catch'](function (e) { toast(label + ' — ' + e.message); });
   }
 
   // A caption the operator typed: committed by the relay itself, so it
@@ -1127,10 +1146,15 @@
       box.onkeydown = function (e) { if (e.key === 'Enter') saveEventText(); };
     });
     $('event-image').onchange = function () {
-      uploadEventImage(this.files && this.files[0]);
+      uploadEventImage(this.files && this.files[0], '/api/event/image', 'Background image');
       this.value = '';
     };
-    $('btn-event-image-remove').onclick = removeEventImage;
+    $('btn-event-image-remove').onclick = function () { removeEventImage('/api/event/image', 'Background image'); };
+    $('event-logo').onchange = function () {
+      uploadEventImage(this.files && this.files[0], '/api/event/logo', 'Logo');
+      this.value = '';
+    };
+    $('btn-event-logo-remove').onclick = function () { removeEventImage('/api/event/logo', 'Logo'); };
 
     var quick = document.querySelectorAll('#caption-row [data-caption]');
     for (var q = 0; q < quick.length; q++) {

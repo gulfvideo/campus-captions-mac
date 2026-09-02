@@ -312,6 +312,9 @@ of whether live YouTube pushing (3b) is set up. On the status page, under
    begins - captions are timed from there, not from whenever the relay
    happened to start.
 2. After the event, download the `.srt` for each language that was recorded.
+   Cues are already wrapped to two lines of 42 characters with readable
+   durations. If they land a beat late against the video, add `&offset=0.8`
+   to the download link to shift everything earlier by the recognizer's delay.
 3. Optionally upload it to a YouTube video's caption track:
 
    ```bash
@@ -451,7 +454,9 @@ It is the only page you need.
 **Before the doors open**, expand **Event & welcome screen** at the top. Type
 the event title, an optional welcome message, and a notice line - the
 accommodation contact belongs here, and so does "Captions are automatic" -
-then press Save; optionally choose a background photo. Anyone who scans the QR
+then press Save; optionally choose a background photo, and a logo to sit above
+the captions while they are live (a transparent PNG, with a description typed
+in so screen readers announce the name). Anyone who scans the QR
 code early sees that welcome screen instead of a blank page, and their phone
 stays connected. Press **Start event** when the program begins and every phone
 switches to captions at once. **Pause** puts your pause message ("Intermission")

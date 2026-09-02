@@ -49,8 +49,21 @@ except Exception as exc:                       # optional dependency
 
 WHISPER_RATE = 16000            # Whisper only ever wants 16 kHz mono
 SPEECH_FLOOR = 0.006            # smoothed RMS above this counts as speech
-MAX_UTTERANCE_SECONDS = 22.0    # force a commit so decoding cannot crawl
+# Force a commit at this length so decoding cannot crawl. 12 s keeps the
+# final's decode near a second on a laptop CPU; 22 s used to push the last
+# line of a long sentence four to six seconds behind the speaker.
+MAX_UTTERANCE_SECONDS = 12.0
 MIN_UTTERANCE_SECONDS = 0.35    # buffer too short to hold a word
+# Interim passes decode only this much of the tail. The live row shows the
+# words just spoken anyway, and re-decoding the whole utterance every pass is
+# what made Whisper's delay grow with every second of speech.
+INTERIM_WINDOW_SECONDS = 8.0
+# A commit that decodes to nothing after this much speech is marked
+# [inaudible] rather than dropped: the audience saw the speaker's lips move.
+INAUDIBLE_AFTER_SECONDS = 1.5
+# initial_prompt is truncated from the front by the library, so a long list
+# loses the names at the top of the file - exactly the ones that matter.
+MAX_PROMPT_TERMS = 40
 
 # Commit only after this much *speech*, not just this much buffer. Without it a
 # quiet passage mid-sentence looks like the end of an utterance, the fragment
@@ -201,7 +214,7 @@ class LocalWhisperBackend(ASRBackend):
                 for line in self.keyterms_file.read_text(encoding="utf-8").splitlines()
                 if line.strip() and not line.strip().startswith("#")
             ]
-            return ", ".join(terms[:120]) if terms else None
+            return ", ".join(terms[:MAX_PROMPT_TERMS]) if terms else None
         except OSError:
             return None
 
@@ -292,14 +305,18 @@ class LocalWhisperBackend(ASRBackend):
                 )
 
                 if commit:
+                    speech_seconds = self._speech_seconds
                     text = await self._decode(self._buffer.copy())
                     if text:
                         self._emit(text, is_final=True)
+                    elif speech_seconds >= INAUDIBLE_AFTER_SECONDS:
+                        self._emit("[inaudible]", is_final=True)
                     self._reset_buffer()
                     self._last_interim_at = time.monotonic()
                 elif (now - self._last_interim_at) >= self.interim_interval:
                     self._last_interim_at = now
-                    text = await self._decode(self._buffer.copy())
+                    window = int(INTERIM_WINDOW_SECONDS * WHISPER_RATE)
+                    text = await self._decode(self._buffer[-window:].copy())
                     # Re-decoding the same window often returns the same string;
                     # sending it again would be pure noise on the wire.
                     if text and text != self._last_emitted:

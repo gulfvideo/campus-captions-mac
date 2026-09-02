@@ -133,8 +133,15 @@ connecting afterwards gets nothing rather than pre-clear text.
 ```json
 {"type":"event","seq":46,"t":1756590106.0,"state":"live","title":"Fall Convocation",
  "message":"","notice":"Captions are automatic.","pause_message":"","image":true,
- "image_v":1756589000,"changed_at":1756590106.0}
+ "image_v":1756589000,"logo":true,"logo_v":1756589100,"logo_alt":"Faulkner University",
+ "changed_at":1756590106.0}
 ```
+
+`logo` / `logo_v` / `logo_alt` describe an optional logo at
+`GET /api/event/logo?v=<logo_v>` that the phone view shows in a slim header
+row above the captions while the state is `live` or `paused` - never over the
+welcome screen, which has the title already. `logo_alt` is the accessible
+name the operator gave it; empty means decorative.
 
 Where the event is, sent to every viewer the moment the operator changes it,
 and also carried in `hello` (as `event`) and in every `heartbeat`. `state` is
@@ -314,6 +321,19 @@ sentences.
 `ip` is the relay's LAN address, which is what the status page prints for
 phones and for the ProPresenter URL.
 
+## Transcript export
+
+```
+GET /api/transcript.srt?lang=en&offset=0.8
+```
+
+Cues follow the DCMP presentation rules: at most two lines of at most 42
+characters, a long line split into consecutive cues that share its time
+window, a duration a reader can manage (17 characters per second, at least
+1.2 s, at most 7 s), and an 80 ms gap between neighbours. Translated lines
+inherit the source line's window. `offset` (seconds, 0-10) shifts every cue
+earlier to take the recognizer's own delay back out; about 0.8 suits Deepgram.
+
 ## Operator authentication
 
 Everything that changes state or reveals it - `/status`, `/tune`, any
@@ -365,6 +385,11 @@ POST /api/control    {"action": "caption", "text": "[Applause]"}
   ->  400 if text is empty, over 200 characters, or carries control characters
 ```
 
+A `final` may also carry `"late": true`: the capture client held it while the
+relay was unreachable and sent it on reconnect. Its `t` is the time it was
+actually committed, so the transcript stays honest; viewers render it like any
+other line.
+
 `caption` is handled by the relay itself and needs no capture client: the text
 is committed exactly like a final from the recognizer - wall, phones, replay
 buffer, transcript, translation, YouTube - with `"kind": "note"` on the frame.
@@ -389,7 +414,10 @@ PUT  /api/event/image     (body: the raw JPEG/PNG/WebP bytes, at most 5 MB)
   ->  400 if the bytes are not a JPEG, PNG, or WebP; 413 if over 5 MB
 DELETE /api/event/image   ->  200
 GET  /api/event/image     ->  the image (public; cache by ?v=<image_v>)
+PUT / DELETE / GET /api/event/logo   ->  the same, for the logo (stored as config/logo.<ext>)
 ```
+
+`logo_alt` is one more text field on `POST /api/event`, up to 80 characters.
 
 All operator-only except the `GET`. Any subset of fields may be sent. Every
 change is broadcast as an `event` frame and written to `[event]` in
