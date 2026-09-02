@@ -17,3 +17,22 @@
 
 # --- example (delete before an event) --------------------------------------
 # working title
+
+# --- slurs -----------------------------------------------------------------
+# Removed outright rather than bleeped. Swearing is bleeped, because a deaf
+# reader is entitled to know a word was said; these are here because no
+# audience should have to see one on a caption wall at all, whoever said it.
+# Turning the profanity filter on in Settings covers the swearing separately.
+faggot
+faggots
+nigger
+niggers
+nigga
+niggas
+retard
+retarded
+spic
+chink
+kike
+wetback
+tranny

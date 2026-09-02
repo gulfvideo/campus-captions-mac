@@ -79,7 +79,7 @@ mock_script = "config/mock_script.txt"
 # reloads them.
 [keywords]
 blocklist_file = "config/blocklist.txt"
-profanity_filter = false        # a small built-in list; [deepgram]'s own is separate
+profanity_filter = true         # bleep the built-in list; [deepgram]'s own is separate
 
 [deepgram]
 model = "nova-3"
