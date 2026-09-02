@@ -32,15 +32,30 @@ VIEWER_DIR = ROOT / "viewer"
 ENV_FILE = DATA_DIR / ".env"
 
 
+# Hand-edited files that must exist somewhere writable. resolve_path() looks
+# in DATA_DIR before the bundle, so without seeding these the packaged app
+# reads the copies inside the .app - which is read-only and code-signed.
+# Editing one there breaks the signature ("a sealed resource is missing or
+# invalid"), so the Settings page would be telling the operator to edit a
+# file they cannot edit, and "Reload keyterms & blocklist" would re-read the
+# shipped one every time.
+SEEDED_CONFIG_FILES = ("keyterms.txt", "blocklist.txt")
+
+
 def ensure_data_dir() -> None:
-    """First run of the packaged app: give it a real event.toml to edit,
-    copied from the example, in the place the status page will write to."""
+    """First run of the packaged app: give it real files to edit, copied from
+    the ones shipped in the bundle, in the folder the status page writes to
+    and the menu bar's "Show Config Folder in Finder" opens."""
     if not FROZEN:
         return
     try:
         DEFAULT_CONFIG.parent.mkdir(parents=True, exist_ok=True)
         if not DEFAULT_CONFIG.exists() and EXAMPLE_CONFIG.exists():
             DEFAULT_CONFIG.write_bytes(EXAMPLE_CONFIG.read_bytes())
+        for name in SEEDED_CONFIG_FILES:
+            shipped, local = ROOT / "config" / name, DATA_DIR / "config" / name
+            if not local.exists() and shipped.exists():
+                local.write_bytes(shipped.read_bytes())
     except OSError as exc:
         print(f"[relay] could not prepare {DATA_DIR}: {exc}")
 

@@ -20,15 +20,21 @@
 # Keep the list to what this event actually needs. A few dozen well-chosen
 # terms work better than hundreds of speculative ones. The hard cap is 200.
 
+# Empty on purpose - add this event's own terms. The headings below are a
+# suggested shape, not a requirement; delete them if they are not useful.
+#
+#   # --- people ---
+#   Amara Vasquez
+#   Dean Whitfield
+#
+#   # --- places ---
+#   Halvorsen Chapel
+#
+#   # --- programs and terms ---
+#   baccalaureate
+
 # --- people ---------------------------------------------------------------
-Amara Vasquez
-Dean Whitfield
 
 # --- places ---------------------------------------------------------------
-Whitfield Science Center
-Halvorsen Chapel
 
 # --- programs and terms ---------------------------------------------------
-baccalaureate
-convocation
-matriculation
