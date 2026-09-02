@@ -107,15 +107,6 @@ to back up a half-finished branch.
 
 ### What CI does and does not cover
 
-> **Not enabled yet.** The workflow is written and sitting at
-> `.github/workflows/ci.yml`, but pushing anything under `.github/workflows/`
-> needs a GitHub token carrying the `workflow` scope, which ours does not have
-> yet. To finish it: `gh auth refresh -h github.com -s workflow`, then
-> `gh auth setup-git` (git sends a separate keychain copy of the token
-> otherwise), then commit and push that one file. Delete this note when it is
-> running. Until then the pre-push hook above is what is actually protecting
-> the branch.
-
 Every push and pull request runs `.github/workflows/ci.yml`, so each commit
 gets a green tick or a red cross on GitHub. **Be careful how much you trust
 it.** It runs the relay's smoke test on Linux. It cannot test:
