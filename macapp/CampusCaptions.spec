@@ -85,7 +85,7 @@ app = BUNDLE(  # noqa: F821
     info_plist={
         "CFBundleName": "Campus Captions",
         "CFBundleDisplayName": "Campus Captions",
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleShortVersionString": "0.2.0",
         "LSUIElement": True,
         "NSMicrophoneUsageDescription":
             "Campus Captions needs the microphone to generate live captions.",
