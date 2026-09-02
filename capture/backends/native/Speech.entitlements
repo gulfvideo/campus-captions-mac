@@ -8,8 +8,11 @@
          that declares it gets SIGKILLed by AMFI at launch. Plain TCC
          authorization (Info.plist usage string + the system consent prompt)
          is what a third-party command-line tool actually uses. -->
-    <!-- Lets a hardened CLI load Apple's private Speech dylibs -->
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
+    <!-- No entitlements are needed beyond that: com.apple.security.cs.
+         disable-library-validation was removed after testing confirmed the
+         helper still transcribes without it - see native/build.sh. It would
+         have defeated library validation the moment hardened runtime was
+         enabled, for no benefit, since the public Speech framework doesn't
+         need it. -->
   </dict>
 </plist>
