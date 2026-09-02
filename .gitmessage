@@ -1,0 +1,32 @@
+
+# ---------------------------------------------------------------------------
+# SUBJECT (the line above): what this commit does, in the imperative.
+#
+#   Finish the sentence "If applied, this commit will ___".
+#     Remember the operator's audio input between launches
+#     Stop blaming the microphone permission for every silent input
+#     Fix a viewer leak on mid-send disconnect
+#
+#   Not "Fixed", not "Fixes", not "Changes to audio". Around 50 characters,
+#   no full stop. If you need "and" twice, it is probably two commits.
+#
+# BODY (below the blank line): WHY. This is the half people skip, and the
+# half that is worth something a year from now.
+#
+#   The diff already says what changed. It cannot say what you knew at the
+#   time: what was broken and how you noticed, what you tried that did not
+#   work, what you deliberately did NOT do and why. Someone running
+#   `git blame` on a strange-looking line wants to know whether it was a
+#   decision or an accident.
+#
+#   Worth writing down:
+#     - the symptom, and how it showed up
+#     - the cause, once you found it
+#     - anything you rejected, and the reason
+#     - how you checked it actually works
+#
+# BEFORE COMMITTING: run the tests. Every commit should be one you could
+#   ship from.  .venv/bin/python tools/smoke_test.py "$(pwd)"
+#
+# Wrap the body at ~72 characters. Lines starting with # are ignored.
+# ---------------------------------------------------------------------------

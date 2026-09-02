@@ -485,6 +485,9 @@ Start Captions.bat            double-click this
 launcher/launch.py            venv, both processes, browser, supervision
 SETUP.md                      the operator and technician document
 docs/MESSAGES.md              the message contract
+docs/GIT-ETIQUETTE.md         how we write commits, and how to run the tests
+.gitmessage                   commit template - git config commit.template .gitmessage
+tools/hooks/pre-push          refuses a push that fails the smoke test
 
 .env.example                  copy to .env: Deepgram/Azure keys, YouTube URLs
 config/event.example.toml     copy to event.toml and edit

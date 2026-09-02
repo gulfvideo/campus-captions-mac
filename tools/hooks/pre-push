@@ -1,0 +1,45 @@
+#!/bin/sh
+# Refuses a push whose code does not pass the smoke test.
+#
+# Install once:
+#   ln -sf ../../tools/hooks/pre-push .git/hooks/pre-push
+#
+# Git hooks are not versioned, which is why this lives in tools/ and gets
+# symlinked in - so the hook itself is reviewed and shared like any other file.
+#
+# Bypass deliberately when you need to (a work-in-progress branch you want
+# backed up somewhere, say):
+#   git push --no-verify
+#
+# Takes about fifteen seconds. That is the price of not being the person who
+# pushed the commit that broke main.
+
+set -e
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+if [ -x .venv/bin/python ]; then
+    py=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+    py=python3
+else
+    echo "pre-push: no python found; skipping tests" >&2
+    exit 0
+fi
+
+echo "pre-push: byte-compiling..."
+"$py" -m compileall -q relay capture launcher macapp tools
+
+echo "pre-push: smoke test..."
+if ! "$py" tools/smoke_test.py "$root" > /tmp/campus-captions-prepush.log 2>&1; then
+    echo >&2
+    echo "pre-push: SMOKE TEST FAILED - push refused." >&2
+    echo "  Failing checks:" >&2
+    grep '^FAIL' /tmp/campus-captions-prepush.log | sed 's/^/    /' >&2
+    echo "  Full output: /tmp/campus-captions-prepush.log" >&2
+    echo "  Push anyway with: git push --no-verify" >&2
+    exit 1
+fi
+
+echo "pre-push: all checks passed."
