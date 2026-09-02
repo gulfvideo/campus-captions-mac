@@ -50,14 +50,28 @@ HOSTAPI_PREFERENCE = {
 ERROR_TTL = 6.0
 
 # Real hardware always has a noise floor. Sustained, perfectly zero samples mean
-# the OS is feeding us silence - on macOS, almost always a missing Microphone
-# permission.
+# the OS is handing us silence instead of the device - but *why* has several
+# answers, and naming the wrong one sends an operator to a settings pane that
+# was never the problem. In the order these actually happen on an AV desk: a
+# virtual device (Loopback, NDI, Teams) with nothing routed into it yet, a
+# docked MacBook whose built-in mic is inert while the lid is shut, and only
+# then a missing permission. So describe the symptom and list the causes.
 DIGITAL_SILENCE_AFTER = 5.0
 
-MIC_PERMISSION_HINT = (
-    "no signal at all from this device - on macOS grant Microphone access in "
-    "System Settings > Privacy & Security > Microphone, then restart"
+NO_SIGNAL_HINT = (
+    "no signal at all from this device - every sample is silent. Check that "
+    "something is actually feeding it (a virtual input like Loopback or NDI "
+    "needs audio routed in), that nothing else has it muted or open, and that "
+    "microphone access is granted - on macOS in System Settings > Privacy & "
+    "Security > Microphone."
 )
+# Appended when the silent input is the machine's own built-in mic, which is
+# the one case with a fix that is not a settings pane.
+LID_CLOSED_HINT = (
+    " A MacBook's built-in mic also goes silent while the lid is closed - "
+    "pick another input when docked."
+)
+BUILT_IN_MIC_MARKERS = ("macbook", "built-in", "imac ")
 
 
 @dataclass
@@ -298,9 +312,12 @@ class AudioInput:
         if self._error and (time.monotonic() - self._error_at) > ERROR_TTL:
             self._error = None
         # Re-evaluated every read, so it clears itself the moment real audio
-        # arrives - no restart needed once permission is granted.
+        # arrives - no restart needed once the real cause is dealt with.
         if self.receiving_digital_silence():
-            return MIC_PERMISSION_HINT
+            name = (self.device.name or "").lower()
+            if any(marker in name for marker in BUILT_IN_MIC_MARKERS):
+                return NO_SIGNAL_HINT + LID_CLOSED_HINT
+            return NO_SIGNAL_HINT
         return self._error
 
 
