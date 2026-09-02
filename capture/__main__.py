@@ -15,8 +15,6 @@ import argparse
 import asyncio
 import contextlib
 import os
-import sys
-import time
 from pathlib import Path
 
 from . import audio as audio_mod

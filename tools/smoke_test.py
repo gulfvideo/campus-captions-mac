@@ -290,7 +290,7 @@ try:
             try:
                 await asyncio.wait_for(ws.recv(), timeout=3)
                 closed = False
-            except websockets.exceptions.ConnectionClosed as e:
+            except websockets.exceptions.ConnectionClosed:
                 closed = True
             except asyncio.TimeoutError:
                 closed = False

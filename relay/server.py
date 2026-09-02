@@ -1001,20 +1001,33 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # -- websockets ------------------------------------------------------
 
     async def pump(ws: WebSocket, client: Client) -> None:
-        """The only writer for this socket."""
-        while True:
-            try:
-                payload = await asyncio.wait_for(client.queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                if client.dropped:
-                    # The hub gave up on this viewer because its queue was
-                    # full. Close the socket so the page reconnects and
-                    # replays at once, instead of sitting silent for the
-                    # twenty seconds its stale-link timer takes to notice.
-                    await ws.close(code=1013)
-                    return
-                continue
-            await ws.send_text(payload)
+        """The only writer for this socket.
+
+        A viewer that closes the tab or walks out of wifi range usually
+        disappears here, mid-send, before the reader side notices. That is
+        the ordinary end of this task, not an error: stop writing and let
+        serve() unwind. Letting it escape instead used to strand the client
+        in hub.viewers - see the finally below.
+        """
+        try:
+            while True:
+                try:
+                    payload = await asyncio.wait_for(client.queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    if client.dropped:
+                        # The hub gave up on this viewer because its queue was
+                        # full. Close the socket so the page reconnects and
+                        # replays at once, instead of sitting silent for the
+                        # twenty seconds its stale-link timer takes to notice.
+                        await ws.close(code=1013)
+                        return
+                    continue
+                await ws.send_text(payload)
+        except Exception:
+            # Writing to a socket the client already dropped. Starlette and
+            # uvicorn each raise their own type for it; neither is worth
+            # distinguishing when the only response is to stop writing.
+            return
 
     async def serve(ws: WebSocket, client: Client, read: bool) -> None:
         sender = asyncio.create_task(pump(ws, client))
@@ -1035,7 +1048,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] {client} error: {exc!r}")
         finally:
             sender.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            # CancelledError is the normal path; the Exception is the one that
+            # bit us. A sender that already died of its own accord stores its
+            # exception, cancel() is then a no-op, and this await re-raises it
+            # - which used to skip hub.remove() entirely and leave a dead
+            # viewer collecting every caption until its queue filled 256 deep.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await sender
             hub.remove(client)
 

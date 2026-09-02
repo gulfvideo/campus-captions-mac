@@ -278,7 +278,7 @@ def main() -> int:
     ip = relay_ip(port, token)
     rule("ready")
     say(f"  status page   http://{ip}:{port}/status?token={token}")
-    say(f"                ^ open this; the link signs your browser in for a month")
+    say("                ^ open this; the link signs your browser in for a month")
     say(f"  wall view     http://{ip}:{port}/wall        <- ProPresenter")
     say(f"  phone view    http://{ip}:{port}/phone       <- audience")
     say()

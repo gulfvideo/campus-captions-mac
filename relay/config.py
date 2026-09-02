@@ -397,7 +397,6 @@ def save_translate_settings(path: Path, provider: str, offer_languages: list[str
     lines = text.splitlines()
 
     def upsert(header: str, wanted: dict[str, str]) -> None:
-        nonlocal lines
         start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
         end = len(lines)
         if start is not None:
@@ -436,7 +435,6 @@ def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None
     lines = text.splitlines()
 
     def upsert(header: str, wanted: dict[str, str]) -> None:
-        nonlocal lines
         start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
         end = len(lines)
         if start is not None:

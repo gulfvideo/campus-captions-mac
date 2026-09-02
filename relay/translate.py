@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
