@@ -8,6 +8,19 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Captions</title>
 <style>
+  /* Self-hosted, not a Google Fonts <link> - the phone page loads nothing
+     from anywhere but this relay. Regular and Bold only; a caption's
+     occasional bold bit falls back to the browser's own synthesis. */
+  @font-face {
+    font-family: "Atkinson Hyperlegible";
+    src: url("/fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "Atkinson Hyperlegible";
+    src: url("/fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype");
+    font-weight: 700; font-style: normal; font-display: swap;
+  }
   :root {
     /* rem, not px: the OS / browser text-size preference that older and
        low-vision readers set once should apply here too. */
@@ -15,6 +28,7 @@
     --color: #f2f2f2;
     --bg: #000000;
     --dim: #8b8b8b;
+    --font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -22,7 +36,7 @@
     background: var(--bg); color: var(--color);
   }
   body {
-    font-family: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-family);
     overscroll-behavior: none;
     /* A column: status banner, then the logo row, then the captions. The
        first two are in normal flow above the scroller, so a banner pushes
@@ -277,6 +291,13 @@
   #settings .swatch-custom::-webkit-color-swatch-wrapper { padding: 0; border-radius: 50%; }
   #settings .swatch-custom::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; }
   #settings .swatch-custom::-moz-color-swatch { border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; }
+  #settings .fonts { display: flex; gap: 8px; flex-wrap: wrap; }
+  #settings .font-btn {
+    flex: 1 1 auto; padding: 9px 10px; border-radius: 10px;
+    background: rgba(255,255,255,0.09); color: #fff; border: 0;
+    font-family: inherit; font-size: 0.8125rem; -webkit-tap-highlight-color: transparent;
+  }
+  #settings .font-btn.selected { background: rgba(255,255,255,0.28); }
 
   #dbg {
     position: fixed; top: 6px; left: 6px; z-index: 9;
@@ -317,7 +338,7 @@
     <legend class="label">Text size</legend>
     <div class="size-row">
       <button id="size-dec" class="size-btn" type="button" aria-label="Smaller text">A</button>
-      <span id="size-value" aria-live="polite">Medium</span>
+      <span id="size-value" aria-live="polite">22 px</span>
       <button id="size-inc" class="size-btn" type="button" aria-label="Larger text">A</button>
     </div>
   </fieldset>
@@ -332,6 +353,13 @@
       <input id="color-custom" class="swatch-custom" type="color" aria-label="Custom color">
     </div>
   </fieldset>
+  <fieldset class="row">
+    <legend class="label" id="lbl-font">Font</legend>
+    <div class="fonts" id="fonts" role="radiogroup" aria-labelledby="lbl-font">
+      <button class="font-btn" type="button" role="radio" aria-checked="false" data-font="default">Default</button>
+      <button class="font-btn" type="button" role="radio" aria-checked="false" data-font="atkinson">Dyslexia-friendly</button>
+    </div>
+  </fieldset>
 </div>
 <div id="dbg"></div>
 <script>
@@ -339,19 +367,19 @@
   'use strict';
 
   var P, cfg, elScroll, elLines, elInterim, elLatest, elLang, elLink, elDbg;
-  var elSettings, elSettingsBtn, elSizeDec, elSizeInc, elSizeValue, elSwatches, elColorCustom;
+  var elSettings, elSettingsBtn, elSizeDec, elSizeInc, elSizeValue, elSwatches, elColorCustom, elFonts;
   var elStatus, elEvent, elEventTitle, elEventMessage, elEventNotice, elBrand, elBrandImg;
   var elDisclaimer, elDisclaimerText, elDisclaimerDismiss;
-  var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0;
+  var eventInfo = null, health = null, faultSince = 0, linkDownAt = 0, pausedSince = 0;
   var statusText = '', bannerReason = '', resumedTimer = null, replayMute = null;
   var sock = null, reconnTimer = null, attempts = 0, lastDelay = 0;
   var sessionId = null, lastSeq = -1, msgCount = 0, lastMsgAt = 0, startedAt = 0;
   var seenIds = Object.create(null), seenOrder = [], pinned = true, lineCount = 0;
   var holdScroll = false, elPause, elLangNote, siteSource = 'en';
   // Steps go up to 64 px: arm's-length reading for low vision needs more
-  // than the old 37 px ceiling. Names, not pixel counts, in the panel.
+  // than the old 37 px ceiling. The panel shows the px count, not a name -
+  // "Small"/"Huge" reads as a judgment on whoever needs the big end of it.
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
-  var SIZE_NAMES = ['Small', 'Medium', 'Large', 'Larger', 'Extra large', 'Huge', 'Giant', 'Maximum'];
   var chosenLang = '', availableLangs = [];
 
   // Endonyms: someone looking for their language should see it written the
@@ -440,8 +468,7 @@
     document.documentElement.style.setProperty('--size', (px / 16) + 'rem');
     try { localStorage.setItem('cc.size', String(px)); } catch (e) {}
     if (elSizeValue) {
-      var name = SIZE_NAMES[closestSizeIndex(px)] || '';
-      elSizeValue.textContent = name + ' (' + Math.round(px) + ' px)';
+      elSizeValue.textContent = Math.round(px) + ' px';
     }
     if (elSizeDec) elSizeDec.disabled = px <= SIZES[0];
     if (elSizeInc) elSizeInc.disabled = px >= SIZES[SIZES.length - 1];
@@ -494,6 +521,31 @@
       swatches[i].setAttribute('aria-checked', on ? 'true' : 'false');
     }
     if (elColorCustom) elColorCustom.value = hexColor;
+  }
+
+  // ---- font, remembered per device -----------------------------------------
+
+  var FONT_STACKS = {
+    'default': "\"Helvetica Neue\", Helvetica, Arial, \"Segoe UI\", system-ui, sans-serif",
+    'atkinson': "\"Atkinson Hyperlegible\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+  };
+  function loadFont() {
+    try {
+      var f = localStorage.getItem('cc.font');
+      if (f && FONT_STACKS[f]) return f;
+    } catch (e) {}
+    return 'default';
+  }
+  function setFont(font) {
+    if (!FONT_STACKS[font]) font = 'default';
+    document.documentElement.style.setProperty('--font-family', FONT_STACKS[font]);
+    try { localStorage.setItem('cc.font', font); } catch (e) {}
+    var buttons = elFonts ? elFonts.querySelectorAll('.font-btn') : [];
+    for (var i = 0; i < buttons.length; i++) {
+      var on = buttons[i].getAttribute('data-font') === font;
+      buttons[i].classList.toggle('selected', on);
+      buttons[i].setAttribute('aria-checked', on ? 'true' : 'false');
+    }
   }
 
   // ---- language ------------------------------------------------------------
@@ -646,9 +698,17 @@
     } else {
       linkDownAt = 0;
     }
-    if (!reason && ev.state === 'paused') {
-      reason = ev.pause_message || 'Captions paused';
-      calm = true;
+    if (ev.state === 'paused') {
+      // The operator hitting Pause is a deliberate act, but attendees
+      // still shouldn't see the caption feed cut out mid-word the instant
+      // they tap it - the same short grace as every other banner here.
+      if (!pausedSince) pausedSince = n;
+      if (!reason && (n - pausedSince) > 2500) {
+        reason = ev.pause_message || 'Captions paused';
+        calm = true;
+      }
+    } else {
+      pausedSince = 0;
     }
     var faulted = !!(health && health.fault);
     if (!reason && ev.state === 'live' && faulted) {
@@ -669,12 +729,21 @@
 
   // ---- settings panel -----------------------------------------------------
 
+  var SETTINGS_IDLE_CLOSE = 5000;
+  var settingsCloseTimer = null;
+
+  function scheduleSettingsClose() {
+    clearTimeout(settingsCloseTimer);
+    settingsCloseTimer = setTimeout(closeSettings, SETTINGS_IDLE_CLOSE);
+  }
   function openSettings() {
     elSettings.classList.add('open');
     elSettingsBtn.classList.add('open');
     elSettingsBtn.setAttribute('aria-expanded', 'true');
+    scheduleSettingsClose();
   }
   function closeSettings() {
+    clearTimeout(settingsCloseTimer);
     // Focus must not fall to the body when the panel hides under it.
     if (elSettings.contains(document.activeElement)) elSettingsBtn.focus();
     elSettings.classList.remove('open');
@@ -901,6 +970,7 @@
   var WS_NAMES = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
   function tick() {
     var n = now();
+    requestWake(); // no-ops instantly once held; catches a silent OS release
     if (sock && sock.readyState === 1 && (n - lastMsgAt) > 20000) {
       // Heartbeats are every 5s; 20s of silence means the link is dead even
       // though the socket has not noticed yet.
@@ -940,6 +1010,7 @@
     elSizeValue = document.getElementById('size-value');
     elSwatches = document.getElementById('swatches');
     elColorCustom = document.getElementById('color-custom');
+    elFonts = document.getElementById('fonts');
     elStatus = document.getElementById('status');
     elPause = document.getElementById('pause');
     elLangNote = document.getElementById('lang-note');
@@ -956,6 +1027,7 @@
     document.documentElement.style.setProperty('--bg', cfg.bg);
     setSize(loadSize());
     setColor(loadColor());
+    setFont(loadFont());
     if (cfg.debug) elDbg.className = 'on';
 
     elScroll.addEventListener('scroll', onScroll, { passive: true });
@@ -973,6 +1045,14 @@
       if (btn) setColor(btn.getAttribute('data-color'));
     });
     elColorCustom.addEventListener('input', function () { setColor(this.value); });
+    elFonts.addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('.font-btn') : null;
+      if (btn) setFont(btn.getAttribute('data-font'));
+    });
+    // Any interaction inside the panel pushes the idle-close timer back out,
+    // so picking a size doesn't get cut off mid-tap.
+    elSettings.addEventListener('click', scheduleSettingsClose);
+    elSettings.addEventListener('input', scheduleSettingsClose);
     elDisclaimerDismiss.addEventListener('click', dismissDisclaimer);
     // Tapping anywhere else, or Escape, closes the panel - it should feel
     // like a lightweight popover, not a screen you have to explicitly exit.
@@ -988,6 +1068,10 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { requestWake(); if (pinned) scrollToBottom(); }
     });
+    // Some browsers grant the wake lock more reliably (or only) inside a
+    // user gesture - the boot-time request has none, so take the first tap
+    // anywhere as a second chance.
+    document.addEventListener('pointerdown', requestWake, { once: true });
 
     startedAt = lastMsgAt = now();
     chosenLang = loadLang();

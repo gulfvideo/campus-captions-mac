@@ -181,7 +181,13 @@ class Hub:
             fault = "no_source"
         elif st.error:
             fault = "source_error"
-        elif audio == "stale":
+        elif audio == "stale" and not st.has_recent_text(now):
+            # A busy event loop can delay the status heartbeat by itself
+            # (it's a low-priority ping, sent on the same connection as
+            # everything else) without captions actually stopping. Only
+            # call it a fault once neither signal has shown up recently -
+            # a stale heartbeat alone used to flash "technical difficulty"
+            # at the audience while captions kept working fine.
             fault = "audio_stalled"
         elif not st.stream_open:
             fault = "stream_closed"

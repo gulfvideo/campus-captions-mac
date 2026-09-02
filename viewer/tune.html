@@ -183,6 +183,19 @@
           <input type="color" id="bar" value="#000000">
         </div>
       </div>
+      <div class="row" style="margin-top:12px">
+        <label for="align">Text alignment</label>
+        <select id="align">
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+        <label for="font">Font</label>
+        <select id="font">
+          <option value="default">Default</option>
+          <option value="atkinson">Atkinson Hyperlegible (dyslexia-friendly)</option>
+        </select>
+      </div>
     </div>
   </div>
 </div>
@@ -216,6 +229,8 @@
       hint: 'seconds of no new text; 0 never fades. Two full rows take ~8 s to read, and prayers and readings pause longer' }
   ];
   var COLORS = { color: '#ffffff', bar: '#000000' };
+  var ALIGN_DEFAULT = 'left';
+  var FONT_DEFAULT = 'default';
   var STORE_KEY = 'cc.tune.state';
   var PRESET_KEY = 'cc.tune.presets';
 
@@ -283,6 +298,8 @@
     SPEC.forEach(function (s) { out[s.key] = s.def; });
     out.color = COLORS.color;
     out.bar = COLORS.bar;
+    out.align = ALIGN_DEFAULT;
+    out.font = FONT_DEFAULT;
     return out;
   }
 
@@ -311,6 +328,12 @@
     }
     if (state.bar.toLowerCase() !== COLORS.bar) {
       parts.push('bar=' + state.bar.replace('#', ''));
+    }
+    if (state.align !== ALIGN_DEFAULT) {
+      parts.push('align=' + state.align);
+    }
+    if (state.font !== FONT_DEFAULT) {
+      parts.push('font=' + state.font);
     }
     if (includeSample) {
       parts.push('text=' + encodeURIComponent(sampleBox.value || ' '));
@@ -400,6 +423,8 @@
     });
     $('color').value = state.color;
     $('bar').value = state.bar;
+    $('align').value = state.align;
+    $('font').value = state.font;
   }
 
   // ---- presets ---------------------------------------------------------
@@ -441,6 +466,7 @@
     state = restore();
 
     buildControls();
+    syncControls();
     applyAspect();
 
     $('aspect').addEventListener('change', function () { applyAspect(); checkClipping(); });
@@ -451,6 +477,12 @@
       $(key).addEventListener('input', function () {
         state[key] = this.value; save(); scheduleRebuild();
       });
+    });
+    $('align').addEventListener('change', function () {
+      state.align = this.value; save(); scheduleRebuild();
+    });
+    $('font').addEventListener('change', function () {
+      state.font = this.value; save(); scheduleRebuild();
     });
 
     $('ruler').addEventListener('click', function () {

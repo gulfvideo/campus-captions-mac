@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 # How long a signal stays meaningful before the status page should stop
 # trusting it.
-STATUS_STALE_AFTER = 4.0        # no status frame from capture in this long
+STATUS_STALE_AFTER = 6.0        # no status frame from capture in this long
 AUDIO_SILENT_BELOW = 0.008      # RMS under this is silence, not speech
 AUDIO_QUIET_AFTER = 3.0         # no audio above the floor in this long
 ASR_IDLE_AFTER = 30.0           # stream open but no text in this long
@@ -140,6 +140,18 @@ class RelayState:
         if self.last_audio_at is None or (now - self.last_audio_at) > AUDIO_QUIET_AFTER:
             return "silent"
         return "live"
+
+    def has_recent_text(self, now: float, within: float = STATUS_STALE_AFTER) -> bool:
+        """Transcript messages arrive over the same connection as status
+        heartbeats but are tracked independently (note_interim/note_final,
+        not note_status). A slow event loop can delay the heartbeat while
+        captions keep flowing fine - this is how the audience-facing fault
+        check tells that apart from an actual dead pipeline."""
+        last_text = max(
+            [t for t in (self.last_interim_at, self.last_final_at) if t is not None],
+            default=None,
+        )
+        return last_text is not None and (now - last_text) <= within
 
     def asr_status(self, now: float) -> str:
         if not self.source_connected:

@@ -6,6 +6,7 @@ Endpoints (see docs/MESSAGES.md):
     GET  /settings                 API keys, integrations, keywords, welcome-screen config
     GET  /tune                     build a wall-view URL with sliders
     GET  /qr                       QR code for the phone URL
+    GET  /fonts/<name>             bundled font files (self-hosted, no CDN)
     GET  /<name>                   any other viewer/<name>.html
     WS   /ws/viewer?role=wall&lang=es   caption feed, optionally translated
     WS   /ws/source                capture client, bidirectional (bearer token)
@@ -63,6 +64,12 @@ STATUS_PUSH_SECONDS = 0.4
 
 PAGES = {"wall": "wall.html", "phone": "phone.html", "status": "status.html",
          "settings": "settings.html", "tune": "tune.html", "qr": "qr.html"}
+
+# Bundled font files, served under /fonts/<name>. See serve_font() below.
+FONT_FILES = {
+    "AtkinsonHyperlegible-Regular.ttf": "font/ttf",
+    "AtkinsonHyperlegible-Bold.ttf": "font/ttf",
+}
 
 # Reachable through the public hostname. Everything else - the status page,
 # the tuner, any other named page - is operator-only, see require_local().
@@ -144,6 +151,7 @@ def page_csp(html: bytes) -> str:
         f"script-src {script_src}; "
         "style-src 'unsafe-inline'; "
         "img-src 'self' data:; "
+        "font-src 'self'; "
         "connect-src 'self' ws: wss:; "
         "frame-src 'self'; frame-ancestors 'self'; "
         "base-uri 'none'; form-action 'none'; object-src 'none'"
@@ -616,6 +624,22 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     async def api_event_logo() -> Response:
         """The logo shown above the captions while they are live."""
         return serve_slot(event.logo, "logo")
+
+    @app.get("/fonts/{name}")
+    async def serve_font(name: str) -> Response:
+        """Self-hosted, not pulled from a CDN at render time - a font
+        picker shouldn't add a new way for the public phone/wall pages to
+        depend on the internet being up. Public, like the pages that use it;
+        an explicit allowlist rather than SAFE_PAGE_NAME since this serves
+        raw files, not viewer/*.html read fresh on every request."""
+        media_type = FONT_FILES.get(name)
+        if media_type is None:
+            raise HTTPException(status_code=404, detail="not found")
+        path = config_module.VIEWER_DIR / "fonts" / name
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type=media_type,
+                             headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/api/transcript.srt")
     async def transcript_srt(request: Request, lang: str = "", offset: float = 0.0) -> Response:

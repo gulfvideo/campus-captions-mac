@@ -326,6 +326,21 @@
   var eventDirty = {};
   var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt', 'disclaimer'];
 
+  // The relay never echoes a saved secret back, so the field is cleared right
+  // after Save - otherwise it would just sit there in the DOM. Left with its
+  // normal placeholder, that reads as "did my key just vanish?" (it did, on
+  // purpose, but says so nowhere). This swaps in a placeholder that says so,
+  // until the field is touched again.
+  function markSecretSaved(id) {
+    var el = $(id);
+    if (!el.dataset.origPlaceholder) el.dataset.origPlaceholder = el.placeholder;
+    el.placeholder = 'Saved — paste a new value to replace it';
+  }
+  function restorePlaceholder(id) {
+    var el = $(id);
+    if (el.dataset.origPlaceholder) el.placeholder = el.dataset.origPlaceholder;
+  }
+
   function eventBox(field) { return $('event-' + field.replace('_', '-')); }
 
   function renderEventConfig(ev) {
@@ -593,6 +608,7 @@
     if (!key) { toast('Deepgram key — paste a key first'); return; }
     control('set_deepgram_key', 'Deepgram API key', { key: key });
     $('deepgram-key').value = '';
+    markSecretSaved('deepgram-key');
   }
 
   function saveTranslationSettings() {
@@ -616,7 +632,7 @@
       return r.json();
     }).then(function (out) {
       azureLangsDirty = false;
-      $('azure-key').value = '';
+      if (key) { $('azure-key').value = ''; markSecretSaved('azure-key'); }
       $('azure-region').value = '';
       toast(out.provider && out.provider !== 'none'
         ? 'Azure Translator — translating into ' + (out.targets || []).join(', ')
@@ -685,7 +701,7 @@
       return r.json();
     }).then(function () {
       tunnelHostnameDirty = false;
-      $('tunnel-token').value = '';
+      if (token) { $('tunnel-token').value = ''; markSecretSaved('tunnel-token'); }
       toast('Tunnel settings saved');
     })['catch'](function (e) { toast('Tunnel — ' + e.message); });
   }
@@ -740,6 +756,7 @@
       this.textContent = showing ? 'Show' : 'Hide';
     };
     $('deepgram-key').onkeydown = function (e) { if (e.key === 'Enter') saveDeepgramKey(); };
+    $('deepgram-key').oninput = function () { restorePlaceholder('deepgram-key'); };
 
     $('btn-azure-save').onclick = saveTranslationSettings;
     $('btn-azure-show').onclick = function () {
@@ -749,6 +766,7 @@
       this.textContent = showing ? 'Show' : 'Hide';
     };
     $('azure-key').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('azure-key').oninput = function () { restorePlaceholder('azure-key'); };
     $('azure-region').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
     $('azure-langs').oninput = function () { azureLangsDirty = true; };
     $('azure-langs').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
@@ -776,6 +794,7 @@
     };
     $('tunnel-hostname').oninput = function () { tunnelHostnameDirty = true; };
     $('tunnel-hostname').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
+    $('tunnel-token').oninput = function () { restorePlaceholder('tunnel-token'); };
     $('tunnel-token').onkeydown = function (e) { if (e.key === 'Enter') saveTunnelSettings(); };
 
     $('btn-keyterms').onclick = function () { control('reload_keyterms', 'Keyterms & blocklist reloaded'); };
