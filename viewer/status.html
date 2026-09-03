@@ -166,6 +166,29 @@
     padding: 10px 12px;
   }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+
+  /* Preflight report: one row per finding, a verdict on top. */
+  .preflight-verdict {
+    flex: 1 1 100%; font-size: 16px; font-weight: 600; padding: 12px 14px;
+    border-radius: 9px; background: #262b33; border: 1px solid var(--edge);
+  }
+  .preflight-verdict.ready { border-color: var(--ok); color: var(--ok); }
+  .preflight-verdict.warnings { border-color: var(--warn); color: var(--warn); }
+  .preflight-verdict.not_ready { border-color: var(--bad); color: var(--bad); }
+  .preflight-list { flex: 1 1 100%; display: grid; gap: 6px; }
+  .pf-row {
+    display: grid; grid-template-columns: 26px 1fr; gap: 4px 10px; padding: 9px 12px;
+    background: #1a1d23; border: 1px solid var(--edge); border-radius: 8px; font-size: 14px;
+  }
+  .pf-mark { font-weight: 700; text-align: center; line-height: 1.4; }
+  .pf-row.ok .pf-mark { color: var(--ok); }
+  .pf-row.warn .pf-mark { color: var(--warn); }
+  .pf-row.fail .pf-mark { color: var(--bad); }
+  .pf-row.skip .pf-mark { color: var(--dim); }
+  .pf-title { font-weight: 600; }
+  .pf-detail { grid-column: 2; color: var(--text); }
+  .pf-action { grid-column: 2; color: var(--dim); }
+  .pf-row.skip .pf-title, .pf-row.skip .pf-detail { color: var(--dim); }
   /* Transcript downloads: one row per recorded language, a link per format. */
   .export-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-top: 8px; font-size: 14px; }
   .export-lang { color: var(--text); font-variant-numeric: tabular-nums; margin-right: 6px; }
@@ -273,6 +296,29 @@
   <button id="btn-event-resume" class="go" type="button">Resume</button>
   <button id="btn-event-end" class="stop" type="button">End event</button>
   <span class="sub" id="event-sub" style="flex:1 1 100%;margin:2px 0 0">&mdash;</span>
+</div>
+
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="preflight-toggle" aria-expanded="true" aria-controls="preflight-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Preflight check</span>
+    <span class="badge" id="preflight-badge">Not run yet</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="preflight-body">
+      <div class="row">
+        <button id="btn-preflight" class="go" type="button">Run preflight</button>
+        <span class="disclosure-sub" id="preflight-sub" style="flex:1 1 300px;margin:0">
+          Checks the audio input, the transcription service, this computer's load, the network to
+          the services in use, and whether anything is showing the captions. Takes a few seconds and
+          changes nothing. Run it with ProPresenter, OBS or the stream already running, the way the
+          service will be.
+        </span>
+      </div>
+      <div class="preflight-verdict" id="preflight-verdict" hidden></div>
+      <div class="preflight-list" id="preflight-list"></div>
+    </div>
+  </div></div>
 </div>
 
 <div class="disclosure-panel">
@@ -534,8 +580,68 @@
     $('event-sub').textContent = sub;
   }
 
+  // ---- preflight ----------------------------------------------------------
+
+  var PF_MARK = { ok: '✓', warn: '!', fail: '✕', skip: '–' };
+  var VERDICT_BADGE = { ready: 'Ready', warnings: 'Ready, with warnings', not_ready: 'Not ready' };
+  var preflightRunning = false;
+
+  function renderPreflight(report) {
+    // Re-enable on every snapshot: renderOffline() disables the button while
+    // the relay is unreachable, and this is the "it is back" signal.
+    $('btn-preflight').disabled = preflightRunning;
+    if (preflightRunning) return;
+    var badge = $('preflight-badge'), verdict = $('preflight-verdict'), list = $('preflight-list');
+    if (!report) {
+      badge.textContent = 'Not run yet'; badge.className = 'badge';
+      verdict.hidden = true; list.textContent = '';
+      return;
+    }
+    badge.textContent = VERDICT_BADGE[report.verdict] || report.verdict;
+    badge.className = 'badge' + (report.verdict === 'ready' ? ' live' : '');
+    verdict.hidden = false;
+    verdict.className = 'preflight-verdict ' + report.verdict;
+    var when = report.ran_at ? ' (' + ago((Date.now() / 1000) - report.ran_at) + ')' : '';
+    verdict.textContent = report.headline + when;
+    list.textContent = '';
+    (report.checks || []).forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'pf-row ' + c.status;
+      var mark = document.createElement('div'); mark.className = 'pf-mark';
+      mark.textContent = PF_MARK[c.status] || '?';
+      mark.setAttribute('aria-label', c.status);
+      var title = document.createElement('div'); title.className = 'pf-title'; title.textContent = c.title;
+      var detail = document.createElement('div'); detail.className = 'pf-detail'; detail.textContent = c.detail;
+      row.appendChild(mark); row.appendChild(title); row.appendChild(detail);
+      if (c.action) {
+        var action = document.createElement('div'); action.className = 'pf-action'; action.textContent = c.action;
+        row.appendChild(action);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function runPreflight() {
+    if (preflightRunning) return;
+    preflightRunning = true;
+    $('btn-preflight').disabled = true;
+    $('preflight-badge').textContent = 'Running…';
+    fetch('/api/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(jsonOrThrow)
+      .then(function (report) {
+        preflightRunning = false;
+        renderPreflight(report);
+        toast('Preflight: ' + (VERDICT_BADGE[report.verdict] || report.verdict));
+      })['catch'](function (e) {
+        preflightRunning = false;
+        $('preflight-badge').textContent = 'Failed to run';
+        toast('Preflight — ' + e.message);
+      }).then(function () { $('btn-preflight').disabled = false; });
+  }
+
   function render(s) {
     lastSnap = s;
+    renderPreflight(s.preflight);
     renderEvent(s.event, s.health);
     renderBackends(s.source || {});
     renderDevices(s.source || {});
@@ -625,6 +731,7 @@
     $('btn-event-start').disabled = $('btn-event-pause').disabled = $('btn-event-resume').disabled =
       $('btn-event-end').disabled = true;
     $('event-sub').textContent = 'Relay unreachable.';
+    $('btn-preflight').disabled = true;
   }
 
   // ---- transport -------------------------------------------------------
@@ -750,6 +857,8 @@
     $('btn-event-resume').onclick = function () { eventPost({ state: 'live' }, 'Resumed'); };
     $('btn-event-end').onclick = function () { eventPost({ state: 'ended' }, 'Event ended'); };
 
+    setupDisclosure('preflight-toggle', 'preflight-expanded');
+    $('btn-preflight').onclick = runPreflight;
     setupDisclosure('recording-toggle', 'recording-expanded');
     setupDisclosure('caption-toggle', 'caption-expanded');
 

@@ -561,6 +561,36 @@ replay buffer, so someone joining afterwards does not see the cleared text.
 
 ---
 
+## 6a. The preflight check
+
+Before a service, with ProPresenter, OBS or the stream already running the way
+they will run, open the status page and press **Run preflight** (top panel).
+A few seconds later you get one line - **Ready**, **Ready, with warnings**,
+or **Not ready** - and a list underneath. Every item that is not a tick says
+what it found and what to do about it, in that order. Nothing is changed by
+running it; run it as often as you like.
+
+What it checks, and what the words mean:
+
+| Finding | What to do |
+|---|---|
+| **Capture client** not connected | Start Campus Captions with the launcher; check the capture window for an error. |
+| **Audio input**: another program has the device | On Windows, untick *exclusive mode* in OBS/vMix, or in Settings › Sound › the device › Advanced. Or pick a different input. |
+| **Audio level** silent | Say something into the mic, or check the send from the desk, and run again. |
+| **Audio level** clipping | Turn the gain down until the meter peaks near "good". |
+| **Transcription**: no Deepgram key / mock backend | Add the key under Settings; pick a real backend for the service. |
+| **Caption latency** slow | Look at the network and computer findings; that is where the time goes. |
+| **This computer** busy | Close what you can. If it stays over 90% CPU, or under 300 MB free, captions belong on another computer or an appliance - the verdict says so. |
+| **Network to …** slow or unreachable | Check the internet connection, firewall or proxy. Wired beats wifi. |
+| **Wall / overlay**, **Phone view** not connected | Open the wall URL where the room will see it; scan the QR code with one phone. |
+| **ProPresenter (direct)** disconnected | Check Network is enabled in ProPresenter and the port under Settings; the Web Fill prop keeps working meanwhile. |
+
+The first time a computer passes, add a row to `docs/HOST-COMPATIBILITY.md`
+with the verdict and the CPU/memory line - that table is how the next church
+with the same setup knows it works.
+
+---
+
 ## 7. The wall view in ProPresenter
 
 The wall view is a transparent page with an opaque caption bar near the bottom.

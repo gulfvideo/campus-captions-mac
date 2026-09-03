@@ -53,6 +53,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 
 from . import config as config_module
 from . import event as event_module
+from . import preflight as preflight_module
 from . import propresenter as propresenter_module
 from . import transcript as transcript_module
 from . import translate as translate_module
@@ -201,6 +202,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         host=cfg.pp_host, port=cfg.pp_port, surface=cfg.pp_surface,
         message=cfg.pp_message, token=cfg.pp_token, language=cfg.pp_language,
         interims=cfg.pp_interims, start_enabled=cfg.pp_start_enabled)
+
+    last_preflight: dict = {"report": None}
 
     def overlay_key_list() -> list[dict]:
         base = cfg.base_url(local_ip())
@@ -427,6 +430,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip()},
         "propresenter": propresenter.status(),
         "overlay_keys": overlay_key_list(),
+        # The last preflight report, so a status page opened after the check
+        # still shows it. A few KB.
+        "preflight": last_preflight.get("report"),
     }
 
     async def heartbeat_loop() -> None:
@@ -978,6 +984,23 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    @app.post("/api/preflight")
+    async def api_preflight(request: Request) -> JSONResponse:
+        """Run the preflight check (relay/preflight.py) now and return the
+        report: a verdict, a headline, and a list of findings with what to
+        do about each. Takes a few seconds - it probes the network to the
+        services this setup depends on. Changes nothing."""
+        require_operator(request)
+        snap = hub.snapshot()
+        report = await preflight_module.run(
+            snap, propresenter.status() if propresenter.configured else None)
+        last_preflight["report"] = report
+        counts = report.get("counts") or {}
+        print(f"[relay] preflight: {report['verdict']} - {counts.get('fail', 0)} to fix, "
+              f"{counts.get('warn', 0)} warnings, {counts.get('ok', 0)} ok "
+              f"({report.get('duration_ms')} ms)")
+        return JSONResponse({"ok": True, **report}, headers=NO_STORE)
 
     @app.post("/api/relay")
     async def api_relay(request: Request) -> JSONResponse:
