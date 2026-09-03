@@ -231,7 +231,7 @@ a password:
 | `GET /api/status` | one snapshot as JSON, plus the relay's LAN address (operator-only) |
 | `GET /api/site` | public metadata: base URL, phone URL, available languages |
 | `GET /api/qr.svg` | the phone URL as a server-rendered QR code, for `/qr` |
-| `GET /api/transcript.srt` | recorded captions as SubRip, `?lang=` (operator-only) |
+| `GET /api/transcript.{srt,vtt,txt,json,csv}` | recorded captions as a file, `?lang=` and `?offset=` (operator-only); `.txt` takes `?timestamps=0` |
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |
@@ -319,7 +319,23 @@ the *video*, not the start of the world, so lines spoken before the mark are
 dropped from the export (they stay in the underlying record) rather than all
 piling up at `00:00:00`. `GET /api/transcript.srt?lang=es` downloads one
 language's file; the status page's "Recording & transcript" panel links to
-whatever's been recorded so far.
+whatever's been recorded so far, in every format.
+
+The same record exports as five file types, all from one cue list
+(`TranscriptRecorder.cues()` does the timing and display-splitting once; each
+`to_*` only formats, so a cue has the same number and times in every file):
+
+| Extension | For |
+|---|---|
+| `.srt` | SubRip - YouTube, Vimeo, most editors |
+| `.vtt` | WebVTT - HTML5 `<track>`, HLS sidecars |
+| `.txt` | readable transcript, one recorded line per line (not display-split), `[HH:MM:SS]` prefixed; `?timestamps=0` for bare text |
+| `.json` | cues with start/end seconds, text, and the utterance id shared with translations |
+| `.csv` | one row per cue, timestamps both formatted and as seconds |
+
+`relay/transcript.py`'s `FORMATS` table is the single list of what exists;
+the route, the status page links and this table follow it. `?offset=` applies
+to all of them.
 
 `tools/youtube_upload.py` is a separate, optional CLI - the relay never
 imports it - that uploads a `.srt` to a video's caption track via the YouTube

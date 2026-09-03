@@ -319,7 +319,10 @@ of whether live YouTube pushing (3b) is set up. On the status page, under
 1. Press **Mark video start** the moment the actual recording or stream
    begins - captions are timed from there, not from whenever the relay
    happened to start.
-2. After the event, download the `.srt` for each language that was recorded.
+2. After the event, download the files for each language that was recorded.
+   Each language gets a row of links: `.srt` or `.vtt` for a video's caption
+   track, `.txt` for a readable transcript to share or paste into notes,
+   `.json` and `.csv` for anything that wants the timing as data.
    Cues are already wrapped to two lines of 42 characters with readable
    durations. If they land a beat late against the video, add `&offset=0.8`
    to the download link to shift everything earlier by the recognizer's delay.

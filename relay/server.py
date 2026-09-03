@@ -14,7 +14,7 @@ Endpoints (see docs/MESSAGES.md):
     GET  /api/status               one status snapshot as JSON (operator-only)
     GET  /api/site                 public metadata: base URL, languages
     GET  /api/qr.svg               the QR code as SVG
-    GET  /api/transcript.srt       recorded captions as SubRip (operator-only)
+    GET  /api/transcript.{fmt}     recorded captions as srt|vtt|txt|json|csv (operator-only)
     POST /api/control              {"action": "open_stream"} etc.
     POST /api/youtube-captions     {"enabled": true} - relay-local, not forwarded
     POST /api/tunnel               {"token": "...", "enabled": true} - relay-local
@@ -641,29 +641,40 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         return FileResponse(path, media_type=media_type,
                              headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
-    @app.get("/api/transcript.srt")
-    async def transcript_srt(request: Request, lang: str = "", offset: float = 0.0) -> Response:
-        """The event as a SubRip file, ready to upload to the video.
+    @app.get("/api/transcript.{fmt}")
+    async def transcript_export(request: Request, fmt: str, lang: str = "",
+                                offset: float = 0.0, timestamps: str = "1") -> Response:
+        """The recorded event as a file: .srt, .vtt, .txt, .json or .csv -
+        the extension picks the format (transcript_module.FORMATS).
 
         `offset` (seconds) shifts every cue earlier, to take the recognizer's
         own delay back out: a line is recorded when it was committed, which
         is roughly a second after it was said. 0.8 is a fair value for
-        Deepgram; leave it at 0 if the timing looks right already.
+        Deepgram; leave it at 0 if the timing looks right already. `.txt`
+        also takes `?timestamps=0` for bare text with no time prefixes.
         """
         require_operator(request)
+        if fmt not in transcript_module.FORMATS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"format must be one of {', '.join(sorted(transcript_module.FORMATS))}")
         lang = lang or cfg.source_language
         if not transcript_module.SAFE_LANG.match(lang):
             raise HTTPException(status_code=400, detail="bad language code")
         if not (0.0 <= offset <= 10.0):
             raise HTTPException(status_code=400, detail="offset must be 0-10 seconds")
-        body = recorder.to_srt(lang, offset=offset)
+        options = {}
+        if fmt == "txt":
+            options["timestamps"] = timestamps.strip().lower() not in ("0", "false", "no", "")
+        body = recorder.export(lang, fmt, offset=offset, **options)
         if not body:
             raise HTTPException(status_code=404,
                                 detail=f"nothing recorded for {lang!r}")
+        media_type, _ = transcript_module.FORMATS[fmt]
         stamp = time.strftime("%Y%m%d-%H%M", time.localtime(recorder.started_at))
-        filename = f"captions-{stamp}-{lang}.srt"
+        filename = f"captions-{stamp}-{lang}.{fmt}"
         return Response(
-            content=body, media_type="application/x-subrip; charset=utf-8",
+            content=body, media_type=media_type,
             headers={**NO_STORE,
                      "Content-Disposition": f'attachment; filename="{filename}"'})
 
