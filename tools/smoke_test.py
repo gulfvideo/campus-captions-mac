@@ -402,18 +402,21 @@ try:
         check("  old port is no longer answering", s.connect_ex(("127.0.0.1", PORT)) != 0, "still open")
     st, h, b = http("GET", "/api/status", headers=bearer, base=new_base)
     check("  operator token still works on the new port", st == 200 and json.loads(b).get("relay", {}).get("port") == PORT + 1, f"{st}")
-    # Move back so the relay's own output at teardown is on the expected port.
-    http("POST", "/api/relay", body={"port": PORT}, headers=bearer, base=new_base)
+    # Move back. The original port's last connections are still in TIME_WAIT
+    # at this point, which is the real-life case too: an operator who tries a
+    # port and changes their mind within a minute must not be told it is busy.
+    st, h, b = http("POST", "/api/relay", body={"port": PORT}, headers=bearer, base=new_base)
+    check("  moving back to a port still in TIME_WAIT is allowed", st == 200 and json.loads(b).get("changed") is True, f"{st} {b[:120]}")
+    back = False
     for _ in range(40):
         time.sleep(0.5)
         try:
             with urllib.request.urlopen(BASE + "/api/site", timeout=1) as r:
-                if r.status == 200:
-                    break
+                back = r.status == 200
+                break
         except Exception:
             continue
-    st, h, b = http("GET", "/api/site")
-    check("  and back again on the original port", st == 200, f"{st}")
+    check("  and back again on the original port", back, "no answer on the original port within 20 s")
 finally:
     proc.terminate()
     try:

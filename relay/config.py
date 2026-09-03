@@ -578,16 +578,24 @@ def port_is_free(host: str, port: int) -> bool:
     """
     bind_host = "0.0.0.0" if host in ("", "0.0.0.0", "*") else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        # Bind the way uvicorn will. On macOS and Linux that means
+        # SO_REUSEADDR, without which a port whose last connections are
+        # still in TIME_WAIT - exactly the state a just-restarted relay's
+        # own port is in - reports busy for a minute and a port change back
+        # to it is refused. On Windows SO_REUSEADDR means something else
+        # (it lets a bind take a port that is actually in use), so there
+        # the bind stays plain; TIME_WAIT does not block a bind on Windows.
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((bind_host, port))
         except OSError:
             return False
-    # Windows lets a wildcard bind succeed beside a program bound to
-    # 127.0.0.1 alone (an exclusive bind would catch that, but it also
-    # refuses a port whose last connections are still in TIME_WAIT, which
-    # is exactly the state a just-restarted relay's own port is in). So,
-    # second opinion: anything answering on loopback means taken - the same
-    # probe the launcher uses, so the two always agree.
+    # Second opinion, for the cases the bind cannot see: Windows lets a
+    # wildcard bind succeed beside a program bound to 127.0.0.1 alone, and
+    # SO_REUSEADDR hides a listener on some systems. Anything answering on
+    # loopback means taken - the same probe the launcher uses, so the two
+    # always agree.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.3)
         if probe.connect_ex(("127.0.0.1", port)) == 0:
