@@ -84,7 +84,7 @@ ICON_IDLE = str(_ICONS / "menubar_idle.png")
 ICON_STREAMING = str(_ICONS / "menubar_streaming.png")
 ICON_INACTIVE = str(_ICONS / "menubar_inactive.png")
 
-FALLBACK_VERSION = "0.2.0"  # kept in sync with CampusCaptions.spec's CFBundleShortVersionString
+FALLBACK_VERSION = "0.2.5"  # kept in sync with CampusCaptions.spec's CFBundleShortVersionString
 
 
 def app_version() -> str:
