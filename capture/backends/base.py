@@ -32,11 +32,47 @@ from pathlib import Path
 # instead, see reload_wordlist), just the common strong language a service
 # would want bleeped by default when the toggle is on.
 DEFAULT_PROFANITY = frozenset({
-    "fuck", "fucking", "fucked", "shit", "shitty", "bitch", "asshole",
-    "bastard", "damn", "goddamn", "dick", "piss", "cunt", "slut", "whore",
+    # fuck
+    "fuck", "fucks", "fucked", "fucking", "fuckin", "fucker", "fuckers",
+    "motherfucker", "motherfuckers", "motherfucking", "clusterfuck",
+    # shit
+    "shit", "shits", "shitty", "shitting", "bullshit", "dipshit",
+    "horseshit", "shithead", "shithole",
+    # ass - the compounds only. Bare "ass" is a donkey, and gets read aloud
+    # from scripture; blocking it would censor the text of a chapel service.
+    "asshole", "assholes", "asshat", "jackass", "dumbass", "dumbasses",
+    # bitch
+    "bitch", "bitches", "bitching", "bitchy",
+    # the rest
+    "cunt", "cunts", "cocksucker", "cocksuckers", "dickhead", "dickheads",
+    "prick", "pricks", "piss", "pissed", "pissing", "bastard", "bastards",
+    "whore", "whores", "slut", "sluts", "twat", "wanker", "bollocks",
+    "pussy", "pussies", "tits", "titties",
+    # blasphemy. "damn" and "hell" on their own are deliberately absent for
+    # the same reason as "ass": both are ordinary words in a sermon.
+    "goddamn", "goddamned", "goddammit", "goddamnit",
 })
 
+# Every inflection is spelled out above rather than stemmed. Stemming would
+# mean matching on prefixes, and a prefix match is exactly what puts a bleep
+# in the middle of "assessment".
+
 _WORD_RE = re.compile(r"[\w']+")
+
+# The word regex keeps apostrophes, so "bitch's" arrives as a single token and
+# misses a set built from bare words. Strip a trailing possessive before
+# looking it up rather than listing every possessive form.
+_POSSESSIVE = ("'s", "’s", "s'")
+
+
+def is_profane(token: str) -> bool:
+    word = token.lower()
+    if word in DEFAULT_PROFANITY:
+        return True
+    return any(
+        word.endswith(suffix) and word[: -len(suffix)] in DEFAULT_PROFANITY
+        for suffix in _POSSESSIVE
+    )
 
 
 def load_wordlist(path: Path) -> list[str]:
@@ -137,7 +173,7 @@ class ASRBackend(ABC):
             text = self._block_pattern.sub("", text)
         if self.mask_profanity:
             text = _WORD_RE.sub(
-                lambda m: "[bleep]" if m.group(0).lower() in DEFAULT_PROFANITY else m.group(0),
+                lambda m: "[bleep]" if is_profane(m.group(0)) else m.group(0),
                 text)
         return " ".join(text.split())
 
