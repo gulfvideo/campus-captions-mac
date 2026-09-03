@@ -16,7 +16,7 @@ because both tokens are passed in the environment.
 
 Exit status is 0 only when every check passes.
 """
-import asyncio, json, os, shutil, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import asyncio, json, os, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 import websockets
 
 ROOT = sys.argv[1]
@@ -60,6 +60,18 @@ env = {**os.environ, "CAPTIONS_OPERATOR_TOKEN": OPTOK, "CAPTIONS_SOURCE_TOKEN": 
        "CAPTIONS_PUBLIC_HOSTNAME": PUBLIC, "PYTHONUTF8": "1"}
 proc = subprocess.Popen([PY, "-u", "-m", "relay", "--port", str(PORT), "--config", cfg_path],
                         cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+# Drain the relay's output as it comes. Reading it only at the end let the
+# pipe fill up - a Windows pipe holds about 4 KiB, a Linux one 64 KiB - and
+# once it was full the relay blocked on its next print(), mid-startup, and
+# never answered. Which looked exactly like a relay that failed to come back
+# on its port, and only on Windows.
+relay_lines: list[str] = []
+def _drain():
+    for line in proc.stdout:
+        relay_lines.append(line.rstrip("\n"))
+threading.Thread(target=_drain, daemon=True).start()
+
 try:
     deadline = time.time() + 20
     while time.time() < deadline:
@@ -68,7 +80,7 @@ try:
             if s.connect_ex(("127.0.0.1", PORT)) == 0:
                 break
         if proc.poll() is not None:
-            print(proc.stdout.read()); sys.exit("relay exited early")
+            time.sleep(0.2); print("\n".join(relay_lines)); sys.exit("relay exited early")
         time.sleep(0.3)
     time.sleep(0.5)
 
@@ -533,11 +545,20 @@ try:
 finally:
     proc.terminate()
     try:
-        out = proc.communicate(timeout=5)[0]
+        proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        proc.kill(); out = proc.communicate()[0]
-    print("---- relay output ----")
-    print("\n".join(l for l in out.splitlines() if l.startswith("[relay]"))[:3000])
+        proc.kill(); proc.wait()
+    time.sleep(0.2)                     # let the drain thread catch the last lines
+    out = "\n".join(relay_lines)
+    # The tail, not the head: when a late check fails (a port change that did
+    # not come back, say) the explanation is at the end, and anything uvicorn
+    # itself printed - a bind error, a traceback - is not prefixed [relay], so
+    # keep those lines too.
+    print("---- relay output (last 4000 chars) ----")
+    kept = [l for l in out.splitlines()
+            if l.startswith("[relay]") or "error" in l.lower() or "traceback" in l.lower()
+            or l.startswith("  File")]
+    print("\n".join(kept)[-4000:])
     shutil.rmtree(tmp, ignore_errors=True)
 
 print()

@@ -21,11 +21,23 @@ from relay import config  # noqa: E402
 
 
 def held_port() -> tuple[socket.socket, int]:
-    """A listening socket on a random port, so the port is really taken."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    sock.listen(1)
-    return sock, sock.getsockname()[1]
+    """A listening socket on a port from a quiet range, so the port is really
+    taken and the ones above it are plausibly free.
+
+    Not port 0: that hands out an ephemeral port, and right after a smoke
+    run the ephemeral range is full of Windows' closing connections, which
+    made the "next free port" search come up empty for twenty ports in a
+    row. The relay's own port lives well below that range too.
+    """
+    for port in range(18000, 19000):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", port))
+            sock.listen(1)
+            return sock, port
+        except OSError:
+            sock.close()
+    raise RuntimeError("no free port between 18000 and 18999 for the test")
 
 
 class ChoosePortTests(unittest.TestCase):
