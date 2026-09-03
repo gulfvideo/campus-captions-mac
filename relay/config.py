@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import secrets
+import socket
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -590,6 +591,86 @@ def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+# How many ports above the configured one to try when it is taken. Twenty
+# is plenty for "something else grabbed 8000" and small enough that the
+# operator can still guess where the relay went from the launcher output.
+PORT_FALLBACK_TRIES = 20
+
+
+def port_is_free(host: str, port: int) -> bool:
+    """Can the relay bind this port right now?
+
+    A bind test, not a connect probe: binding is what the relay actually has
+    to do. No SO_REUSEADDR, so a port another process is already listening
+    on reports busy on Windows as well as macOS and Linux.
+    """
+    bind_host = "0.0.0.0" if host in ("", "0.0.0.0", "*") else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        # Bind the way uvicorn will. On macOS and Linux that means
+        # SO_REUSEADDR, without which a port whose last connections are
+        # still in TIME_WAIT - exactly the state a just-restarted relay's
+        # own port is in - reports busy for a minute and a port change back
+        # to it is refused. On Windows SO_REUSEADDR means something else
+        # (it lets a bind take a port that is actually in use), so there
+        # the bind stays plain; TIME_WAIT does not block a bind on Windows.
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind((bind_host, port))
+        except OSError:
+            return False
+    # Second opinion, for the cases the bind cannot see: Windows lets a
+    # wildcard bind succeed beside a program bound to 127.0.0.1 alone, and
+    # SO_REUSEADDR hides a listener on some systems. Anything answering on
+    # loopback means taken - the same probe the launcher uses, so the two
+    # always agree.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.3)
+        if probe.connect_ex(("127.0.0.1", port)) == 0:
+            return False
+    return True
+
+
+def choose_port(host: str, preferred: int, tries: int = PORT_FALLBACK_TRIES) -> int:
+    """The configured port if it is free, else the next free one above it.
+
+    The launcher, the menu bar app and `python -m relay` all use this, so
+    a Sunday morning with something squatting on 8000 starts captions on
+    8001 and says so, instead of stopping with a request to edit a file.
+    Raises OSError only when every candidate is taken.
+    """
+    for candidate in range(preferred, min(preferred + tries, 65536)):
+        if port_is_free(host, candidate):
+            return candidate
+    raise OSError(f"no free port between {preferred} and {preferred + tries - 1}")
+
+
+def save_relay_port(path: Path, port: int) -> None:
+    """Write `port` into [relay], in place, keeping the line's own comment
+    (see _inline_comment) and every other line as it was."""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[relay]"), None)
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.extend(["[relay]", f"port = {int(port)}"])
+    else:
+        end = next(
+            (i for i in range(start + 1, len(lines))
+             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+            len(lines),
+        )
+        for i in range(start + 1, end):
+            if lines[i].split("=", 1)[0].strip() == "port":
+                lines[i] = f"port = {int(port)}{_inline_comment(lines[i])}"
+                break
+        else:
+            lines.insert(start + 1, f"port = {int(port)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_private(path, "\n".join(lines) + "\n")
+
+
 def _toml_literal(value) -> str:
     """A Python value as the TOML literal save_section writes."""
     if isinstance(value, bool):
@@ -652,7 +733,6 @@ def save_section(path: Path, header: str, values: dict) -> None:
             lines.append("")
         lines.append(header)
         lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
     path.parent.mkdir(parents=True, exist_ok=True)
     write_private(path, "\n".join(lines) + "\n")
 

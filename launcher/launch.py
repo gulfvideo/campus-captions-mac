@@ -158,6 +158,37 @@ def existing_relay(port: int, token: str) -> dict | None:
         return None
 
 
+def find_free_port(start: int, tries: int = 20) -> int:
+    """The first port at or above `start` nothing answers on. Same idea as
+    relay/config.py's choose_port, with the connect probe this file already
+    uses (it cannot import the relay before the venv exists)."""
+    for candidate in range(start, min(start + tries, 65536)):
+        if not port_in_use(candidate):
+            return candidate
+    return start
+
+
+def find_running_relay(configured: int, token: str, tries: int = 20) -> int | None:
+    """Where our relay is listening, if it is: the configured port, or one of
+    the ports it may have fallen back to. Used to point a restarted capture
+    client at the right place."""
+    for candidate in range(configured, min(configured + tries, 65536)):
+        if port_in_use(candidate) and existing_relay(candidate, token) is not None:
+            return candidate
+    return None
+
+
+def relay_args(port: int, fallback: bool) -> list[str]:
+    # Only a fallback port is pinned on the command line; otherwise the relay
+    # reads [relay] port itself, so a port saved from the Settings page wins
+    # the next time it starts.
+    return ["-m", "relay"] + (["--port", str(port)] if fallback else [])
+
+
+def capture_args(port: int) -> list[str]:
+    return ["-m", "capture", "--relay", f"ws://127.0.0.1:{port}/ws/source"]
+
+
 def port_owner(port: int) -> str:
     """Best effort name of whatever holds the port, for the error message."""
     try:
@@ -228,7 +259,7 @@ def main() -> int:
 
     port = read_port()
     token = ensure_operator_token()
-    status_link = f"http://127.0.0.1:{port}/status?token={token}"
+    fallback = False
     procs: dict[str, subprocess.Popen] = {}
     restarts = {"relay": 0, "capture": 0}
 
@@ -246,25 +277,33 @@ def main() -> int:
             say("\nIf you want a fresh start, close the other Campus Captions")
             say("window first, then run this again.")
             try:
-                webbrowser.open(status_link)
+                webbrowser.open(f"http://127.0.0.1:{port}/status?token={token}")
             except Exception:
                 pass
             input("\npress Enter to close this window ")
             return 0
 
+        # Something else has the port. Start anyway, on the next free one,
+        # and say so in words a volunteer can act on. Stopping here with a
+        # request to edit a config file cost a service its captions once.
         owner = port_owner(port)
-        rule("cannot start")
-        say(f"Port {port} is already in use"
+        configured = port
+        port = find_free_port(port + 1)
+        fallback = True
+        rule("port in use")
+        say(f"Port {configured} is already in use"
             + (f" by {owner}." if owner else " by another program."))
-        say("\nClose that program, or change the port in config/event.toml:")
-        say("\n    [relay]")
-        say(f"    port = {port + 1}")
-        say("\nIf you change it, the wall and phone URLs change too.")
-        input("\npress Enter to close ")
-        return 1
+        say(f"Starting on port {port} for now instead.")
+        say()
+        say(f"  The wall and phone URLs below have {port} in them. A ProPresenter")
+        say(f"  prop, OBS scene or printed QR code made for port {configured} will not")
+        say("  connect until that other program is closed and Campus Captions is")
+        say("  started again - or you make the change permanent on the Settings")
+        say("  page (Network - relay port) and update those URLs once.")
 
+    status_link = f"http://127.0.0.1:{port}/status?token={token}"
     rule("starting")
-    procs["relay"] = spawn(python, ["-m", "relay"], "relay server")
+    procs["relay"] = spawn(python, relay_args(port, fallback), "relay server")
 
     if not wait_for_relay(port, procs["relay"], token):
         say("\nthe relay did not start. its error is above.")
@@ -273,7 +312,7 @@ def main() -> int:
         input("\npress Enter to close ")
         return 1
 
-    procs["capture"] = spawn(python, ["-m", "capture"], "capture client")
+    procs["capture"] = spawn(python, capture_args(port), "capture client")
 
     ip = relay_ip(port, token)
     rule("ready")
@@ -305,8 +344,23 @@ def main() -> int:
                 restarts[name] += 1
                 say(f"\n{name} stopped unexpectedly - restarting "
                     f"({restarts[name]}/{RESTART_LIMIT})")
-                module = "relay" if name == "relay" else "capture"
-                procs[name] = spawn(python, ["-m", module], name)
+                if name == "relay":
+                    # The port may have changed on the Settings page since we
+                    # started (the relay normally restarts itself for that,
+                    # but not if it died first), and whatever squatted on it
+                    # may have gone or arrived. Decide again, the same way.
+                    port = read_port()
+                    fallback = False
+                    if port_in_use(port) and existing_relay(port, token) is None:
+                        port = find_free_port(port + 1)
+                        fallback = True
+                        say(f"port {read_port()} is in use; starting the relay on {port}")
+                    procs[name] = spawn(python, relay_args(port, fallback), name)
+                else:
+                    running = find_running_relay(read_port(), token)
+                    if running is not None:
+                        port = running
+                    procs[name] = spawn(python, capture_args(port), name)
     except KeyboardInterrupt:
         pass
     finally:

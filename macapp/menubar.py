@@ -138,29 +138,54 @@ def wait_ready(port: int, deadline: float) -> bool:
     return False
 
 
-def run_relay(cfg) -> None:
-    server = _SilentServer(uvicorn.Config(
-        create_app(cfg), host=cfg.host, port=cfg.port,
-        log_level="warning", ws_ping_interval=20, ws_ping_timeout=20,
-        ws_max_size=64 * 1024,
-    ))
-    server.run()
+def run_relay(app: "CampusCaptionsApp") -> None:
+    """Runs the relay for as long as the app lives. Each pass reads the
+    config afresh and takes the configured port, or the next free one if
+    something else holds it. When the operator changes the port on the
+    Settings page the server exits with `restart_requested` set and this
+    loop brings it straight back on the new port; any other exit ends it."""
+    while True:
+        cfg = relay_config.load()
+        try:
+            cfg.port = relay_config.choose_port(cfg.host, cfg.port)
+        except OSError as exc:
+            print(f"[relay] {exc}")
+            app.set_icon_state("inactive")
+            return
+        app.port = cfg.port
+        fastapi_app = create_app(cfg)
+        server = _SilentServer(uvicorn.Config(
+            fastapi_app, host=cfg.host, port=cfg.port,
+            log_level="warning", ws_ping_interval=20, ws_ping_timeout=20,
+            ws_max_size=64 * 1024, timeout_graceful_shutdown=5,
+        ))
+        fastapi_app.state.server = server
+        server.run()
+        if not getattr(fastapi_app.state, "restart_requested", False):
+            app.set_icon_state("inactive")
+            return
+        print(f"[relay] restarting on port {fastapi_app.state.restart_port}")
 
 
-def run_capture() -> None:
+def run_capture(relay_port: int) -> None:
     cfg = capture_config.load()
+    # The relay may have fallen back to another port (see run_relay); a
+    # local relay_url follows whatever the relay actually got. Later port
+    # changes reach the capture client over its own link (`relay_moving`).
+    cfg.relay_url = capture_config.relay_url_with_port(cfg.relay_url, relay_port, local_only=True)
     args = types.SimpleNamespace(no_audio=False, open=False)
     asyncio.run(CaptureApp(cfg, args).run())
 
 
-def poll_status(app: "CampusCaptionsApp", port: int) -> None:
+def poll_status(app: "CampusCaptionsApp") -> None:
     """Keeps the menu bar icon honest about what's actually happening:
     a plain graduation cap while idle, filled-in while captions are
     flowing, and the warning glyph the moment the source reports trouble
-    or the relay stops answering."""
+    or the relay stops answering. Reads app.port every time, since a
+    Settings-page port change moves the relay while this keeps running."""
     while True:
         try:
-            with urllib.request.urlopen(status_request(port), timeout=2) as r:
+            with urllib.request.urlopen(status_request(app.port), timeout=2) as r:
                 data = json.load(r)
             source = data.get("source", {})
             asr = data.get("asr", {})
@@ -247,29 +272,43 @@ def main() -> None:
     rcfg = relay_config.load()
     OPERATOR_TOKEN = rcfg.operator_token
 
-    if port_in_use(rcfg.port):
-        session = existing_session(rcfg.port)
+    port = rcfg.port
+    if port_in_use(port):
+        session = existing_session(port)
         if session is not None:
-            webbrowser.open(status_link(rcfg.port))
+            webbrowser.open(status_link(port))
             rumps.alert("Campus Captions",
                         "Already running - opened its status page.\n\n"
                         "Quit the other copy first if you want a fresh start.")
-        else:
+            return
+        # Something else has the port. Start on the next free one and say
+        # so, rather than sending a volunteer to edit a config file. The
+        # relay thread makes the same choice on its own; this is only so the
+        # alert and the first status link agree with it.
+        try:
+            port = relay_config.choose_port(rcfg.host, port + 1)
+        except OSError:
             rumps.alert("Campus Captions",
-                        f"Port {rcfg.port} is already used by another program "
-                        f"on this Mac. Close it, or change the port in this "
-                        f"app's config file: ~/Library/Application Support/"
-                        f"Campus Captions/config/event.toml.")
-        return
+                        f"Port {rcfg.port} and the twenty above it are all in use "
+                        f"on this Mac. Close whatever is using them and try again.")
+            return
+        rumps.alert(
+            "Campus Captions",
+            f"Port {rcfg.port} is already used by another program on this Mac, "
+            f"so Campus Captions is starting on port {port} for now.\n\n"
+            f"The wall and phone URLs have {port} in them. A ProPresenter prop or "
+            f"printed QR code made for port {rcfg.port} will not connect until that "
+            f"program is closed and Campus Captions is started again - or make the "
+            f"change permanent under Settings > Network and update those URLs once.")
 
-    app = CampusCaptionsApp(rcfg.port)
-    threading.Thread(target=run_relay, args=(rcfg,), daemon=True).start()
+    app = CampusCaptionsApp(port)
+    threading.Thread(target=run_relay, args=(app,), daemon=True).start()
 
     def wait_then_start_capture() -> None:
-        if wait_ready(rcfg.port, time.time() + RELAY_READY_TIMEOUT):
-            threading.Thread(target=run_capture, daemon=True).start()
-            threading.Thread(target=poll_status, args=(app, rcfg.port), daemon=True).start()
-            webbrowser.open(status_link(rcfg.port))
+        if wait_ready(port, time.time() + RELAY_READY_TIMEOUT):
+            threading.Thread(target=run_capture, args=(app.port,), daemon=True).start()
+            threading.Thread(target=poll_status, args=(app,), daemon=True).start()
+            webbrowser.open(status_link(port))
         else:
             app.set_icon_state("inactive")  # rumps allows icon updates off the main thread
 

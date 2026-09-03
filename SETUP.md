@@ -343,6 +343,28 @@ captions on the wall or phone views at all.
 
 ---
 
+## 3h. If port 8000 is already taken
+
+Another program on the computer sometimes has port 8000 already - a
+development server, a media tool, a second copy of something. Campus
+Captions no longer stops for that. The launcher (or the menu bar app on a
+Mac) starts on the next free port, 8001 or so, and tells you in the launcher
+window or a Mac alert. Everything works; only the addresses differ.
+
+That matters because the wall and phone URLs and the printed QR code have the
+port in them. A ProPresenter prop, an OBS scene or a poster made for port 8000
+will not reach a relay on 8001. Two ways out:
+
+- Close the other program and start Campus Captions again. It goes back to
+  8000 and the existing URLs work as before.
+- Make the new port permanent: Settings page → **Network — relay port** →
+  type the port → **Save and restart on it**. The relay restarts on that port
+  straight away, the capture client follows on its own, the Settings page
+  moves with it, and the next launch uses it too. Then update the prop, the
+  scene and the QR code once.
+
+---
+
 ## 4. Network: static IP and firewall
 
 The wall view URL and the phone URL both contain the relay host's IP address.
@@ -846,6 +868,7 @@ Roughly 30 minutes before doors.
 | Status page: **Silent** with the mic live | Wrong input device, or the device is muted. Choose another input on the status page; use **Refresh devices** if it was just connected. |
 | Status page: **Open, no text yet** | The stream is connected but nothing is being transcribed — usually silence, wrong input, or a mic that is muted at the desk. |
 | Phones cannot connect, booth machine can | Firewall (section 4) or wifi client isolation. |
+| Launcher says **port in use**, captions run on a different port | Another program had port 8000, so Campus Captions started on the next free one (section 3h). The wall, phone and QR addresses carry that port; close the other program and restart, or make the new port permanent under Settings → Network and update those addresses once. |
 | Captions stop mid-event | The backend reconnects on its own with backoff. The wall holds the last line, then fades. If the **ASR stream** tile went red, look at the error text on the status page. |
 | Wrong names in the transcript | Add them to `config/keyterms.txt` and press **Reload keyterms**. |
 | Everything is fine but text is clipped | `maxchars` too high for `size`. Add `&debug=1` to the wall URL to confirm. |

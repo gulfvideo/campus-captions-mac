@@ -184,6 +184,20 @@ machine, not per launch.
 
 ## Configuration
 
+**The port is not a reason to stop.** If `[relay] port` is taken by another
+program when things start, the launcher, the menu bar app and `python -m
+relay` all start on the next free port and say so, in the launcher window
+or a Mac alert, with the reminder that the wall and phone URLs now carry
+that port. To make a different port permanent, the Settings page has a
+*Network — relay port* field: `POST /api/relay` saves it to `[relay] port`,
+tells the capture client over its own link (`relay_moving`, see
+`docs/MESSAGES.md`) so it follows without a restart, and asks the uvicorn
+server to exit; `relay/__main__.py` and the menu bar app both loop and
+bring it straight back on the new port, and the Settings page follows once
+the new port answers. The operator cookie is not port-specific, so nothing
+has to be re-entered. A local `[capture] relay_url` follows `[relay] port`
+from the same file, so the number lives in one place.
+
 `config/event.toml` (copy it from `config/event.example.toml`; the real one is
 gitignored). The relay reads the `[relay]` section — host, port, and the
 `source_token` that capture clients must present on `/ws/source` — and
@@ -234,6 +248,7 @@ a password:
 | `GET /api/transcript.{srt,vtt,txt,json,csv}` | recorded captions as a file, `?lang=` and `?offset=` (operator-only); `.txt` takes `?timestamps=0` |
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
+| `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
 | `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
 | `POST /api/overlay-keys` | `{"create": "obs"}` / `{"revoke": "obs"}` - wall output keys, see below |
 | `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |

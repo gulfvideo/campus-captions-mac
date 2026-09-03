@@ -38,7 +38,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 opener = urllib.request.build_opener(NoRedirect)
 
-def http(method, path, body=None, headers=None, host=None):
+def http(method, path, body=None, headers=None, host=None, base=None):
     h = dict(headers or {})
     if host:
         h["Host"] = host
@@ -46,7 +46,7 @@ def http(method, path, body=None, headers=None, host=None):
     if body is not None:
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         h.setdefault("Content-Type", "application/json")
-    req = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
+    req = urllib.request.Request((base or BASE) + path, data=data, method=method, headers=h)
     try:
         with opener.open(req, timeout=5) as r:
             return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
@@ -465,6 +465,71 @@ try:
         snap = json.loads(b)
         check("caption from authenticated source reached the relay", snap.get("asr", {}).get("last_final_text") == "hello from the test", str(snap.get("asr")))
     asyncio.run(ws_checks())
+
+    # --- changing the port from the Settings page ------------------------------
+    # Last, because the relay restarts on another port and we move it back.
+    st, h, b = http("POST", "/api/relay", body={"port": 80}, headers=bearer)
+    check("POST /api/relay port 80 -> 400", st == 400, f"{st}")
+    st, h, b = http("POST", "/api/relay", body={"port": PORT}, headers=bearer)
+    check("POST /api/relay same port -> 200, changed false", st == 200 and json.loads(b).get("changed") is False, f"{st} {b[:80]}")
+    holder = socket.socket(); holder.bind(("127.0.0.1", PORT + 2)); holder.listen(1)
+    st, h, b = http("POST", "/api/relay", body={"port": PORT + 2}, headers=bearer)
+    check("POST /api/relay to a port something else holds -> 409", st == 409, f"{st}")
+    holder.close()
+    st, h, b = http("POST", "/api/relay", body={"port": PORT + 1})
+    check("POST /api/relay without auth -> 401", st == 401, f"{st}")
+
+    async def move_port():
+        # A capture client connected during the move must be told where to go.
+        async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/source", additional_headers={"Authorization": f"Bearer {SRCTOK}"}) as ws:
+            st, h, b = http("POST", "/api/relay", body={"port": PORT + 1}, headers=bearer)
+            out = json.loads(b) if st == 200 else {}
+            check("POST /api/relay new port -> 200, changed, capture client told", st == 200 and out.get("changed") is True and out.get("port") == PORT + 1 and out.get("capture_clients_told") == 1, f"{st} {out}")
+            told = None
+            try:
+                while True:
+                    m = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                    if m.get("type") == "control" and m.get("action") == "relay_moving":
+                        told = m; break
+            except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
+                pass
+            check("  capture client received relay_moving with the new port", told is not None and told.get("port") == PORT + 1, str(told))
+    asyncio.run(move_port())
+
+    new_base = f"http://127.0.0.1:{PORT + 1}"
+    came_up = False
+    for _ in range(40):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen(new_base + "/api/site", timeout=1) as r:
+                came_up = r.status == 200
+                break
+        except Exception:
+            continue
+    check("  relay came back on the new port", came_up, "no answer on the new port within 20 s")
+    with open(cfg_path, encoding="utf-8") as fh:
+        saved = fh.read()
+    check("  new port was saved to event.toml", f"port = {PORT + 1}" in saved, saved[:200])
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        check("  old port is no longer answering", s.connect_ex(("127.0.0.1", PORT)) != 0, "still open")
+    st, h, b = http("GET", "/api/status", headers=bearer, base=new_base)
+    check("  operator token still works on the new port", st == 200 and json.loads(b).get("relay", {}).get("port") == PORT + 1, f"{st}")
+    # Move back. The original port's last connections are still in TIME_WAIT
+    # at this point, which is the real-life case too: an operator who tries a
+    # port and changes their mind within a minute must not be told it is busy.
+    st, h, b = http("POST", "/api/relay", body={"port": PORT}, headers=bearer, base=new_base)
+    check("  moving back to a port still in TIME_WAIT is allowed", st == 200 and json.loads(b).get("changed") is True, f"{st} {b[:120]}")
+    back = False
+    for _ in range(40):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen(BASE + "/api/site", timeout=1) as r:
+                back = r.status == 200
+                break
+        except Exception:
+            continue
+    check("  and back again on the original port", back, "no answer on the original port within 20 s")
 finally:
     proc.terminate()
     try:

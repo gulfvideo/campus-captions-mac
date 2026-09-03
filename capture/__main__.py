@@ -174,6 +174,13 @@ class CaptureApp:
                     print("[capture] audio device list refreshed")
                 elif action == "select_backend":
                     await self.switch_backend(payload.get("backend", ""))
+                elif action == "relay_moving":
+                    port = payload.get("port")
+                    if isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535:
+                        new_url = config_mod.relay_url_with_port(self.cfg.relay_url, port)
+                        self.cfg.relay_url = new_url
+                        self.relay.move(new_url)
+                        print(f"[capture] relay moving to port {port}; following")
                 elif action == "set_deepgram_key":
                     key = str(payload.get("key", "")).strip()
                     if key and config_mod.has_control_chars(key):
