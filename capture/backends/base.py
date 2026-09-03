@@ -106,11 +106,19 @@ def _compile_block_pattern(terms: list[str]) -> re.Pattern | None:
 
 @dataclass(frozen=True)
 class TranscriptEvent:
-    """One piece of transcript. `is_final` is the only thing that commits a line."""
+    """One piece of transcript. `is_final` is the only thing that commits a line.
+
+    `speech_end` is the wall-clock moment the last word in this text was
+    actually spoken, when the backend can work that out (Deepgram reports
+    where in the audio stream each result ends). It is what caption latency
+    is measured from: the relay compares it to the time the text arrived.
+    None means "not known for this backend" and no latency is claimed.
+    """
 
     text: str
     is_final: bool
     t: float = field(default_factory=time.time)
+    speech_end: float | None = None
 
 
 class ASRBackend(ABC):
@@ -207,14 +215,15 @@ class ASRBackend(ABC):
         except asyncio.TimeoutError:
             return None
 
-    def _emit(self, text: str, is_final: bool) -> None:
+    def _emit(self, text: str, is_final: bool,
+              speech_end: float | None = None) -> None:
         text = " ".join(str(text).split())
         if not text:
             return
         text = self._filter_words(text)
         if not text:
             return
-        event = TranscriptEvent(text=text, is_final=is_final)
+        event = TranscriptEvent(text=text, is_final=is_final, speech_end=speech_end)
         try:
             self._queue.put_nowait(event)
         except asyncio.QueueFull:

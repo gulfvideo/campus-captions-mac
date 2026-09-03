@@ -188,13 +188,27 @@ treats the link as dead even if the socket still claims to be open. A changed
 relay assigns those on the way out. Plus:
 
 ```json
-{"type":"status","t":1756590001.0,"audio_level":0.34,"stream_open":true,
+{"type":"status","t":1756590001.0,"audio_level":0.34,"audio_peak":0.71,
+ "clipping":false,"stream_open":true,
  "backend":"deepgram","available_backends":["apple_speech","deepgram","mock"],
  "has_deepgram_key":true,
  "device":"Scarlett 2i2 (in 1)","device_index":3,
  "audio_devices":[{"index":3,"name":"Scarlett 2i2","hostapi":"Core Audio",
    "channels":2,"default_samplerate":48000,"is_default":true}],
  "last_final_t":1756589994.5,"error":null}
+```
+
+An `interim` or `final` from the capture client may also carry `speech_end`:
+unix seconds when the last word of that text was actually spoken, as best the
+backend knows (Deepgram reports where in the audio each result ends; the mock
+says "now"; a backend that cannot tell omits it). The relay measures caption
+latency as its own receipt time minus `speech_end`, keeps a rolling window of
+200, and reports median and p95 in the status snapshot's `latency` block. The
+field itself never reaches viewers.
+
+```json
+{"type":"final","text":"Our next speaker is Dr. Vasquez.","t":1756590003.4,
+ "speech_end":1756590002.6}
 ```
 
 Roughly 4× per second. `audio_level` is 0–1 RMS over the last frame and is
@@ -293,7 +307,10 @@ object once, plus a `relay` block.
     "status_age": 0.21,
     "error": null
   },
-  "audio":   {"level": 0.27, "smoothed": 0.19, "state": "live", "age": 0.4},
+  "audio":   {"level": 0.27, "smoothed": 0.19, "peak": 0.64, "clipping": false,
+              "state": "live", "age": 0.4},
+  "latency": {"final":   {"samples": 200, "last": 1.3, "median": 1.4, "p95": 2.1},
+              "interim": {"samples": 200, "last": 0.6, "median": 0.7, "p95": 1.1}},
   "asr":     {"stream_open": true, "state": "producing", "finals": 412,
               "interims": 5133, "last_final_age": 1.8,
               "last_final_text": "Our next speaker is Dr. Vasquez."},
@@ -316,7 +333,15 @@ The relay decides what the words mean, so every status display agrees:
 
 | Field | Values |
 |---|---|
-| `audio.state` | `live`, `silent`, `stale`, `no_source` |
+| `audio.state` | `live`, `clipping`, `silent`, `stale`, `no_source` |
+
+`audio.peak` is the loudest sample in the last frame on the same 0–1 scale as
+`level`; `clipping` is true for a few seconds after a frame had a run of
+samples at full scale, and `audio.state` says `clipping` for as long as it is.
+`latency.final` and `latency.interim` are seconds from speech to relay over a
+rolling window of the last 200 lines (see `speech_end` above), or `null` when
+the running backend has never reported where its words were spoken. `median`
+is the number to quote; `p95` is the number to worry about.
 | `asr.state` | `producing`, `open_no_text`, `closed`, `no_source` |
 
 `audio.level` is the instantaneous RMS, for a meter. `audio.smoothed` is an

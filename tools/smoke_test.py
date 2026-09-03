@@ -136,6 +136,10 @@ try:
     snap = json.loads(b) if st == 200 else {}
     check("GET /api/status bearer -> 200", st == 200 and "session_id" in snap, f"{st}")
     check("  youtube status carries url_hint, never url", "url" not in snap.get("youtube", {}) and "url_hint" in snap.get("youtube", {}), str(snap.get("youtube")))
+    check("  snapshot carries latency (null until a backend reports speech_end) and audio peak/clipping",
+          snap.get("latency", {}).get("final", "missing") is None
+          and "peak" in snap.get("audio", {}) and snap.get("audio", {}).get("clipping") is False,
+          f"{snap.get('latency')} {snap.get('audio')}")
     st, h, b = http("GET", "/api/transcript.srt")
     check("GET /api/transcript.srt no auth -> 401", st == 401, f"{st}")
 

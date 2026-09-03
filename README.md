@@ -389,6 +389,7 @@ the field with no rebuild. The bare URL with no parameters works.
 | `text` | — | render static text, open no socket (framing mode) |
 | `soak` | — | synthetic captions, e.g. `?soak=1`, `?soak=6` for six times speed |
 | `relay` | — | override the relay host, e.g. `relay=10.0.4.12:8000` |
+| `lang` | — | which caption stream to show, e.g. `lang=es`; unset means the room's language. The tuner has a dropdown for it |
 
 All sizing is in vh/vw so the graphic scales to whatever the LED processor is
 actually running.
