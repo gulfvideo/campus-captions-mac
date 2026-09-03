@@ -44,6 +44,18 @@ class RelayClient:
     def connected(self) -> bool:
         return self._connected
 
+    def move(self, url: str) -> None:
+        """The relay told us it is restarting somewhere else. Point the
+        reconnect loop at the new address and drop the current socket so it
+        reconnects there straight away, rather than retrying a port that is
+        about to go dark."""
+        if url == self.url:
+            return
+        self.url = url
+        ws = self._ws
+        if ws is not None:
+            asyncio.create_task(ws.close())
+
     @property
     def display_url(self) -> str:
         """The relay address with any query string removed, for log lines."""

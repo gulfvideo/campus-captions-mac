@@ -55,7 +55,7 @@ from . import event as event_module
 from . import transcript as transcript_module
 from . import translate as translate_module
 from . import tunnel as tunnel_module
-from .hub import CONTROL_ACTIONS, RELAY_ACTIONS, Client, Hub
+from .hub import CONTROL_ACTIONS, INTERNAL_CONTROL_ACTIONS, RELAY_ACTIONS, Client, Hub
 from .youtube import ALLOWED_HOSTS as YOUTUBE_HOSTS
 from .youtube import YouTubeCaptionPusher, urls_from_env, valid_ingestion_url
 
@@ -385,6 +385,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         "public_hostname": cfg.public_hostname,
         "event": event.public(),
         "health": hub.health(),
+        # Where this relay is, for the Settings page's port field. The full
+        # block with token_required and the config path stays on /api/status.
+        "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip()},
     }
 
     async def heartbeat_loop() -> None:
@@ -465,6 +468,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.hub = hub
     app.state.config = cfg
+    # Set by /api/relay when the operator changes the port: whoever runs the
+    # uvicorn server (relay/__main__.py, macapp/menubar.py) sets
+    # app.state.server so the endpoint can ask it to exit, then reads these
+    # to decide whether to come back on the new port or stay down.
+    app.state.restart_requested = False
+    app.state.restart_port = None
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -748,10 +757,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print("[relay] transcript reset")
             return JSONResponse({"ok": True, "action": action}, headers=NO_STORE)
 
-        if action not in CONTROL_ACTIONS:
+        if action not in CONTROL_ACTIONS or action in INTERNAL_CONTROL_ACTIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"action must be one of {sorted(CONTROL_ACTIONS | RELAY_ACTIONS)}",
+                detail="action must be one of "
+                       f"{sorted((CONTROL_ACTIONS - INTERNAL_CONTROL_ACTIONS) | RELAY_ACTIONS)}",
             )
         fields = {}
         if action == "select_audio_device":
@@ -906,6 +916,55 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    @app.post("/api/relay")
+    async def api_relay(request: Request) -> JSONResponse:
+        """Change the port the relay listens on, from the Settings page.
+
+        {"port": 8001}. Saved into [relay] port in event.toml, then the relay
+        tells its capture client to follow (`relay_moving`), answers this
+        request, and asks its own server to exit; the process that runs the
+        server (relay/__main__.py, the menu bar app) starts it again on the
+        new port. The launcher's subprocess loops the same way. The operator
+        cookie is not port-specific, so the Settings page just moves over.
+        """
+        require_operator(request)
+        body = await read_json(request)
+        body = body or {}
+        if "port" not in body:
+            raise HTTPException(status_code=400, detail="send port")
+        port = body.get("port")
+        if isinstance(port, str) and port.strip().isdigit():
+            port = int(port)
+        if isinstance(port, bool) or not isinstance(port, int) or not (1024 <= port <= 65535):
+            raise HTTPException(status_code=400, detail="port must be a number from 1024 to 65535")
+        if port == cfg.port:
+            return JSONResponse({"ok": True, "port": port, "changed": False}, headers=NO_STORE)
+        if not config_module.port_is_free(cfg.host, port):
+            raise HTTPException(status_code=409,
+                                detail=f"port {port} is already in use by another program")
+        try:
+            config_module.save_relay_port(config_target(), port)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not save the port: {exc}")
+
+        told = hub.send_control("relay_moving", {"port": port})
+        previous = cfg.port
+        app.state.restart_requested = True
+        app.state.restart_port = port
+        print(f"[relay] port {previous} -> {port}: saved; {told} capture client(s) told; restarting")
+
+        def request_exit() -> None:
+            server = getattr(app.state, "server", None)
+            if server is not None:
+                server.should_exit = True
+            else:
+                print("[relay] no server handle - restart it by hand on the new port")
+
+        # After this response has gone out, not before.
+        asyncio.get_running_loop().call_later(0.4, request_exit)
+        return JSONResponse({"ok": True, "port": port, "changed": True, "previous": previous,
+                             "capture_clients_told": told}, headers=NO_STORE)
 
     @app.post("/api/tunnel")
     async def api_tunnel(request: Request) -> JSONResponse:

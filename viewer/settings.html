@@ -172,6 +172,31 @@
 </div>
 
 <div class="disclosure-panel">
+  <button class="disclosure-header" id="network-toggle" aria-expanded="false" aria-controls="network-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Network &mdash; relay port</span>
+    <span class="badge" id="network-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="network-body">
+      <div class="row">
+        <input id="relay-port" type="text" inputmode="numeric" autocomplete="off"
+               placeholder="Port, e.g. 8000" style="flex:0 1 180px">
+        <button id="btn-port-save" type="button">Save and restart on it</button>
+      </div>
+      <div class="disclosure-sub" id="network-sub">&mdash;</div>
+      <div class="disclosure-sub">
+        If another program already has the configured port when Campus Captions starts, it starts on
+        the next free one for that session and tells you. Saving a port here makes it permanent: the
+        relay restarts on it straight away, the capture client follows, and this page moves with it.
+        The wall and phone URLs and the printed QR code carry the port, so a ProPresenter prop, an OBS
+        scene, or a poster made for the old port needs updating once.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
   <button class="disclosure-header" id="deepgram-toggle" aria-expanded="true" aria-controls="deepgram-body">
     <span class="chevron">&#9662;</span>
     <span class="title">Deepgram API key</span>
@@ -488,7 +513,63 @@
     $('btn-profanity-disable').disabled = !source.connected || !masked;
   }
 
+  // ---- relay port ---------------------------------------------------------
+
+  var relayPortDirty = false, portMoving = false;
+
+  function renderNetwork(relay) {
+    relay = relay || {};
+    if (portMoving) return;                 // mid-restart: leave the message alone
+    $('network-badge').textContent = relay.port ? 'port ' + relay.port : '—';
+    $('network-sub').textContent = relay.port
+      ? 'Listening on port ' + relay.port + (relay.ip ? ' — wall and phone URLs start http://' + relay.ip + ':' + relay.port : '')
+      : '—';
+    var box = $('relay-port');
+    box.disabled = $('btn-port-save').disabled = false;
+    if (document.activeElement !== box && !relayPortDirty) box.value = relay.port || '';
+  }
+
+  function savePort() {
+    var value = parseInt($('relay-port').value.trim(), 10);
+    if (!(value >= 1024 && value <= 65535)) { toast('Port — enter a number from 1024 to 65535'); return; }
+    fetch('/api/relay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port: value })
+    }).then(jsonOrThrow).then(function (out) {
+      relayPortDirty = false;
+      if (!out.changed) { toast('Already on port ' + out.port); return; }
+      portMoving = true;
+      $('network-badge').textContent = 'moving to ' + out.port + '…';
+      $('network-sub').textContent = 'Relay restarting on port ' + out.port + ' — this page will follow.';
+      $('relay-port').disabled = $('btn-port-save').disabled = true;
+      toast('Port saved — relay restarting on ' + out.port);
+      var target = location.protocol + '//' + location.hostname + ':' + out.port;
+      var wsTarget = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.hostname + ':' + out.port;
+      var tries = 0;
+      // Wait for the new port to answer, then move. Probed with a viewer
+      // websocket, not a fetch: this page's Content-Security-Policy allows
+      // HTTP to its own origin only, and the new port is a new origin, but
+      // it allows websockets anywhere. The cookie that signs this browser in
+      // is not port-specific, so the page just loads there.
+      (function probe() {
+        tries++;
+        var ws;
+        try { ws = new WebSocket(wsTarget + '/ws/viewer?role=phone'); } catch (e) { ws = null; }
+        var again = function () {
+          if (tries < 40) setTimeout(probe, 500);
+          else { portMoving = false; toast('The relay has not come up on ' + out.port + ' yet — open ' + target + '/settings by hand'); }
+        };
+        if (!ws) { again(); return; }
+        ws.onopen = function () { try { ws.close(); } catch (e) {} location.href = target + '/settings'; };
+        ws.onerror = function () { ws.onclose = null; again(); };
+        ws.onclose = function () { again(); };
+      })();
+    })['catch'](function (e) { toast('Port — ' + e.message); });
+  }
+
   function render(s) {
+    renderNetwork(s.relay);
     renderEventConfig(s.event);
     renderDeepgram(s.source || {});
     renderTranslation(s);
@@ -499,7 +580,8 @@
   }
 
   function renderOffline() {
-    $('meta').textContent = 'relay unreachable — retrying';
+    $('meta').textContent = portMoving ? 'relay restarting on the new port…' : 'relay unreachable — retrying';
+    $('btn-port-save').disabled = $('relay-port').disabled = true;
     EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
     $('btn-event-save').disabled = $('event-image').disabled = $('btn-event-image-remove').disabled =
       $('event-logo').disabled = $('btn-event-logo-remove').disabled = true;
@@ -724,6 +806,10 @@
   }
 
   function boot() {
+    setupDisclosure('network-toggle', 'settings-network-expanded');
+    $('btn-port-save').onclick = savePort;
+    $('relay-port').oninput = function () { relayPortDirty = true; };
+    $('relay-port').onkeydown = function (e) { if (e.key === 'Enter') savePort(); };
     setupDisclosure('event-toggle', 'settings-event-expanded');
     setupDisclosure('deepgram-toggle', 'settings-deepgram-expanded');
     setupDisclosure('azure-toggle', 'settings-azure-expanded');

@@ -37,8 +37,13 @@ SOURCE_MESSAGE_TYPES = {"interim", "final", "clear", "status"}
 CONTROL_ACTIONS = {
     "open_stream", "close_stream", "clear", "reload_keyterms",
     "select_audio_device", "refresh_audio_devices", "select_backend",
-    "set_deepgram_key", "set_profanity_filter",
+    "set_deepgram_key", "set_profanity_filter", "relay_moving",
 }
+# Sent by the relay on its own initiative, never on an operator's request:
+# /api/control refuses them. `relay_moving` tells a capture client the relay
+# is about to restart on another port, so it follows instead of retrying the
+# old one forever.
+INTERNAL_CONTROL_ACTIONS = {"relay_moving"}
 # Handled by the relay itself, not forwarded to a capture client. `caption`
 # is a line the operator typed - [Applause], a speaker's name, a correction -
 # committed exactly like a final from the recognizer.

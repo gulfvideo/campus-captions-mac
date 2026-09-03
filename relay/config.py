@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import secrets
+import socket
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -558,6 +559,78 @@ def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None
     upsert("[relay]", {"public_hostname": _quote(hostname)})
     upsert("[tunnel]", {"start_enabled": "true" if start_enabled else "false"})
 
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# How many ports above the configured one to try when it is taken. Twenty
+# is plenty for "something else grabbed 8000" and small enough that the
+# operator can still guess where the relay went from the launcher output.
+PORT_FALLBACK_TRIES = 20
+
+
+def port_is_free(host: str, port: int) -> bool:
+    """Can the relay bind this port right now?
+
+    A bind test, not a connect probe: binding is what the relay actually has
+    to do. No SO_REUSEADDR, so a port another process is already listening
+    on reports busy on Windows as well as macOS and Linux.
+    """
+    bind_host = "0.0.0.0" if host in ("", "0.0.0.0", "*") else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind((bind_host, port))
+        except OSError:
+            return False
+    # Windows lets a wildcard bind succeed beside a program bound to
+    # 127.0.0.1 alone (an exclusive bind would catch that, but it also
+    # refuses a port whose last connections are still in TIME_WAIT, which
+    # is exactly the state a just-restarted relay's own port is in). So,
+    # second opinion: anything answering on loopback means taken - the same
+    # probe the launcher uses, so the two always agree.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.3)
+        if probe.connect_ex(("127.0.0.1", port)) == 0:
+            return False
+    return True
+
+
+def choose_port(host: str, preferred: int, tries: int = PORT_FALLBACK_TRIES) -> int:
+    """The configured port if it is free, else the next free one above it.
+
+    The launcher, the menu bar app and `python -m relay` all use this, so
+    a Sunday morning with something squatting on 8000 starts captions on
+    8001 and says so, instead of stopping with a request to edit a file.
+    Raises OSError only when every candidate is taken.
+    """
+    for candidate in range(preferred, min(preferred + tries, 65536)):
+        if port_is_free(host, candidate):
+            return candidate
+    raise OSError(f"no free port between {preferred} and {preferred + tries - 1}")
+
+
+def save_relay_port(path: Path, port: int) -> None:
+    """Write `port` into [relay], in place, keeping the line's own comment
+    (see _inline_comment) and every other line as it was."""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == "[relay]"), None)
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.extend(["[relay]", f"port = {int(port)}"])
+    else:
+        end = next(
+            (i for i in range(start + 1, len(lines))
+             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+            len(lines),
+        )
+        for i in range(start + 1, end):
+            if lines[i].split("=", 1)[0].strip() == "port":
+                lines[i] = f"port = {int(port)}{_inline_comment(lines[i])}"
+                break
+        else:
+            lines.insert(start + 1, f"port = {int(port)}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

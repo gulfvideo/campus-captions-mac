@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import tomllib
+import urllib.parse
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -194,6 +195,26 @@ class CaptureConfig:
         return self.backend == "deepgram"
 
 
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def relay_url_with_port(url: str, port: int, local_only: bool = False) -> str:
+    """`url` with its port replaced. With local_only, a relay on another
+    machine is left alone: its port is that machine's business, and the
+    [relay] section in this file describes the local relay, not that one."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname or ""
+    except ValueError:
+        return url
+    if not host or (local_only and host.lower() not in LOCAL_HOSTS):
+        return url
+    netloc = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    if parts.username:
+        netloc = f"{parts.username}@{netloc}"
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
 def load(path: Path | None = None) -> CaptureConfig:
     setup_logging()
     load_env_file()
@@ -217,6 +238,13 @@ def load(path: Path | None = None) -> CaptureConfig:
 
     relay_section = data.get("relay", {}) or {}
     cfg.source_token = str(relay_section.get("source_token", ""))
+    # A relay on this machine listens on [relay] port from this same file,
+    # so a local relay_url follows it: changing the port on the Settings
+    # page (which writes [relay] port) then moves both halves, without a
+    # second copy of the number in [capture] relay_url getting stale.
+    relay_port = relay_section.get("port")
+    if isinstance(relay_port, int) and not isinstance(relay_port, bool):
+        cfg.relay_url = relay_url_with_port(cfg.relay_url, relay_port, local_only=True)
 
     # Everything a backend might want, flattened. Backends read what they know
     # and ignore the rest, so adding a backend needs no change here.
@@ -255,6 +283,12 @@ def load(path: Path | None = None) -> CaptureConfig:
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)
     cfg.device = os.environ.get("CAPTIONS_DEVICE", cfg.device)
+    # CAPTIONS_PORT is the relay's own override; a local relay_url follows it
+    # the same way it follows [relay] port. An explicit CAPTIONS_RELAY_URL
+    # still wins outright.
+    env_port = os.environ.get("CAPTIONS_PORT", "").strip()
+    if env_port.isdigit():
+        cfg.relay_url = relay_url_with_port(cfg.relay_url, int(env_port), local_only=True)
     cfg.relay_url = os.environ.get("CAPTIONS_RELAY_URL", cfg.relay_url)
     cfg.source_token = os.environ.get("CAPTIONS_SOURCE_TOKEN", cfg.source_token)
     return cfg
