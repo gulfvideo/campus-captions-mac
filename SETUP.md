@@ -657,6 +657,75 @@ break.
 
 ---
 
+## 7a. Captions inside ProPresenter directly (no web fill)
+
+Section 7 puts captions on the output by rendering a web page inside a Prop.
+This section sends the caption *text* into ProPresenter over its network API
+instead, so ProPresenter draws it with its own theme, on the screens you
+choose, like any other Message or Stage Message. Keep the section-7 Prop as
+well: it is the fallback when this path is off or ProPresenter is not
+answering, and the Settings page says so.
+
+**One-time, in ProPresenter:** Settings → Network → tick **Enable Network**
+and note the port. Then pick a surface:
+
+- **Stage message** (simplest): make a stage layout with a Stage Message
+  element where the caption should sit, and assign that layout to the screen
+  that should show captions.
+- **Message** (most control over the look): create a Message named
+  `Live Captions` with one text token named `Caption`. Give it the theme you
+  want - position, font, size, bar colour - and choose its screens (audience,
+  livestream output). Nothing is triggered by us except this one Message.
+
+**Then, on the Settings page → ProPresenter (direct):** address (`127.0.0.1`
+if the relay runs on the same machine, otherwise that machine's IP), the
+port, the surface, and for Message the two names. **Save**, then **Test
+connection** - the badge should read **Connected** and the line under it
+should name ProPresenter and its API version. **Enable** to start sending.
+
+What to expect:
+
+- Committed lines only, by default. "Send in-progress text too" adds the
+  word-by-word text; only the newest is ever sent, but try it before a
+  service - some layouts flicker.
+- **Clear captions**, pausing or ending the event, and **Disable** all clear
+  the surface, so nothing stale sits on a screen.
+- The line under the badge shows how much time the ProPresenter hop adds
+  ("adds 14 ms (p95 38 ms)"). The target is under 500 ms at p95.
+- If ProPresenter quits or its network is switched off, the badge goes
+  **Disconnected — fallback** within about ten seconds; phones, translation,
+  the transcript and the section-7 Prop carry on. It reconnects by itself.
+- Nothing else in ProPresenter is touched: no slides, playlists, props,
+  macros or media. If it ever appears to, stop and report it.
+
+The spike that decides Stage Message versus Message on a real ProPresenter is
+written up as a test plan in `docs/PROPRESENTER_SPIKE.md`.
+
+---
+
+## 7b. OBS and vMix (browser source)
+
+The same wall URL works as a transparent overlay in OBS and vMix.
+
+**OBS:** Sources → **+** → **Browser**. URL: the wall URL (with its output key,
+see below). Width **1920**, Height **1080** (match your canvas). FPS 30. Leave
+*Custom CSS* as OBS's default (it sets a transparent body). Untick *Shutdown
+source when not visible* and *Refresh browser when scene becomes active* - the
+page reconnects on its own and a refresh would lose the current line. Put the
+source above the camera layer.
+
+**vMix:** Add Input → **Web Browser**. URL as above, width 1920, height
+1080. Use it as an overlay channel or place it in a layer above the camera.
+
+**Output keys.** Settings page → **Wall output keys**: create one key per
+output (`obs`, `lobby`, `propresenter`). Each gets its own URL, which the
+tuner also offers. Once any key exists, a wall URL without one is refused, so
+an old scene left in OBS or a forgotten prop can be switched off by
+**Revoke**, without editing every URL. With no keys, the plain wall URL works
+for everyone, as before. Phones are never affected.
+
+---
+
 ## 8. Keyterms
 
 `config/keyterms.txt` — one term per line, `#` for comments, blank lines ignored.

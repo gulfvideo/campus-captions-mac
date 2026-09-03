@@ -7,3 +7,9 @@
 *.command  text eol=lf
 *.sh       text eol=lf
 *.bat      text eol=crlf
+
+# The viewer pages carry inline scripts whose Content-Security-Policy hash the
+# relay computes from the file. The hash is now line-ending independent (see
+# relay/server.py _script_hash), but a Windows checkout with CRLF pages still
+# differs byte-for-byte from what everyone else runs; pin them to LF too.
+*.html     text eol=lf

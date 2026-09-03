@@ -60,7 +60,7 @@ class Client:
     """One subscriber. `kind` is viewer, status or source."""
 
     __slots__ = ("cid", "kind", "role", "peer", "queue", "dropped", "joined_at",
-                 "lang")
+                 "lang", "key")
 
     def __init__(self, kind: str, role: str, peer: str, lang: str = ""):
         self.cid = next(_counter)
@@ -68,6 +68,7 @@ class Client:
         self.role = role
         self.peer = peer
         self.lang = lang
+        self.key: str | None = None      # wall output key it connected with, if any
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=CLIENT_QUEUE_MAX)
         self.dropped = False
         self.joined_at = time.time()
