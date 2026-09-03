@@ -14,7 +14,8 @@ reflect live state.
 
 The module is not published to Bitfocus, so Companion loads it from disk.
 
-1. Install its dependencies (needs Node 18 or newer):
+1. Install its dependencies (needs Node 22 or newer, matching the runtime
+   Companion loads modules with):
 
    ```bash
    cd integrations/companion-module-campus-captions
@@ -71,3 +72,30 @@ src/config.js             the connection settings form
 - **Control is LAN-only by design.** If a future version needs to be driven
   from off-site, that is a relay decision about the tunnel, not something to
   work around here.
+
+## Building an importable package
+
+Companion can import a module as a `.tgz` instead of loading it from the
+developer path, which is how a non-developer should install it. The official
+toolchain produces exactly the layout Companion's own offline bundle uses — a
+single bundled CommonJS `main.js` with every dependency inlined, a minimal
+`package.json`, and `companion/`:
+
+```bash
+npx companion-module-build          # writes pkg/ and campus-captions-<version>.tgz
+```
+
+Then in Companion: **Modules → Import**, and pick the `.tgz`.
+
+Two things the build does for you, which are easy to get wrong by hand:
+
+- **Rewrites `entrypoint` to `../main.js`** and stamps `apiVersion` from the
+  installed `@companion-module/base`. The manifest in this repo points at
+  `../src/index.js` for developer-path loading; the built one does not.
+- **`runtime.type` must be `node22` or `node26`.** Companion 5's manifest
+  schema rejects anything else, including `node18` — even though its loader
+  still handles node18, the schema does not, and the module is refused before
+  it ever runs.
+
+`@companion-module/tools` is pinned to 2.8.0 because 3.x requires
+`@companion-module/base` 2.x, and this module targets the 1.14 API.
