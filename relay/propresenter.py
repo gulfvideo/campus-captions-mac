@@ -61,9 +61,16 @@ DEGRADED_AFTER = 3               # consecutive push failures before "disconnecte
 LATENCY_WINDOW = 200
 MAX_TEXT_CHARS = 500             # a caption line, not a paragraph
 
-# The API this module was written against. `GET /v1/version` reports
+# The API this module was written against. `GET /version` reports
 # `api_version`; anything else is flagged, not refused - the spike decides.
 SUPPORTED_API = "v1"
+
+# ProPresenter serves its version at the root, not under the version prefix
+# every other endpoint uses - /v1/version is a 404 while /v1/messages and
+# /v1/stage/message are fine. Verified against ProPresenter 21.4, which
+# answers /version with {"api_version": "v1", ...}. Kept as a constant so the
+# probe and the message it reports on failure cannot drift apart.
+VERSION_PATH = "/version"
 
 STATES = ("off", "connecting", "connected", "degraded", "disconnected", "unsupported")
 
@@ -260,11 +267,11 @@ class ProPresenterOutput:
             self.state = "off"
             return False
         try:
-            code, version = await self._request("GET", "/v1/version")
+            code, version = await self._request("GET", VERSION_PATH)
         except Exception as exc:
             return self._offline(f"{exc.__class__.__name__}: {exc}")
         if code != 200 or not isinstance(version, dict):
-            return self._offline(f"GET /v1/version answered {code}")
+            return self._offline(f"GET {VERSION_PATH} answered {code}")
         self.version = {k: version.get(k) for k in
                         ("name", "platform", "os_version", "host_description", "api_version")
                         if k in version}

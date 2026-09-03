@@ -623,7 +623,8 @@ not answering; probing every few seconds; the Web Fill fallback is what is on
 screen), `unsupported` (it answered with an API version this build does not
 know). `latency` is the ProPresenter round trip only - what this output adds
 on top of the caption pipeline. The relay talks to ProPresenter's own network
-API (`GET /v1/version`, `PUT|DELETE /v1/stage/message`, `GET /v1/messages`,
+API (`GET /version` - at the root, unlike everything else;
+`PUT|DELETE /v1/stage/message`, `GET /v1/messages`,
 `POST /v1/message/{id}/trigger`, `GET /v1/message/{id}/clear`) and nothing
 else; see relay/propresenter.py. Pausing or ending the event (`POST
 /api/event`) clears the surface.

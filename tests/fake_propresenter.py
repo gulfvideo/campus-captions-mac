@@ -113,10 +113,19 @@ class FakeProPresenter:
                     fake.fail_next -= 1
                     return self._send(500, {"error": "injected"})
 
-                if method == "GET" and path == "/v1/version":
+                # /version, not /v1/version. The real ProPresenter serves its
+                # version at the root while everything else sits under /v1,
+                # and this fake used to mirror the assumption rather than the
+                # application - so the tests passed against a 404 the real
+                # thing returns. Answer both paths the real one does: /version
+                # 200, /v1/version 404, so a regression to the old path fails
+                # here instead of in a booth.
+                if method == "GET" and path == "/version":
                     return self._send(200, {"name": "ProPresenter", "platform": "mac",
                                             "os_version": "15.0", "host_description": "fake",
                                             "api_version": fake.api_version})
+                if method == "GET" and path == "/v1/version":
+                    return self._send(404, {"error": "not found"})
                 if path == "/v1/stage/message":
                     if method == "GET":
                         return self._send(200, fake.stage_message or "")
