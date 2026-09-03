@@ -65,7 +65,7 @@ class Client:
     """One subscriber. `kind` is viewer, status or source."""
 
     __slots__ = ("cid", "kind", "role", "peer", "queue", "dropped", "joined_at",
-                 "lang")
+                 "lang", "key")
 
     def __init__(self, kind: str, role: str, peer: str, lang: str = ""):
         self.cid = next(_counter)
@@ -73,6 +73,7 @@ class Client:
         self.role = role
         self.peer = peer
         self.lang = lang
+        self.key: str | None = None      # wall output key it connected with, if any
         self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=CLIENT_QUEUE_MAX)
         self.dropped = False
         self.joined_at = time.time()
@@ -272,15 +273,21 @@ class Hub:
         text = clean_text(msg.get("text"))
         if not text:
             return
+        # When the words were spoken, if the backend can say (see
+        # TranscriptEvent.speech_end). Feeds the latency figure only; it is
+        # never forwarded to viewers.
+        speech_end = msg.get("speech_end")
+        if isinstance(speech_end, bool) or not isinstance(speech_end, (int, float)):
+            speech_end = None
         if kind == "interim":
             if self._utterance_started is None:
                 self._utterance_started = time.time()
-            self.state.note_interim()
+            self.state.note_interim(speech_end)
             self.broadcast({"type": "interim", "text": text})
         elif kind == "final":
             started = self._utterance_started
             self._utterance_started = None
-            self.state.note_final(text)
+            self.state.note_final(text, speech_end)
             payload = {"type": "final", "text": text}
             if started is not None:
                 payload["t0"] = round(started, 3)

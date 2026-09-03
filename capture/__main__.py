@@ -218,11 +218,14 @@ class CaptureApp:
             event = await self.backend.next_event(timeout=BACKEND_POLL_SECONDS)
             if event is None:
                 continue
-            self.relay.send({
+            msg = {
                 "type": "final" if event.is_final else "interim",
                 "text": event.text,
                 "t": round(event.t, 3),
-            })
+            }
+            if event.speech_end is not None:
+                msg["speech_end"] = round(event.speech_end, 3)
+            self.relay.send(msg)
 
     async def pump_mock_clears(self) -> None:
         """The mock script can ask for a clear; forward it like an operator would.
@@ -248,6 +251,8 @@ class CaptureApp:
             self.relay.send({
                 "type": "status",
                 "audio_level": round(float(self.input.level), 4),
+                "audio_peak": round(float(getattr(self.input, "peak", 0.0)), 4),
+                "clipping": bool(getattr(self.input, "clipping", False)),
                 "stream_open": self.backend.stream_open,
                 "backend": self.cfg.backend,
                 "available_backends": sorted(BACKENDS),

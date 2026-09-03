@@ -31,6 +31,11 @@ fi
 echo "pre-push: byte-compiling..."
 "$py" -m compileall -q relay capture launcher macapp tools
 
+if [ -d tests ]; then
+    echo "pre-push: unit tests..."
+    "$py" -m unittest discover -s tests -q
+fi
+
 echo "pre-push: smoke test..."
 if ! "$py" tools/smoke_test.py "$root" > /tmp/campus-captions-prepush.log 2>&1; then
     echo >&2

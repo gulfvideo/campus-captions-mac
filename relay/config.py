@@ -13,7 +13,7 @@ import secrets
 import socket
 import sys
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -258,6 +258,20 @@ class RelayConfig:
     event_logo_alt: str = ""
     event_disclaimer: str = ""
 
+    # [propresenter] - direct caption output, see relay/propresenter.py
+    pp_host: str = "127.0.0.1"
+    pp_port: int = 1025
+    pp_surface: str = "stage_message"
+    pp_message: str = "Live Captions"
+    pp_token: str = "Caption"
+    pp_language: str = ""            # "" = the source language
+    pp_interims: bool = False
+    pp_start_enabled: bool = False
+
+    # [overlay] keys = ["obs:abc123", ...] - one revocable key per browser-source
+    # output. Empty means the wall needs no key (the pre-key behaviour).
+    overlay_keys: dict[str, str] = field(default_factory=dict)
+
     config_path: Path | None = None
 
     @property
@@ -311,6 +325,20 @@ def load(path: Path | None = None) -> RelayConfig:
             offered = langs.get("offer") or []
             if isinstance(offered, list):
                 cfg.offer_languages = tuple(str(x) for x in offered)
+
+            pp = data.get("propresenter", {}) or {}
+            cfg.pp_host = str(pp.get("host", cfg.pp_host)).strip()
+            cfg.pp_port = int(pp.get("port", cfg.pp_port))
+            cfg.pp_surface = str(pp.get("surface", cfg.pp_surface))
+            cfg.pp_message = str(pp.get("message", cfg.pp_message))
+            cfg.pp_token = str(pp.get("token", cfg.pp_token))
+            cfg.pp_language = str(pp.get("language", cfg.pp_language)).strip()
+            cfg.pp_interims = bool(pp.get("interims", cfg.pp_interims))
+            cfg.pp_start_enabled = bool(pp.get("start_enabled", cfg.pp_start_enabled))
+
+            keys = (data.get("overlay", {}) or {}).get("keys") or []
+            if isinstance(keys, list):
+                cfg.overlay_keys = parse_overlay_keys(keys)
             cfg.translate_provider = str(
                 (data.get("translate", {}) or {}).get("provider", cfg.translate_provider))
 
@@ -640,7 +668,73 @@ def save_relay_port(path: Path, port: int) -> None:
         else:
             lines.insert(start + 1, f"port = {int(port)}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_private(path, "\n".join(lines) + "\n")
+
+
+def _toml_literal(value) -> str:
+    """A Python value as the TOML literal save_section writes."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return _quote_list([str(x) for x in value])
+    return _quote(str(value))
+
+
+def parse_overlay_keys(items: list) -> dict[str, str]:
+    """["obs:abc123", "propresenter:def456"] -> {"obs": "abc123", ...}.
+    Malformed entries are skipped, never fatal - a typo in the config must
+    not take the wall down."""
+    out: dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, str) or ":" not in item:
+            continue
+        name, _, key = item.partition(":")
+        name, key = name.strip(), key.strip()
+        if name and key:
+            out[name] = key
+    return out
+
+
+def format_overlay_keys(keys: dict[str, str]) -> list[str]:
+    return [f"{name}:{key}" for name, key in keys.items()]
+
+
+def save_section(path: Path, header: str, values: dict) -> None:
+    """Write `values` into the TOML section `header` (e.g. "[propresenter]")
+    in place: keys that exist are rewritten (keeping their inline comment,
+    see _inline_comment), the rest are inserted, and every other line of the
+    file is left exactly as it was. Values are Python values; _toml_literal
+    decides how they are written.
+
+    The generic form of what save_youtube_url, save_translate_settings and
+    save_tunnel_settings each do by hand. New sections should use this.
+    """
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = text.splitlines()
+    wanted = {key: _toml_literal(value) for key, value in values.items()}
+
+    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    if start is not None:
+        end = next(
+            (i for i in range(start + 1, len(lines))
+             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
+            len(lines),
+        )
+        for i in range(start + 1, end):
+            key = lines[i].split("=", 1)[0].strip()
+            if key in wanted:
+                lines[i] = f"{key} = {wanted.pop(key)}{_inline_comment(lines[i])}"
+        if wanted:
+            lines[start + 1:start + 1] = [f"{key} = {value}" for key, value in wanted.items()]
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(header)
+        lines.extend(f"{key} = {value}" for key, value in wanted.items())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_private(path, "\n".join(lines) + "\n")
 
 
 def save_event_settings(path: Path, fields: dict[str, str]) -> None:

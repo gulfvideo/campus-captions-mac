@@ -38,9 +38,9 @@ its own replay buffer, so joining `lang=es` replays Spanish history, not
 English translated on the fly. It changes nothing else.
 
 HTTP: `GET /wall`, `GET /phone`, `GET /status`, `GET /qr`, `GET /api/status`,
-`GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.srt`,
+`GET /api/site`, `GET /api/qr.svg`, `GET /api/transcript.{srt,vtt,txt,json,csv}`,
 `POST /api/control`, `POST /api/youtube-captions`, `POST /api/translation`,
-`POST /api/tunnel`.
+`POST /api/tunnel`, `POST /api/propresenter`, `POST /api/overlay-keys`.
 
 ---
 
@@ -188,13 +188,27 @@ treats the link as dead even if the socket still claims to be open. A changed
 relay assigns those on the way out. Plus:
 
 ```json
-{"type":"status","t":1756590001.0,"audio_level":0.34,"stream_open":true,
+{"type":"status","t":1756590001.0,"audio_level":0.34,"audio_peak":0.71,
+ "clipping":false,"stream_open":true,
  "backend":"deepgram","available_backends":["apple_speech","deepgram","mock"],
  "has_deepgram_key":true,
  "device":"Scarlett 2i2 (in 1)","device_index":3,
  "audio_devices":[{"index":3,"name":"Scarlett 2i2","hostapi":"Core Audio",
    "channels":2,"default_samplerate":48000,"is_default":true}],
  "last_final_t":1756589994.5,"error":null}
+```
+
+An `interim` or `final` from the capture client may also carry `speech_end`:
+unix seconds when the last word of that text was actually spoken, as best the
+backend knows (Deepgram reports where in the audio each result ends; the mock
+says "now"; a backend that cannot tell omits it). The relay measures caption
+latency as its own receipt time minus `speech_end`, keeps a rolling window of
+200, and reports median and p95 in the status snapshot's `latency` block. The
+field itself never reaches viewers.
+
+```json
+{"type":"final","text":"Our next speaker is Dr. Vasquez.","t":1756590003.4,
+ "speech_end":1756590002.6}
 ```
 
 Roughly 4× per second. `audio_level` is 0–1 RMS over the last frame and is
@@ -294,7 +308,10 @@ object once, plus a `relay` block.
     "status_age": 0.21,
     "error": null
   },
-  "audio":   {"level": 0.27, "smoothed": 0.19, "state": "live", "age": 0.4},
+  "audio":   {"level": 0.27, "smoothed": 0.19, "peak": 0.64, "clipping": false,
+              "state": "live", "age": 0.4},
+  "latency": {"final":   {"samples": 200, "last": 1.3, "median": 1.4, "p95": 2.1},
+              "interim": {"samples": 200, "last": 0.6, "median": 0.7, "p95": 1.1}},
   "asr":     {"stream_open": true, "state": "producing", "finals": 412,
               "interims": 5133, "last_final_age": 1.8,
               "last_final_text": "Our next speaker is Dr. Vasquez."},
@@ -317,7 +334,15 @@ The relay decides what the words mean, so every status display agrees:
 
 | Field | Values |
 |---|---|
-| `audio.state` | `live`, `silent`, `stale`, `no_source` |
+| `audio.state` | `live`, `clipping`, `silent`, `stale`, `no_source` |
+
+`audio.peak` is the loudest sample in the last frame on the same 0–1 scale as
+`level`; `clipping` is true for a few seconds after a frame had a run of
+samples at full scale, and `audio.state` says `clipping` for as long as it is.
+`latency.final` and `latency.interim` are seconds from speech to relay over a
+rolling window of the last 200 lines (see `speech_end` above), or `null` when
+the running backend has never reported where its words were spoken. `median`
+is the number to quote; `p95` is the number to worry about.
 | `asr.state` | `producing`, `open_no_text`, `closed`, `no_source` |
 
 `audio.level` is the instantaneous RMS, for a meter. `audio.smoothed` is an
@@ -339,7 +364,14 @@ phones and for the ProPresenter URL.
 ## Transcript export
 
 ```
-GET /api/transcript.srt?lang=en&offset=0.8
+GET /api/transcript.srt?lang=en&offset=0.8      SubRip           application/x-subrip
+GET /api/transcript.vtt?lang=en&offset=0.8      WebVTT           text/vtt
+GET /api/transcript.txt?lang=en                 [HH:MM:SS] text  text/plain   (?timestamps=0 for bare text)
+GET /api/transcript.json?lang=en                cue list         application/json
+GET /api/transcript.csv?lang=en                 one row per cue  text/csv
+  ->  200 with Content-Disposition: attachment; filename="captions-YYYYMMDD-HHMM-<lang>.<fmt>"
+  ->  404 if nothing has been recorded for that language, or the extension is unknown
+  ->  400 if lang is not a plain language code, or offset is outside 0-10
 ```
 
 Cues follow the DCMP presentation rules: at most two lines of at most 42
@@ -348,6 +380,25 @@ window, a duration a reader can manage (17 characters per second, at least
 1.2 s, at most 7 s), and an 80 ms gap between neighbours. Translated lines
 inherit the source line's window. `offset` (seconds, 0-10) shifts every cue
 earlier to take the recognizer's own delay back out; about 0.8 suits Deepgram.
+
+All five formats are the same cue list (`relay/transcript.py`,
+`TranscriptRecorder.cues()`) rendered differently, so a cue has the same
+number, start and end in every file. The exception is `.txt`: it is a
+transcript to read, not captions to display, so it keeps one recorded line
+per line rather than the display split. `lang` defaults to the source
+language. All operator-only, like `/api/status`.
+
+The `.json` shape:
+
+```json
+{"language": "es", "zero_time": 1756590000.0, "zero_marked": true, "offset": 0.0,
+ "cue_count": 1,
+ "cues": [{"index": 1, "start": 3.5, "end": 6.9,
+           "text": "Bienvenidos a la capilla.", "utterance": "7f3a1c9e:44"}]}
+```
+
+`utterance` is the id shared between a source line and its translations (see
+`final` above), which is how a Spanish `.json` lines up with the English one.
 
 ## Changing the port
 
@@ -510,6 +561,57 @@ above is the primary control and this is the second layer. Two related rules
 keep it from failing open: the tunnel is never auto-started at boot while
 `public_hostname` is empty, and `POST /api/tunnel` refuses to clear the
 hostname while the tunnel is enabled.
+
+## Direct ProPresenter output
+
+```
+POST /api/propresenter    {"host": "127.0.0.1", "port": 1025, "surface": "stage_message"}
+POST /api/propresenter    {"surface": "message", "message": "Live Captions", "token": "Caption"}
+POST /api/propresenter    {"language": "es", "interims": true}
+POST /api/propresenter    {"enabled": true}       start delivering (probes first)
+POST /api/propresenter    {"enabled": false}      stop, clearing the surface
+POST /api/propresenter    {"probe": true}         re-check the connection now
+POST /api/propresenter    {"clear": true}         take the caption off the surface
+  ->  200 {"ok": true, "configured": true, "enabled": true, "state": "connected",
+           "host": "127.0.0.1", "port": 1025, "surface": "stage_message",
+           "message": "Live Captions", "token": "Caption", "message_id": null,
+           "language": "", "interims": false,
+           "version": {"name": "ProPresenter", "platform": "mac", "api_version": "v1"},
+           "pushed": 118, "cleared": 3, "failures": 0, "error": null,
+           "latency": {"samples": 118, "median_ms": 14, "p95_ms": 38, "last_ms": 13}}
+  ->  400 on a bad field; 401 without the operator token
+```
+
+Any subset of the settings may be sent together; they are saved into
+`[propresenter]` in event.toml. The same object appears as `propresenter` in
+every status snapshot. `state` is one of `off`, `connecting`, `connected`,
+`degraded` (recent failures, still trying), `disconnected` (ProPresenter is
+not answering; probing every few seconds; the Web Fill fallback is what is on
+screen), `unsupported` (it answered with an API version this build does not
+know). `latency` is the ProPresenter round trip only - what this output adds
+on top of the caption pipeline. The relay talks to ProPresenter's own network
+API (`GET /v1/version`, `PUT|DELETE /v1/stage/message`, `GET /v1/messages`,
+`POST /v1/message/{id}/trigger`, `GET /v1/message/{id}/clear`) and nothing
+else; see relay/propresenter.py. Pausing or ending the event (`POST
+/api/event`) clears the surface.
+
+## Wall output keys
+
+```
+POST /api/overlay-keys    {"create": "obs"}
+  ->  200 {"ok": true, "keys": [{"name": "obs", "key": "3UGo3AhKI0CU",
+                                 "url": "http://192.168.8.169:8000/wall?key=3UGo3AhKI0CU"}]}
+POST /api/overlay-keys    {"revoke": "obs"}
+  ->  200 {"ok": true, "keys": []}
+  ->  404 if no key has that name; 400 on a bad name
+```
+
+The list also appears as `overlay_keys` in every status snapshot. Keys are
+saved into `[overlay] keys` in event.toml as `"name:key"` strings. While the
+relay has any keys, `WS /ws/viewer?role=wall` without a valid `key` is
+accepted and immediately closed with code `4403`; revoking a key closes the
+live sockets that used it with the same code. With no keys, `key` is
+ignored. Phones never need one.
 
 ## Pushing captions to YouTube Live
 

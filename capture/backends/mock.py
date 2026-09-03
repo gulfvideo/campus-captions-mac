@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from pathlib import Path
 
 from .base import ASRBackend
@@ -105,10 +106,13 @@ class MockBackend(ASRBackend):
                 built = ""
                 for word in line.split():
                     built = f"{built} {word}".strip()
-                    self._emit(built, is_final=False)
+                    # The mock "speaks" each word the instant it emits it, so
+                    # the latency it reports is the pipeline's own overhead
+                    # and nothing else - what a soak test wants to see.
+                    self._emit(built, is_final=False, speech_end=time.time())
                     wobble = 1.0 + random.uniform(-self.jitter, self.jitter)
                     await asyncio.sleep(max(0.01, self.interim_ms / 1000.0 * wobble))
-                self._emit(line, is_final=True)
+                self._emit(line, is_final=True, speech_end=time.time())
                 await asyncio.sleep(self.gap_ms / 1000.0)
         except asyncio.CancelledError:
             raise

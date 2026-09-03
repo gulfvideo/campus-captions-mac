@@ -105,8 +105,11 @@ try:
     check("phone page carries a hashed script-src CSP", "script-src 'sha256-" in csp and "frame-ancestors 'self'" in csp and "'unsafe-inline'" not in csp.split("style-src")[0], csp[:160])
     import hashlib, base64, re as _re
     inline = _re.findall(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", b, _re.S)
-    digest = "'sha256-" + base64.b64encode(hashlib.sha256(inline[0]).digest()).decode() + "'"
-    check("  CSP hash matches the page's inline script", digest in csp, digest)
+    # Browsers hash the script as parsed - CR LF already normalised to LF - so
+    # that is what the header must carry, whatever line endings the checkout has.
+    as_parsed = inline[0].replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    digest = "'sha256-" + base64.b64encode(hashlib.sha256(as_parsed).digest()).decode() + "'"
+    check("  CSP hash matches the page's inline script as a browser parses it", digest in csp, digest)
     check("  nosniff / referrer / frame headers present", h.get("x-content-type-options") == "nosniff" and h.get("referrer-policy") == "no-referrer" and h.get("x-frame-options") == "SAMEORIGIN", str({k: h.get(k) for k in ("x-content-type-options", "referrer-policy", "x-frame-options")}))
     st, h, b = http("GET", "/api/site")
     check("JSON responses carry the strict CSP", h.get("content-security-policy", "").startswith("default-src 'none'"), h.get("content-security-policy", ""))
@@ -136,6 +139,10 @@ try:
     snap = json.loads(b) if st == 200 else {}
     check("GET /api/status bearer -> 200", st == 200 and "session_id" in snap, f"{st}")
     check("  youtube status carries url_hint, never url", "url" not in snap.get("youtube", {}) and "url_hint" in snap.get("youtube", {}), str(snap.get("youtube")))
+    check("  snapshot carries latency (null until a backend reports speech_end) and audio peak/clipping",
+          snap.get("latency", {}).get("final", "missing") is None
+          and "peak" in snap.get("audio", {}) and snap.get("audio", {}).get("clipping") is False,
+          f"{snap.get('latency')} {snap.get('audio')}")
     st, h, b = http("GET", "/api/transcript.srt")
     check("GET /api/transcript.srt no auth -> 401", st == 401, f"{st}")
 
@@ -254,6 +261,79 @@ try:
     st, h, b = http("GET", "/api/transcript.srt?lang=en&offset=99", headers=bearer)
     check("  offset out of range -> 400", st == 400, f"{st}")
 
+    # --- the other export formats are views of the same cue list -----------------
+    st, h, b = http("GET", "/api/transcript.vtt?lang=en&offset=0.5", headers=bearer)
+    vtt = b.decode("utf-8", "replace")
+    vtt_timings = [l for l in vtt.splitlines() if "-->" in l]
+    check("GET /api/transcript.vtt -> WEBVTT header, full-stop timestamps, same cue count",
+          st == 200 and vtt.startswith("WEBVTT\n") and vtt_timings
+          and all("." in l and "," not in l for l in vtt_timings)
+          and len(vtt_timings) == srt.count("-->") and "text/vtt" in h.get("content-type", ""),
+          f"{st} {h.get('content-type')} {vtt[:40]!r}")
+    st, h, b = http("GET", "/api/transcript.txt?lang=en&offset=0.5", headers=bearer)
+    txt = b.decode("utf-8", "replace")
+    check("GET /api/transcript.txt -> one [HH:MM:SS] line per recorded caption, unsplit",
+          st == 200 and txt.startswith("[00:00:") and txt.count("\n") == 1 and "science building" in txt,
+          f"{st} {txt[:60]!r}")
+    st, h, b = http("GET", "/api/transcript.txt?lang=en&offset=0.5&timestamps=0", headers=bearer)
+    check("  ?timestamps=0 -> bare text", st == 200 and b.decode("utf-8", "replace").startswith("We expect"), f"{st}")
+    st, h, b = http("GET", "/api/transcript.json?lang=en&offset=0.5", headers=bearer)
+    try:
+        payload = json.loads(b)
+    except ValueError:
+        payload = {}
+    check("GET /api/transcript.json -> cue list with start/end/text/utterance",
+          st == 200 and payload.get("language") == "en" and payload.get("cue_count") == srt.count("-->")
+          and {"index", "start", "end", "text", "utterance"} <= set((payload.get("cues") or [{}])[0]),
+          f"{st} {str(payload)[:80]}")
+    st, h, b = http("GET", "/api/transcript.csv?lang=en&offset=0.5", headers=bearer)
+    csv_rows = b.decode("utf-8", "replace").splitlines()
+    check("GET /api/transcript.csv -> header plus one row per cue",
+          st == 200 and csv_rows[0].startswith("index,start,end,start_seconds") and len(csv_rows) == 1 + srt.count("-->"),
+          f"{st} {csv_rows[:1]}")
+    st, h, b = http("GET", "/api/transcript.docx?lang=en", headers=bearer)
+    check("  unknown export format -> 404", st == 404, f"{st}")
+    st, h, b = http("GET", "/api/transcript.vtt")
+    check("  .vtt without auth -> 401", st == 401, f"{st}")
+
+    # --- direct ProPresenter output, against the fake API ------------------------
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from fake_propresenter import FakeProPresenter
+    with FakeProPresenter() as fake:
+        st, h, b = http("POST", "/api/propresenter", body={"host": "127.0.0.1", "port": fake.port, "surface": "stage_message"}, headers=bearer)
+        check("POST /api/propresenter settings -> 200, saved, still off", st == 200 and json.loads(b).get("state") == "off" and json.loads(b).get("port") == fake.port, f"{st} {b[:120]}")
+        st, h, b = http("POST", "/api/propresenter", body={"enabled": True}, headers=bearer)
+        out = json.loads(b) if st == 200 else {}
+        check("POST /api/propresenter enabled -> connected with version", st == 200 and out.get("state") == "connected" and (out.get("version") or {}).get("api_version") == "v1", f"{st} {out.get('state')} {out.get('error')}")
+        http("POST", "/api/control", body={"action": "caption", "text": "[Music]"}, headers=bearer)
+        time.sleep(0.6)
+        check("  an operator caption reached the stage message", fake.stage_message == "[Music]", repr(fake.stage_message))
+        http("POST", "/api/event", body={"state": "paused"}, headers=bearer)
+        time.sleep(0.6)
+        check("  pausing the event cleared the stage message", fake.stage_message is None, repr(fake.stage_message))
+        http("POST", "/api/event", body={"state": "live"}, headers=bearer)
+        st, h, b = http("POST", "/api/propresenter", body={"surface": "message", "message": "Live Captions", "token": "Caption", "probe": True}, headers=bearer)
+        out = json.loads(b) if st == 200 else {}
+        check("  switching to the Message surface resolves the Message by name", st == 200 and out.get("message_id") == "11111111-2222-3333-4444-555555555555", f"{st} {out.get('state')} {out.get('error')}")
+        st, h, b = http("POST", "/api/propresenter", body={"surface": "nonsense"}, headers=bearer)
+        check("  bad surface -> 400", st == 400, f"{st}")
+        st, h, b = http("POST", "/api/propresenter", body={"enabled": True})
+        check("  without auth -> 401", st == 401, f"{st}")
+        st, h, b = http("GET", "/api/status", headers=bearer)
+        snap = json.loads(b)
+        check("  status snapshot carries propresenter and overlay_keys, no caption text", snap.get("propresenter", {}).get("state") == "connected" and snap.get("overlay_keys") == [] and "[Music]" not in json.dumps(snap.get("propresenter")), str(snap.get("propresenter"))[:120])
+        http("POST", "/api/propresenter", body={"enabled": False}, headers=bearer)
+
+    # --- wall output keys -------------------------------------------------------
+    st, h, b = http("POST", "/api/overlay-keys", body={"create": "obs"}, headers=bearer)
+    keys = json.loads(b).get("keys", []) if st == 200 else []
+    check("POST /api/overlay-keys create -> 200 with a URL carrying the key", st == 200 and len(keys) == 1 and keys[0]["name"] == "obs" and ("?key=" + keys[0]["key"]) in keys[0]["url"], f"{st} {b[:160]}")
+    st, h, b = http("POST", "/api/overlay-keys", body={"create": "bad/name"}, headers=bearer)
+    check("  bad key name -> 400", st == 400, f"{st}")
+    st, h, b = http("POST", "/api/overlay-keys", body={"revoke": "nope"}, headers=bearer)
+    check("  revoking an unknown key -> 404", st == 404, f"{st}")
+    OBS_KEY = keys[0]["key"] if keys else ""
+
     # --- websockets -------------------------------------------------------------
     async def ws_checks():
         async def try_ws(path, **kw):
@@ -284,6 +364,39 @@ try:
         check("WS /ws/status with cookie but foreign Origin rejected", r[0] == "rejected", str(r))
         r = await try_ws("/ws/status", additional_headers={"Cookie": f"captions_operator={OPTOK}"}, origin=f"http://127.0.0.1:{PORT}")
         check("WS /ws/status with cookie and own Origin -> snapshot", r[0] == "open" and r[1] and "session_id" in r[1], str(r)[:120])
+        # wall output keys gate the wall only; a refused wall is accepted then closed 4403
+        async def close_code(path):
+            try:
+                async with websockets.connect(f"ws://127.0.0.1:{PORT}{path}", open_timeout=5) as ws:
+                    try:
+                        first = await asyncio.wait_for(ws.recv(), timeout=3)
+                        return "open", first
+                    except websockets.exceptions.ConnectionClosed as e:
+                        return "closed", e.rcvd.code if e.rcvd else None
+            except Exception as e:
+                return "error", repr(e)
+        r = await close_code("/ws/viewer?role=wall")
+        check("WS wall without a key while keys exist -> closed 4403", r == ("closed", 4403), str(r))
+        r = await close_code("/ws/viewer?role=wall&key=wrong")
+        check("WS wall with an unknown key -> closed 4403", r == ("closed", 4403), str(r))
+        r = await close_code(f"/ws/viewer?role=wall&key={OBS_KEY}")
+        check("WS wall with the obs key -> hello", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
+        r = await close_code("/ws/viewer?role=phone")
+        check("WS phone needs no key", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
+        async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/viewer?role=wall&key={OBS_KEY}") as ws:
+            await ws.recv()   # hello
+            http("POST", "/api/overlay-keys", body={"revoke": "obs"}, headers=bearer)
+            try:
+                while True:
+                    await asyncio.wait_for(ws.recv(), timeout=3)
+                revoked = None
+            except websockets.exceptions.ConnectionClosed as e:
+                revoked = e.rcvd.code if e.rcvd else None
+            except asyncio.TimeoutError:
+                revoked = "still open"
+        check("  revoking the key closes the live wall with 4403", revoked == 4403, str(revoked))
+        r = await close_code("/ws/viewer?role=wall")
+        check("  with no keys left the plain wall connects again", r[0] == "open" and '"hello"' in (r[1] or ""), str(r)[:100])
         # oversized frames and chatty viewers are closed, not parsed
         async with websockets.connect(f"ws://127.0.0.1:{PORT}/ws/source", additional_headers={"Authorization": f"Bearer {SRCTOK}"}, max_size=None) as ws:
             await ws.send(json.dumps({"type": "final", "text": "y" * 70000}))

@@ -166,6 +166,11 @@
     padding: 10px 12px;
   }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
+  /* Transcript downloads: one row per recorded language, a link per format. */
+  .export-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-top: 8px; font-size: 14px; }
+  .export-lang { color: var(--text); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .export-link { color: #7fb2f0; text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .export-link:hover, .export-link:focus-visible { text-decoration: underline; }
   .disclosure-header .badge.paused { color: var(--warn); }
 
   #caption-row input[type=text] {
@@ -356,6 +361,7 @@
 
   var AUDIO = {
     live:      ['ok',   'Receiving'],
+    clipping:  ['warn', 'Clipping'],
     silent:    ['warn', 'Silent'],
     stale:     ['bad',  'Capture stalled'],
     no_source: ['bad',  'No capture client']
@@ -477,15 +483,27 @@
       none.textContent = 'Nothing recorded yet.';
       container.appendChild(none);
     } else {
+      // One row per recorded language, one link per export format. The
+      // format list mirrors relay/transcript.py's FORMATS. .srt and .vtt
+      // are for a video's caption track, .txt is the readable transcript,
+      // .json and .csv carry the timing as data.
+      var FORMATS = ['srt', 'vtt', 'txt', 'json', 'csv'];
       langs.forEach(function (lang) {
-        var a = document.createElement('a');
-        a.href = '/api/transcript.srt?lang=' + encodeURIComponent(lang);
-        a.textContent = 'Download .srt (' + lang + ', ' + t.lines[lang] + ')';
-        a.style.color = '#7fb2f0';
-        a.style.fontSize = '14px';
-        a.style.textDecoration = 'none';
-        a.style.marginRight = '16px';
-        container.appendChild(a);
+        var row = document.createElement('div');
+        row.className = 'export-row';
+        var label = document.createElement('span');
+        label.className = 'export-lang';
+        label.textContent = lang + ' · ' + t.lines[lang] + ' line' + (t.lines[lang] === 1 ? '' : 's');
+        row.appendChild(label);
+        FORMATS.forEach(function (fmt) {
+          var a = document.createElement('a');
+          a.href = '/api/transcript.' + fmt + '?lang=' + encodeURIComponent(lang);
+          a.textContent = '.' + fmt;
+          a.className = 'export-link';
+          a.setAttribute('aria-label', 'Download .' + fmt + ' for ' + lang);
+          row.appendChild(a);
+        });
+        container.appendChild(row);
       });
     }
   }
@@ -524,27 +542,43 @@
     renderRecording(s.transcript);
 
     var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
+    var audioSub;
+    if (s.audio.state === 'clipping') {
+      audioSub = 'Input is too hot — turn down the gain on the board or interface';
+    } else if (s.source.device) {
+      audioSub = s.source.device + '  ·  peak ' + ago(s.audio.age);
+    } else {
+      audioSub = s.source.connected ? 'no device reported' : 'start the capture client';
+    }
     setCard('c-audio', a[0],
       { id: 'audio-state', text: a[1] },
-      { id: 'audio-sub', text: s.source.device
-          ? s.source.device + '  ·  peak ' + ago(s.audio.age)
-          : (s.source.connected ? 'no device reported' : 'start the capture client') });
+      { id: 'audio-sub', text: audioSub });
 
     // Perceptual-ish scaling: a linear RMS bar sits near zero for normal speech.
     // The fill uses the smoothed level so it does not collapse between words;
-    // the tick is the instantaneous peak, held briefly, so transients show.
+    // the tick is the true sample peak (falls back to RMS from an older
+    // capture client), held briefly, so transients and clipping show.
     var smoothed = (s.audio.smoothed === undefined) ? s.audio.level : s.audio.smoothed;
     var pct = Math.min(100, Math.sqrt(smoothed) * 118);
-    var inst = Math.min(100, Math.sqrt(s.audio.level) * 118);
+    var peakSample = (s.audio.peak === undefined) ? s.audio.level : s.audio.peak;
+    var inst = Math.min(100, Math.sqrt(peakSample) * 100);
     $('meter-fill').style.width = pct.toFixed(1) + '%';
     var now = Date.now();
     if (inst >= peakHold || (now - peakAt) > 2500) { peakHold = inst; peakAt = now; }
     $('meter-peak').style.left = peakHold.toFixed(1) + '%';
 
     var r = ASR[s.asr.state] || ['bad', s.asr.state];
+    // Latency is speech-to-relay, from the backend's own word timing. A
+    // backend that cannot say when words were spoken gets "not measured"
+    // rather than a made-up number.
+    var lat = (s.latency || {}).final;
+    var latText = lat
+      ? 'latency ' + lat.median.toFixed(1) + 's (p95 ' + lat.p95.toFixed(1) + 's)'
+      : 'latency not measured';
     setCard('c-asr', r[0],
       { id: 'asr-state', text: r[1] },
-      { id: 'asr-sub', text: s.asr.finals + ' lines  ·  last ' + ago(s.asr.last_final_age) });
+      { id: 'asr-sub', text: s.asr.finals + ' lines  ·  last ' + ago(s.asr.last_final_age) +
+          '  ·  ' + latText });
 
     var open = s.asr.stream_open;
     var billed = s.source.backend === 'deepgram';

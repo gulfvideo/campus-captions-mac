@@ -245,10 +245,12 @@ a password:
 | `GET /api/status` | one snapshot as JSON, plus the relay's LAN address (operator-only) |
 | `GET /api/site` | public metadata: base URL, phone URL, available languages |
 | `GET /api/qr.svg` | the phone URL as a server-rendered QR code, for `/qr` |
-| `GET /api/transcript.srt` | recorded captions as SubRip, `?lang=` (operator-only) |
+| `GET /api/transcript.{srt,vtt,txt,json,csv}` | recorded captions as a file, `?lang=` and `?offset=` (operator-only); `.txt` takes `?timestamps=0` |
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
+| `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
+| `POST /api/overlay-keys` | `{"create": "obs"}` / `{"revoke": "obs"}` - wall output keys, see below |
 | `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |
 
 Pages are served with `no-store`: ProPresenter can hold a page for a whole
@@ -307,6 +309,44 @@ joins mid-event and picks Spanish replays *Spanish* history, not English.
 with a working translator are ever advertised - listing a language with no
 translator behind it would put a dead choice in front of the audience.
 
+## Direct ProPresenter output
+
+`relay/propresenter.py` pushes captions into a local ProPresenter over its
+network API (Settings → Network → Enable Network), the same relay-local
+output-endpoint pattern as the YouTube pusher: a Settings page panel, an
+enable toggle, health states, finals only by default. Two surfaces, one
+config key apart:
+
+| `surface` | ProPresenter API calls | What the church sets up |
+|---|---|---|
+| `stage_message` | `PUT /v1/stage/message` (text), `DELETE` to clear | a stage layout with a Stage Message element on the screen that should show captions |
+| `message` | `GET /v1/messages` to find the Message by name, `POST /v1/message/{id}/trigger` with one token filled, `GET .../clear` | a Message called (by default) "Live Captions" with one text token called "Caption"; its theme decides the look |
+
+Which one is right is the N-04 spike's question, answered on a real
+ProPresenter - `docs/PROPRESENTER_SPIKE.md` is the test plan. Nothing else in
+ProPresenter is ever touched: no slides, playlists, props or macros.
+
+Behaviour worth knowing: interims are off by default and, when on, only the
+newest pending one is ever delivered (a slot, not a queue). Every API call is
+timed and the panel shows the median and p95 round trip - the N-06 "adds no
+more than 500 ms at p95" figure, measured. Three consecutive failures mark it
+`disconnected`; it then probes every few seconds and resumes on its own.
+Pausing or ending the event, an operator Clear, and Disable all clear the
+caption surface. Phones, translation, the recorder and YouTube are untouched
+by any of it - a dead ProPresenter costs one output, not the service.
+`tests/fake_propresenter.py` imitates the API for the unit tests, the smoke
+test, and a local soak (`python tests/fake_propresenter.py 1025`).
+
+## Wall output keys
+
+`POST /api/overlay-keys` creates one revocable key per browser-source output
+("obs", "propresenter", "lobby"). While any key exists, `/ws/viewer?role=wall`
+without a valid `?key=` is accepted and closed with code 4403, and revoking a
+key closes that output's live sockets at once - so a forgotten OBS scene or an
+old prop can be switched off without editing every URL. With no keys the wall
+is open, as before; phones are never gated. The tuner offers existing keys
+and puts the chosen one into the URL it builds.
+
 ## The QR page and public site metadata
 
 `/qr` is a full-screen, ProPresenter-friendly page showing a QR code to the
@@ -334,7 +374,23 @@ the *video*, not the start of the world, so lines spoken before the mark are
 dropped from the export (they stay in the underlying record) rather than all
 piling up at `00:00:00`. `GET /api/transcript.srt?lang=es` downloads one
 language's file; the status page's "Recording & transcript" panel links to
-whatever's been recorded so far.
+whatever's been recorded so far, in every format.
+
+The same record exports as five file types, all from one cue list
+(`TranscriptRecorder.cues()` does the timing and display-splitting once; each
+`to_*` only formats, so a cue has the same number and times in every file):
+
+| Extension | For |
+|---|---|
+| `.srt` | SubRip - YouTube, Vimeo, most editors |
+| `.vtt` | WebVTT - HTML5 `<track>`, HLS sidecars |
+| `.txt` | readable transcript, one recorded line per line (not display-split), `[HH:MM:SS]` prefixed; `?timestamps=0` for bare text |
+| `.json` | cues with start/end seconds, text, and the utterance id shared with translations |
+| `.csv` | one row per cue, timestamps both formatted and as seconds |
+
+`relay/transcript.py`'s `FORMATS` table is the single list of what exists;
+the route, the status page links and this table follow it. `?offset=` applies
+to all of them.
 
 `tools/youtube_upload.py` is a separate, optional CLI - the relay never
 imports it - that uploads a `.srt` to a video's caption track via the YouTube
@@ -388,6 +444,8 @@ the field with no rebuild. The bare URL with no parameters works.
 | `text` | — | render static text, open no socket (framing mode) |
 | `soak` | — | synthetic captions, e.g. `?soak=1`, `?soak=6` for six times speed |
 | `relay` | — | override the relay host, e.g. `relay=10.0.4.12:8000` |
+| `lang` | — | which caption stream to show, e.g. `lang=es`; unset means the room's language. The tuner has a dropdown for it |
+| `key` | — | output key, required once any key exists (Settings → Wall output keys); the tuner fills it in |
 
 All sizing is in vh/vw so the graphic scales to whatever the LED processor is
 actually running.

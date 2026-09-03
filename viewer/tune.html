@@ -131,6 +131,14 @@
       </div>
       <div id="stage" class="stage"><iframe id="frame" title="wall preview"></iframe></div>
       <div class="row" style="margin-top:12px">
+        <label for="lang">Language</label>
+        <select id="lang" title="Which caption stream this wall shows">
+          <option value="">Room language</option>
+        </select>
+        <label for="okey">Output key</label>
+        <select id="okey" title="Which output this URL belongs to - revoke it from Settings">
+          <option value="">None</option>
+        </select>
         <label for="sample">Sample text</label>
         <input type="text" id="sample" style="flex:1;min-width:220px"
                value="Our next speaker is Doctor Amara Vasquez">
@@ -229,6 +237,11 @@
       hint: 'seconds of no new text; 0 never fades. Two full rows take ~8 s to read, and prayers and readings pause longer' }
   ];
   var COLORS = { color: '#ffffff', bar: '#000000' };
+  var LANG_NAMES = {
+    en: 'English', es: 'Español', pt: 'Português', fr: 'Français', de: 'Deutsch',
+    it: 'Italiano', ko: '한국어', ja: '日本語', ar: 'العربية', zh: '中文',
+    'zh-Hans': '简体中文', 'zh-Hant': '繁體中文', vi: 'Tiếng Việt', ru: 'Русский'
+  };
   var ALIGN_DEFAULT = 'left';
   var FONT_DEFAULT = 'default';
   var STORE_KEY = 'cc.tune.state';
@@ -298,6 +311,8 @@
     SPEC.forEach(function (s) { out[s.key] = s.def; });
     out.color = COLORS.color;
     out.bar = COLORS.bar;
+    out.lang = '';                 // '' = the room's language, left out of the URL
+    out.key = '';                  // '' = no output key (only valid while none exist)
     out.align = ALIGN_DEFAULT;
     out.font = FONT_DEFAULT;
     return out;
@@ -334,6 +349,15 @@
     }
     if (state.font !== FONT_DEFAULT) {
       parts.push('font=' + state.font);
+    }
+    if (state.lang) {
+      parts.push('lang=' + encodeURIComponent(state.lang));
+    }
+    // The key goes on the final URL only, never on the preview: the preview
+    // is same-origin and would only be refused if keys exist and this one
+    // were stale, which the list below already prevents.
+    if (state.key && !includeSample) {
+      parts.push('key=' + encodeURIComponent(state.key));
     }
     if (includeSample) {
       parts.push('text=' + encodeURIComponent(sampleBox.value || ' '));
@@ -423,8 +447,25 @@
     });
     $('color').value = state.color;
     $('bar').value = state.bar;
+    $('lang').value = state.lang || '';
+    $('okey').value = state.key || '';
     $('align').value = state.align;
     $('font').value = state.font;
+  }
+
+  // Output keys are created and revoked on the Settings page. This offers
+  // only the ones that exist, so a URL is never built with a revoked key.
+  function loadOutputKeys(keys) {
+    var sel = $('okey');
+    keys = keys || [];
+    sel.innerHTML = '';
+    sel.appendChild(new Option(keys.length ? 'None (refused while keys exist)' : 'None', ''));
+    keys.forEach(function (k) { sel.appendChild(new Option(k.name, k.key)); });
+    var valid = keys.some(function (k) { return k.key === state.key; });
+    if (state.key && !valid) { state.key = ''; save(); }
+    if (!state.key && keys.length) { state.key = keys[0].key; save(); }
+    sel.value = state.key || '';
+    urlBox.value = finalUrl();
   }
 
   // ---- presets ---------------------------------------------------------
@@ -473,6 +514,12 @@
     $('bgmode').addEventListener('change', function () { stage.className = this.value; });
     sampleBox.addEventListener('input', scheduleRebuild);
 
+    $('lang').addEventListener('change', function () {
+      state.lang = this.value; save(); rebuild();
+    });
+    $('okey').addEventListener('change', function () {
+      state.key = this.value; save(); rebuild();
+    });
     ['color', 'bar'].forEach(function (key) {
       $(key).addEventListener('input', function () {
         state[key] = this.value; save(); scheduleRebuild();
@@ -559,6 +606,20 @@
     refreshPresetList();
     rebuild();
 
+    // The language list comes from the relay: only streams that exist are
+    // offered, so a wall is never pointed at a language nobody is translating.
+    fetch('/api/site').then(function (r) { return r.json(); }).then(function (site) {
+      var sel = $('lang'), source = site.source || 'en';
+      sel.innerHTML = '';
+      sel.appendChild(new Option('Room language (' + (LANG_NAMES[source] || source) + ')', ''));
+      (site.available || []).forEach(function (code) {
+        if (code === source) return;
+        sel.appendChild(new Option(LANG_NAMES[code] || code, code));
+      });
+      sel.value = state.lang || '';
+      if (sel.value !== (state.lang || '')) { state.lang = ''; save(); rebuild(); }
+    })['catch'](function () {});
+
     // The URL must point at the address ProPresenter will use, not at
     // localhost, whenever the relay knows its own LAN address.
     fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
@@ -566,6 +627,7 @@
         relayBase = 'http://' + s.relay.ip + ':' + s.relay.port;
         urlBox.value = finalUrl();
       }
+      if (s) loadOutputKeys(s.overlay_keys);
     })['catch'](function () {});
   }
 
