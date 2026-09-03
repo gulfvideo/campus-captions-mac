@@ -69,3 +69,7 @@ desktop.ini
 
 # ---- claude code -------------------------------------------------------
 .claude/settings.local.json
+
+# Node dependencies for the Companion module. package-lock.json IS committed,
+# so an install is reproducible; the installed tree is not.
+node_modules/

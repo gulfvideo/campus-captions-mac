@@ -65,6 +65,7 @@ export class StatusSocket {
 	#reconnectTimer = null
 	#attempts = 0
 	#closed = false
+	#lastError = null
 
 	constructor(config, { onSnapshot, onStateChange }) {
 		this.#config = config
