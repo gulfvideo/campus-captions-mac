@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import audio as audio_mod
 from . import config as config_mod
+from . import host as host_mod
 from .backends import BACKENDS, create as create_backend
 from .relay_client import RelayClient
 
@@ -39,6 +40,8 @@ class CaptureApp:
         self.input = None
         self.sample_rate = audio_mod.PREFERRED_RATE
         self.audio_error: str | None = None
+        self.device_busy = False            # another program holds the input (preflight)
+        self.host = host_mod.HostMonitor()
         self.audio_devices: list[dict] = []
         self._pending: list[tuple[str, dict]] = []  # handled in the main loop
 
@@ -85,6 +88,10 @@ class CaptureApp:
             replacement.start()
         except Exception as exc:
             message = f"cannot open {device.name}: {exc}"
+            hint = audio_mod.device_busy_hint(exc)
+            self.device_busy = bool(hint)
+            if hint:
+                message += f" - {hint}"
             try:
                 if old_input:
                     old_input.start()
@@ -104,6 +111,7 @@ class CaptureApp:
         self.sample_rate = device.sample_rate
         self.cfg.device = str(device.index)
         self.audio_error = None
+        self.device_busy = False
         self.refresh_audio_devices()
         print(f"[capture] input changed: {device}")
         if was_open:
@@ -262,10 +270,20 @@ class CaptureApp:
                 "audio_devices": self.audio_devices,
                 "mask_profanity": self.backend.mask_profanity,
                 "blocked_word_count": self.backend.blocked_word_count,
+                "device_busy": self.device_busy,
+                "host": self.host.snapshot(),
                 "error": error,
             })
             await self._apply_control()
             await asyncio.sleep(1.0 / STATUS_HZ)
+
+    async def pump_host(self) -> None:
+        """CPU and memory of this machine, for the preflight. Cheap enough to
+        keep running through the event, so the status page can also say
+        when the computer gets busy mid-service."""
+        while True:
+            self.host.sample()
+            await asyncio.sleep(host_mod.SAMPLE_SECONDS)
 
     # -- lifecycle -------------------------------------------------------
 
@@ -303,6 +321,10 @@ class CaptureApp:
                 failure = exc
 
         self.audio_error = f"{failure}"
+        hint = audio_mod.device_busy_hint(failure) if failure is not None else ""
+        self.device_busy = bool(hint)
+        if hint:
+            self.audio_error += f" - {hint}"
         if self.cfg.backend == "deepgram":
             # Deepgram with no audio would bill for silence. Refuse.
             raise SystemExit(
@@ -323,6 +345,7 @@ class CaptureApp:
             asyncio.create_task(self.pump_events()),
             asyncio.create_task(self.pump_status()),
             asyncio.create_task(self.pump_mock_clears()),
+            asyncio.create_task(self.pump_host()),
         ]
         if self.cfg.start_open or self.args.open:
             await asyncio.sleep(0.6)          # let the relay link come up first

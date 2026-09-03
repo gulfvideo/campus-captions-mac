@@ -33,6 +33,30 @@ LATENCY_MAX_SANE = 60.0
 AUDIO_EMA_ALPHA = 0.25
 
 
+def _clean_host(raw: dict) -> dict:
+    """The capture client's host block, with only the fields and types the
+    preflight reads - anything else a client sends is dropped, not stored."""
+    def num(value):
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    busiest = []
+    for item in (raw.get("busiest") or [])[:6]:
+        if isinstance(item, dict) and isinstance(item.get("name"), str):
+            pct = num(item.get("cpu_percent"))
+            if pct is not None:
+                busiest.append({"name": item["name"][:48], "cpu_percent": round(pct, 1)})
+    avail = num(raw.get("mem_available_mb"))
+    return {
+        "available": bool(raw.get("available")),
+        "cpu_percent": num(raw.get("cpu_percent")),
+        "cpu_count": int(raw["cpu_count"]) if isinstance(raw.get("cpu_count"), int) else None,
+        "mem_percent": num(raw.get("mem_percent")),
+        "mem_available_mb": int(avail) if avail is not None else None,
+        "own_cpu_percent": num(raw.get("own_cpu_percent")),
+        "busiest": busiest,
+        "age": num(raw.get("age")),
+    }
+
+
 @dataclass
 class RelayState:
     session_id: str
@@ -46,6 +70,8 @@ class RelayState:
     has_deepgram_key: bool = False
     mask_profanity: bool = False
     blocked_word_count: int = 0
+    device_busy: bool = False               # another program holds the audio input
+    host: dict = field(default_factory=dict)  # capture machine's CPU/memory, see capture/host.py
     device: str | None = None
     device_index: int | None = None
     audio_devices: list[dict] = field(default_factory=list)
@@ -93,6 +119,10 @@ class RelayState:
         count = msg.get("blocked_word_count")
         if isinstance(count, int) and not isinstance(count, bool):
             self.blocked_word_count = max(0, count)
+        self.device_busy = bool(msg.get("device_busy"))
+        host = msg.get("host")
+        if isinstance(host, dict):
+            self.host = _clean_host(host)
         for key in ("backend", "device"):
             val = msg.get(key)
             if isinstance(val, str):
@@ -233,10 +263,12 @@ class RelayState:
                 "blocked_word_count": self.blocked_word_count,
                 "device": self.device,
                 "device_index": self.device_index,
+                "device_busy": self.device_busy,
                 "audio_devices": self.audio_devices,
                 "status_age": self._age(self.last_status_at, now),
                 "error": self.error,
             },
+            "host": dict(self.host),
             "audio": {
                 "level": round(self.audio_level, 4),
                 "smoothed": round(self.audio_ema, 4),

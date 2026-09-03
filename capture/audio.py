@@ -81,6 +81,32 @@ LID_CLOSED_HINT = (
 )
 BUILT_IN_MIC_MARKERS = ("macbook", "built-in", "imac ")
 
+# PortAudio's ways of saying "the device exists but you cannot have it right
+# now". On Windows that is almost always another program holding the input in
+# WASAPI exclusive mode (OBS or vMix with "exclusive" ticked, a DAW); on macOS
+# it is rarer but a virtual device's owner can do it. The preflight (N-02,
+# N-10) turns this into "another program has the input" with the fix, rather
+# than a PortAudio error code.
+DEVICE_BUSY_MARKERS = (
+    "unanticipated host error", "-9999", "device unavailable", "-9985",
+    "in use", "exclusive", "access denied", "-9996",
+)
+
+
+def device_busy_hint(exc: BaseException | str) -> str:
+    """A plain sentence when an open failure looks like the device being held
+    by another program, else ""."""
+    text = str(exc).lower()
+    if not any(marker in text for marker in DEVICE_BUSY_MARKERS):
+        return ""
+    if sys.platform == "win32":
+        return ("another program appears to have this input open in exclusive mode. "
+                "Windows: Settings > System > Sound > the device > Advanced, untick "
+                "\"Allow applications to take exclusive control\", or untick exclusive "
+                "mode in OBS/vMix - or pick a different input.")
+    return ("another program appears to have this input open. Quit the program "
+            "that is using it, or pick a different input.")
+
 
 @dataclass
 class DeviceChoice:

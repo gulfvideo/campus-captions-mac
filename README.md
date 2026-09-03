@@ -249,6 +249,7 @@ a password:
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
+| `POST /api/preflight` | run the preflight check now: a verdict plus findings with what to do about each, see below |
 | `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
 | `POST /api/overlay-keys` | `{"create": "obs"}` / `{"revoke": "obs"}` - wall output keys, see below |
 | `POST /api/youtube-captions` | `{"enabled": true}` - relay-local, see below |
@@ -308,6 +309,28 @@ joins mid-event and picks Spanish replays *Spanish* history, not English.
 (hidden unless there are ≥2 real languages) does this for you. Only languages
 with a working translator are ever advertised - listing a language with no
 translator behind it would put a dead choice in front of the audience.
+
+## The preflight check
+
+`relay/preflight.py` turns what the relay already knows - plus a few live
+network probes - into a short list of plain-language findings, each with what
+to do about it, and one verdict: **ready**, **ready with warnings**, or **not
+ready** (which becomes "another computer or an appliance is recommended" when
+the computer itself is the problem). The status page's *Preflight check* panel
+runs it (`POST /api/preflight`) and shows the last report; the report also
+rides in every status snapshot as `preflight`.
+
+What it looks at: the capture client and its audio input (including "another
+program has the device", which the capture client detects from PortAudio's
+open failure and reports as `device_busy`), the transcription backend, key
+and stream, the caption latency figures, the caption computer's CPU and
+memory and its busiest programs (`capture/host.py`, via psutil, reported as
+`host` in every status message), a TLS handshake to each service in use
+(Deepgram, Azure Translator, YouTube), and whether a wall, a phone and
+ProPresenter are actually connected. The thresholds are named at the top of
+the module; `docs/HOST-COMPATIBILITY.md` is where a venue's results go. The
+evaluation is a pure function of a snapshot, so `tests/test_preflight.py`
+covers every verdict without a relay.
 
 ## Direct ProPresenter output
 

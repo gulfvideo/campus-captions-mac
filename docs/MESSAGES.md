@@ -400,6 +400,39 @@ The `.json` shape:
 `utterance` is the id shared between a source line and its translations (see
 `final` above), which is how a Spanish `.json` lines up with the English one.
 
+## Preflight check
+
+```
+POST /api/preflight    {}
+  ->  200 {"ok": true, "verdict": "warnings",
+           "headline": "Ready, with 2 things worth a look before the event.",
+           "counts": {"fail": 0, "warn": 2, "ok": 6},
+           "checks": [{"id": "wall", "title": "Wall / overlay", "status": "warn",
+                       "detail": "No wall view is connected.",
+                       "action": "Open the wall URL in ProPresenter, OBS or vMix ..."},
+                      ...],
+           "probes": {"api.deepgram.com": {"ok": 3, "failed": 0, "median_ms": 61, "worst_ms": 74, "error": null}},
+           "ran_at": 1756590200.0, "duration_ms": 412}
+  ->  401 without the operator token
+```
+
+`verdict` is `ready`, `warnings` or `not_ready`; `headline` is the sentence to
+show. Each check has an `id` (stable, for tests and tooling), a `title`, a
+`status` of `ok` / `warn` / `fail` / `skip`, a `detail` (what was found) and
+usually an `action` (what to do). Failures sort first. The same report is
+carried as `preflight` in every status snapshot until the next run. Takes a
+few seconds: it does a TLS handshake, three times, to each service the setup
+uses. Changes nothing.
+
+The capture client feeds two of the inputs in its `status` message:
+`host` - `{"available": true, "cpu_percent": 22.0, "cpu_count": 8,
+"mem_percent": 61.0, "mem_available_mb": 6100, "own_cpu_percent": 3.0,
+"busiest": [{"name": "ProPresenter", "cpu_percent": 12.0}], "age": 1.2}` -
+sampled every two seconds with psutil (`available: false` and nulls when it
+is not installed), and `device_busy`, true when opening the audio input
+failed in a way that means another program holds it. Both appear in the
+status snapshot as `host` and `source.device_busy`.
+
 ## Changing the port
 
 ```

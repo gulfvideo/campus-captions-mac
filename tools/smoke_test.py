@@ -346,6 +346,32 @@ try:
     check("  revoking an unknown key -> 404", st == 404, f"{st}")
     OBS_KEY = keys[0]["key"] if keys else ""
 
+    # --- preflight ------------------------------------------------------------------
+    st, h, b = http("POST", "/api/preflight", body={})
+    check("POST /api/preflight without auth -> 401", st == 401, f"{st}")
+    st, h, b = http("POST", "/api/preflight", body={}, headers=bearer)
+    report = json.loads(b) if st == 200 else {}
+    ids = [c["id"] for c in report.get("checks", [])]
+    statuses = {c["id"]: c["status"] for c in report.get("checks", [])}
+    check("POST /api/preflight -> 200 with a verdict and findings",
+          st == 200 and report.get("verdict") in ("ready", "warnings", "not_ready") and report.get("headline") and ids,
+          f"{st} {str(report)[:160]}")
+    check("  no capture client -> not ready, capture check fails first, with an action",
+          report.get("verdict") == "not_ready" and ids and ids[0] == "capture" and statuses.get("capture") == "fail"
+          and report["checks"][0].get("action"),
+          f"{report.get('verdict')} {ids[:3]}")
+    check("  no wall or phone connected -> warnings with what to open",
+          statuses.get("wall") == "warn" and statuses.get("phones") == "warn", str(statuses))
+    check("  every finding has title, status, detail",
+          all(c.get("title") and c.get("status") in ("ok", "warn", "fail", "skip") and c.get("detail") for c in report.get("checks", [])),
+          str(report.get("checks"))[:200])
+    st, h, b = http("GET", "/api/status", headers=bearer)
+    snap = json.loads(b)
+    check("  last report is carried in the status snapshot",
+          (snap.get("preflight") or {}).get("verdict") == report.get("verdict"), str(snap.get("preflight"))[:120])
+    check("  snapshot carries the capture host block (empty without a client) and device_busy",
+          isinstance(snap.get("host"), dict) and snap.get("source", {}).get("device_busy") is False, str(snap.get("host")))
+
     # --- websockets -------------------------------------------------------------
     async def ws_checks():
         async def try_ws(path, **kw):
