@@ -201,7 +201,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     propresenter = propresenter_module.ProPresenterOutput(
         host=cfg.pp_host, port=cfg.pp_port, surface=cfg.pp_surface,
         message=cfg.pp_message, token=cfg.pp_token, language=cfg.pp_language,
-        interims=cfg.pp_interims, lines=cfg.pp_lines,
+        reveal=cfg.pp_reveal, lines=cfg.pp_lines,
         chars_per_line=cfg.pp_chars_per_line, start_enabled=cfg.pp_start_enabled)
 
     last_preflight: dict = {"report": None}
@@ -1120,7 +1120,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         switch the direct ProPresenter output (relay/propresenter.py).
 
         Any subset of {"host", "port", "surface", "message", "token",
-        "language", "interims", "lines", "chars_per_line"} is applied and
+        "language", "reveal", "lines", "chars_per_line"} is applied and
         saved into event.toml's
         [propresenter] section; {"enabled": bool} starts or stops delivery;
         {"probe": true} re-checks the connection now; {"clear": true} takes
@@ -1130,7 +1130,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         body = await read_json(request)
         body = body or {}
         known = ("host", "port", "surface", "message", "token", "language",
-                 "interims", "lines", "chars_per_line",
+                 "reveal", "lines", "chars_per_line", "interims",
                  "enabled", "probe", "clear")
         if not any(k in body for k in known):
             raise HTTPException(status_code=400, detail=f"send one of: {', '.join(known)}")
@@ -1163,7 +1163,15 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             if language and not transcript_module.SAFE_LANG.match(language):
                 raise HTTPException(status_code=400, detail="language must look like: en, es, zh-Hans")
             changes["language"] = language
-        if "interims" in body:
+        if "reveal" in body:
+            reveal = body.get("reveal")
+            if reveal not in propresenter_module.REVEALS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"reveal must be one of {', '.join(propresenter_module.REVEALS)}")
+            changes["reveal"] = reveal
+        elif "interims" in body:
+            # The name this setting shipped under, still accepted.
             if not isinstance(body.get("interims"), bool):
                 raise HTTPException(status_code=400, detail="interims must be a boolean")
             changes["interims"] = body["interims"]
@@ -1194,7 +1202,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                     "host": propresenter.host, "port": propresenter.port,
                     "surface": propresenter.surface, "message": propresenter.message,
                     "token": propresenter.token, "language": propresenter.language,
-                    "interims": propresenter.interims, "lines": propresenter.lines,
+                    "reveal": propresenter.reveal, "lines": propresenter.lines,
                     "chars_per_line": propresenter.chars_per_line,
                 })
             except OSError as exc:

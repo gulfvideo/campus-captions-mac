@@ -260,6 +260,20 @@ class ShapingTests(unittest.TestCase):
         out.configure(lines=1)
         self.assertEqual(out.lines, 1)
 
+    def test_reveal_replaces_interims_but_the_old_name_still_works(self):
+        out = ProPresenterOutput()
+        self.assertEqual(out.reveal, "line")          # finals only, as before
+        self.assertFalse(out.interims)
+        out.configure(interims=True)
+        self.assertEqual(out.reveal, "word")
+        self.assertTrue(out.interims)
+        out.configure(reveal="line")
+        self.assertFalse(out.interims)
+        self.assertEqual(ProPresenterOutput(interims=True).reveal, "word")
+        with self.assertRaises(ValueError):
+            out.configure(reveal="sentence")
+
+
 class TwoLineDeliveryTests(unittest.TestCase):
     def test_a_long_final_is_paged_two_lines_at_a_time_losing_nothing(self):
         async def go():
@@ -279,7 +293,7 @@ class TwoLineDeliveryTests(unittest.TestCase):
     def test_an_interim_is_cut_to_two_lines_of_the_newest_words(self):
         async def go():
             with FakeProPresenter() as pp:
-                out = ProPresenterOutput(port=pp.port, interims=True,
+                out = ProPresenterOutput(port=pp.port, reveal="word",
                                          chars_per_line=15)
                 await out.start()
                 out.submit("one two three four five six seven eight nine ten", False)

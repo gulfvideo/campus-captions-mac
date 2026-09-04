@@ -349,8 +349,11 @@ Which one is right is the N-04 spike's question, answered on a real
 ProPresenter - `docs/PROPRESENTER_SPIKE.md` is the test plan. Nothing else in
 ProPresenter is ever touched: no slides, playlists, props or macros.
 
-Behaviour worth knowing: interims are off by default and, when on, only the
-newest pending one is ever delivered (a slot, not a queue).
+Behaviour worth knowing: `reveal` decides how the caption arrives - `line`
+(the default) changes the surface once per finished sentence, `word` also
+streams the in-progress text, and when it does only the newest pending
+interim is ever delivered (a slot, not a queue). The wall takes the same
+setting under the same name, so it is one thing to explain to an operator.
 Captions are wrapped here to at most two lines against `chars_per_line`,
 because the API gives no way to ask how wide the text box is and
 ProPresenter will otherwise reflow and shrink a paragraph to fit; a sentence
