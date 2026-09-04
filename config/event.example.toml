@@ -75,6 +75,8 @@ message = "Live Captions"   # for surface = "message": the Message's name...
 token = "Caption"           #   ...and the name of its one text token
 language = ""               # which caption stream to send; "" = the room's language
 interims = false            # true = also send in-progress text (newest only)
+lines = 2                   # never more than two; longer speech is paged
+chars_per_line = 42         # what one line of your ProPresenter text box holds
 start_enabled = false       # true = start sending as soon as the relay starts
 
 # Wall output keys (OBS, vMix, ProPresenter Web Fill). Managed from the

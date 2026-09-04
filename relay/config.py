@@ -266,6 +266,8 @@ class RelayConfig:
     pp_token: str = "Caption"
     pp_language: str = ""            # "" = the source language
     pp_interims: bool = False
+    pp_lines: int = 2                # never more than two; see propresenter.MAX_LINES
+    pp_chars_per_line: int = 42
     pp_start_enabled: bool = False
 
     # [overlay] keys = ["obs:abc123", ...] - one revocable key per browser-source
@@ -334,6 +336,9 @@ def load(path: Path | None = None) -> RelayConfig:
             cfg.pp_token = str(pp.get("token", cfg.pp_token))
             cfg.pp_language = str(pp.get("language", cfg.pp_language)).strip()
             cfg.pp_interims = bool(pp.get("interims", cfg.pp_interims))
+            cfg.pp_lines = max(1, min(2, int(pp.get("lines", cfg.pp_lines))))
+            cfg.pp_chars_per_line = max(12, min(120, int(
+                pp.get("chars_per_line", cfg.pp_chars_per_line))))
             cfg.pp_start_enabled = bool(pp.get("start_enabled", cfg.pp_start_enabled))
 
             keys = (data.get("overlay", {}) or {}).get("keys") or []

@@ -601,6 +601,7 @@ hostname while the tunnel is enabled.
 POST /api/propresenter    {"host": "127.0.0.1", "port": 1025, "surface": "stage_message"}
 POST /api/propresenter    {"surface": "message", "message": "Live Captions", "token": "Caption"}
 POST /api/propresenter    {"language": "es", "interims": true}
+POST /api/propresenter    {"lines": 2, "chars_per_line": 42}
 POST /api/propresenter    {"enabled": true}       start delivering (probes first)
 POST /api/propresenter    {"enabled": false}      stop, clearing the surface
 POST /api/propresenter    {"probe": true}         re-check the connection now
@@ -608,7 +609,7 @@ POST /api/propresenter    {"clear": true}         take the caption off the surfa
   ->  200 {"ok": true, "configured": true, "enabled": true, "state": "connected",
            "host": "127.0.0.1", "port": 1025, "surface": "stage_message",
            "message": "Live Captions", "token": "Caption", "message_id": null,
-           "language": "", "interims": false,
+           "language": "", "interims": false, "lines": 2, "chars_per_line": 42,
            "version": {"name": "ProPresenter", "platform": "mac", "api_version": "v1"},
            "pushed": 118, "cleared": 3, "failures": 0, "error": null,
            "latency": {"samples": 118, "median_ms": 14, "p95_ms": 38, "last_ms": 13}}
@@ -617,7 +618,9 @@ POST /api/propresenter    {"clear": true}         take the caption off the surfa
 
 Any subset of the settings may be sent together; they are saved into
 `[propresenter]` in event.toml. The same object appears as `propresenter` in
-every status snapshot. `state` is one of `off`, `connecting`, `connected`,
+every status snapshot. `lines` is capped at 2 and
+`chars_per_line` at 12-120: the caption is wrapped to at most that many lines
+of that width before it is sent, and a longer sentence is paged. `state` is one of `off`, `connecting`, `connected`,
 `degraded` (recent failures, still trying), `disconnected` (ProPresenter is
 not answering; probing every few seconds; the Web Fill fallback is what is on
 screen), `unsupported` (it answered with an API version this build does not

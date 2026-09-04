@@ -160,7 +160,10 @@
       opacity:  num('opacity', 0.85, 0.6, 1),     // floor: white on 60% black over white video is still 5.7:1
       bar:      hex('bar', '#000000'),
       color:    hex('color', '#ffffff'),
-      lines:    Math.round(num('lines', 3, 2, 4)), // 3 gives a slow reader ~8 s per line at speech rate
+      // Two lines, never three. A third row buys context nobody in a room
+      // reads - eyes are on the speaker - at the cost of a taller bar over
+      // the video. Long finals still roll through, a row at a time.
+      lines:    Math.round(num('lines', 2, 1, 2)),
       idle:     num('idle', 15, 0, 3600),         // seconds, 0 = never fade
       nostatus: flag('nostatus'),                 // hide the reconnecting/paused line
       welcome:  flag('welcome'),                  // also show the welcome/ended message

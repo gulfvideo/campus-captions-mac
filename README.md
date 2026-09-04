@@ -350,7 +350,11 @@ ProPresenter - `docs/PROPRESENTER_SPIKE.md` is the test plan. Nothing else in
 ProPresenter is ever touched: no slides, playlists, props or macros.
 
 Behaviour worth knowing: interims are off by default and, when on, only the
-newest pending one is ever delivered (a slot, not a queue). Every API call is
+newest pending one is ever delivered (a slot, not a queue).
+Captions are wrapped here to at most two lines against `chars_per_line`,
+because the API gives no way to ask how wide the text box is and
+ProPresenter will otherwise reflow and shrink a paragraph to fit; a sentence
+too long for one page becomes several, each held long enough to read. Every API call is
 timed and the panel shows the median and p95 round trip - the N-06 "adds no
 more than 500 ms at p95" figure, measured. Three consecutive failures mark it
 `disconnected`; it then probes every few seconds and resumes on its own.
