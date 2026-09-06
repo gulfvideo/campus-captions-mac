@@ -55,6 +55,7 @@ from . import config as config_module
 from . import event as event_module
 from . import preflight as preflight_module
 from . import propresenter as propresenter_module
+from .slides import SlideClient, SlidePreview
 from . import transcript as transcript_module
 from . import translate as translate_module
 from . import tunnel as tunnel_module
@@ -202,6 +203,16 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         host=cfg.pp_host, port=cfg.pp_port, surface=cfg.pp_surface,
         message=cfg.pp_message, token=cfg.pp_token, language=cfg.pp_language,
         interims=cfg.pp_interims, start_enabled=cfg.pp_start_enabled)
+
+    slide_client = None
+    if cfg.slides_enabled:
+        try:
+            slide_client = SlideClient(cfg.slides_host, cfg.slides_port,
+                                       cfg.slides_screen, cfg.slides_approved_hosts)
+        except (ValueError, TypeError):
+            pass  # Bad optional configuration must not interrupt captions.
+    slides = SlidePreview(slide_client, cfg.slides_enabled)
+    slides.set_live(event.state == "live")
 
     last_preflight: dict = {"report": None}
 
@@ -451,6 +462,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             asyncio.create_task(heartbeat_loop()),
             asyncio.create_task(status_loop()),
         ]
+        slides.start()
         await translation.apply(cfg.translate_provider, translation.targets)
         if cfg.tunnel_start_enabled and tunnel.configured:
             # Without a hostname nothing would be treated as public, so a
@@ -505,6 +517,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await slides.stop()
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -520,6 +533,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     app = FastAPI(title="Campus Captions relay", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
     app.state.hub = hub
+    app.state.slides = slides
     app.state.config = cfg
     # Set by /api/relay when the operator changes the port: whoever runs the
     # uvicorn server (relay/__main__.py, macapp/menubar.py) sets
@@ -666,7 +680,23 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "available": translation.languages(),
             "offered": list(cfg.offer_languages),
             "event": event.public(),
+            "slides": slides.public(),
         }, headers=NO_STORE)
+
+    @app.get("/api/slides")
+    async def api_slides(request: Request) -> JSONResponse:
+        if request.query_params:
+            raise HTTPException(status_code=400, detail="no query parameters accepted")
+        return JSONResponse(slides.public(), headers=NO_STORE)
+
+    @app.get("/api/slides/image/{revision}")
+    async def api_slide_image(revision: str, request: Request) -> Response:
+        if request.query_params:
+            raise HTTPException(status_code=400, detail="no query parameters accepted")
+        image = slides.image(revision)
+        if image is None:
+            raise HTTPException(status_code=404, detail="no current slide", headers=NO_STORE)
+        return Response(image, media_type="image/png", headers=NO_STORE)
 
     def serve_slot(slot: event_module.ImageSlot, what: str) -> Response:
         """A public image, cached by URL: viewers append ?v=<version> so a
@@ -882,6 +912,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                                 detail="send state, title, message, notice, pause_message, "
                                         "and/or disclaimer")
         event.update(**fields)
+        slides.set_live(event.state == "live")
         try:
             config_module.save_event_settings(config_target(), fields)
         except OSError as exc:

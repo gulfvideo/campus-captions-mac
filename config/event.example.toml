@@ -158,3 +158,12 @@ start_enabled = false      # true = start pushing as soon as the relay starts
 # "Mark video start" on the status page when the stream begins, download the
 # .srt from the Transcript & translation panel afterwards, and optionally
 # upload it to a video's caption track with tools/youtube_upload.py.
+
+# Optional read-only static cue thumbnails for phones. Restart after editing.
+# See docs/PHONE-SLIDES.md before enabling; audience Look overrides are unsupported.
+[slides]
+enabled = false
+host = "127.0.0.1"
+port = 1025
+screen = 0                  # zero-based audience screen in the current Look
+approved_hosts = []          # explicit RFC1918 IPs only when using another local Mac
