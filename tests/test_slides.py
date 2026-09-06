@@ -185,6 +185,32 @@ class ReaderTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.preview._image)
         self.assertEqual(self.preview.public()['state'], 'off')
 
+    async def test_reconfigure_during_request_discards_old_result(self):
+        self.fake.delay = 0.03
+        task = asyncio.create_task(self.preview.poll())
+        await asyncio.sleep(0.01)
+        self.preview.configure(SlideClient(port=self.fake.port), False)
+        await task
+        self.assertIsNone(self.preview._image)
+        self.assertFalse(self.preview.public()['available'])
+
+    async def test_enable_after_disabled_start_uses_one_worker(self):
+        preview = SlidePreview()
+        preview.set_live(True)
+        preview.start()
+        self.assertIsNone(preview._task)
+        preview.configure(SlideClient(port=self.fake.port), True)
+        worker = preview._task
+        for _ in range(50):
+            if preview.public()['visible']: break
+            await asyncio.sleep(.02)
+        self.assertTrue(preview.public()['visible'])
+        revision = preview.public()['revision']
+        preview.configure(SlideClient(port=self.fake.port), False)
+        self.assertIs(preview._task, worker)
+        self.assertIsNone(preview.image(revision))
+        await preview.stop()
+
     async def test_end_revokes_image_immediately_and_restart_refetches(self):
         await self.preview.poll()
         revision = self.preview.public()['revision']
@@ -238,7 +264,8 @@ class RelayBoundaryTests(unittest.TestCase):
         cls.proc = subprocess.Popen([sys.executable, '-m', 'relay', '--host', '127.0.0.1',
                                      '--port', str(cls.port), '--config', str(cfg)],
                                     env={**os.environ, 'CAPTIONS_OPERATOR_TOKEN': 'slide-test-operator',
-                                         'CAPTIONS_SOURCE_TOKEN': 'slide-test-source'},
+                                         'CAPTIONS_SOURCE_TOKEN': 'slide-test-source',
+                                         'CAPTIONS_PUBLIC_HOSTNAME': 'slides.example.test'},
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
@@ -253,9 +280,10 @@ class RelayBoundaryTests(unittest.TestCase):
         cls.fake.close(); cls.tmp.cleanup()
 
     @classmethod
-    def http(cls, path, method='GET', body=None, auth=False):
+    def http(cls, path, method='GET', body=None, auth=False, extra_headers=None):
         headers = {'Content-Type': 'application/json'}
         if auth: headers['Authorization'] = 'Bearer slide-test-operator'
+        headers.update(extra_headers or {})
         req = urllib.request.Request(f'http://127.0.0.1:{cls.port}{path}',
                                      data=None if body is None else json.dumps(body).encode(),
                                      headers=headers, method=method)
@@ -276,6 +304,41 @@ class RelayBoundaryTests(unittest.TestCase):
         self.assertIn(self.http('/api/slides/trigger')[0], (401,404))
         self.assertIn(self.http('/v1/presentation/active/next/trigger')[0], (401,404))
         self.assertEqual(self.http('/api/propresenter', 'POST', {'enabled': True})[0], 401)
+
+    def test_settings_auth_validation_persistence_and_live_apply(self):
+        import tomllib
+        endpoint = '/api/slide-settings'
+        self.assertEqual(self.http(endpoint)[0], 401)
+        self.assertEqual(self.http(endpoint, 'POST', {'enabled': False})[0], 401)
+        for method, body in [('GET', None), ('POST', {'enabled': False})]:
+            self.assertEqual(self.http(endpoint, method, body, True,
+                             {'Host': 'slides.example.test'})[0], 404)
+        initial = json.loads(self.http(endpoint, auth=True)[1])
+        for body in [{'host': '8.8.8.8', 'allow_lan': True}, {'host': '10.1.2.3', 'allow_lan': False},
+                     {'host': 'http://127.0.0.1'}, {'port': True}, {'screen': -1},
+                     {'screen': 32}, {'enabled': 'true'}, {'allow_lan': 'yes'}, {'url': 'evil'}]:
+            self.assertEqual(self.http(endpoint, 'POST', body, True)[0], 400, body)
+        self.assertEqual(json.loads(self.http(endpoint, auth=True)[1])['host'], initial['host'])
+        body = {'enabled': False, 'host': '10.1.2.3', 'port': 50688, 'screen': 1, 'allow_lan': True}
+        self.assertEqual(self.http(endpoint, 'POST', body, True)[0], 200)
+        saved = tomllib.loads((Path(self.tmp.name) / 'event.toml').read_text())
+        self.assertEqual(saved['slides'], {'enabled': False, 'host': '10.1.2.3',
+                         'port': 50688, 'screen': 1, 'approved_hosts': ['10.1.2.3']})
+        from relay.config import load
+        with patch('relay.config.ensure_data_dir'), patch('relay.config.load_env_file'), \
+             patch('relay.config._ensure_secret', return_value='isolated-test-token'):
+            reloaded = load(Path(self.tmp.name) / 'event.toml')
+        self.assertEqual(reloaded.slides_approved_hosts, ('10.1.2.3',))
+        self.assertEqual(reloaded.slides_screen, 1)
+        self.assertFalse(json.loads(self.http('/api/slides')[1])['available'])
+        # Enabling on the running relay must start/reuse its worker, without restart.
+        self.http('/api/event', 'POST', {'state': 'live'}, True)
+        self.assertEqual(self.http(endpoint, 'POST', {'enabled': True, 'host': '127.0.0.1',
+                         'port': self.fake.port, 'screen': 0, 'allow_lan': False}, True)[0], 200)
+        for _ in range(60):
+            if json.loads(self.http('/api/slides')[1])['visible']: break
+            time.sleep(.05)
+        self.assertTrue(json.loads(self.http('/api/slides')[1])['visible'])
 
     def test_event_end_revokes_http_image(self):
         self.http('/api/event', 'POST', {'state':'live'}, True)

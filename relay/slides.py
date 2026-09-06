@@ -136,6 +136,14 @@ class SlidePreview:
         self._image = self._identity = self._revision = None
         self.state = state
 
+    def configure(self, client, enabled):
+        """Revoke old images and in-flight results without spawning extra workers."""
+        self._epoch += 1
+        self.client = client
+        self.enabled = enabled
+        self.clear("connecting" if enabled and self.live else "off")
+        self.start()
+
     def set_live(self, live):
         if live != self.live:
             self._epoch += 1

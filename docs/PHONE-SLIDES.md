@@ -10,25 +10,31 @@ operators should continue describing essential visual content in speech.
 
 ## Operator setup
 
-In ProPresenter Network settings, note the API port. In the relay's private
-`config/event.toml`, add/edit this section and restart the relay:
+1. Enable Network/API access in ProPresenter and note its displayed API port.
+2. In the Campus Captions menu bar, choose **Open Settings → Slides + Captions**.
+3. Check **Share ProPresenter slides with attendees**. Enter `127.0.0.1` when
+   both apps run on the same Mac, and enter ProPresenter's API port.
+4. For ProPresenter on another Mac, enter its private LAN IP address and check
+   **Allow connection to this Mac on the local network**.
+5. Enter the **Audience screen number**: 1 is the first screen in the current
+   Look. Choose **Save and apply**. No restart or configuration-file edit is needed.
 
-```toml
-[slides]
-enabled = true
-host = "127.0.0.1"
-port = 1025 # replace with the port shown in ProPresenter Network settings
-screen = 0 # zero-based audience screen in the current Look
-approved_hosts = []
-```
+The panel shows whether sharing is off, waiting for a live event, connecting,
+sharing a slide, or unavailable. A connection failure retries automatically.
+All settings persist across app launches, including in the standalone app's
+Application Support configuration. This feature has its own connection settings
+and never enables outgoing ProPresenter captions.
 
-The feature has its own connection configuration and never enables outgoing
-ProPresenter captions. For another local machine, use a literal RFC1918 IPv4
-address in both `host` and `approved_hosts`. Hostnames, URLs, public addresses,
-link-local addresses, proxies and redirects are rejected. This allowlist is
-local configuration only; no attendee or operator HTTP endpoint accepts an
-upstream URL. Invalid optional configuration reports slides unavailable while
-captions continue.
+Hostnames, URLs, public addresses, link-local addresses, proxies and redirects
+are rejected. Private RFC1918 addresses require the local network checkbox.
+Only authenticated operators can read or change connection settings; the public
+hostname cannot access them even with credentials. Attendees cannot change the
+upstream target. Saving clears the previous image and discards in-flight results
+from the old connection before applying the new configuration.
+
+For source deployments, the same settings are stored in `[slides]` in
+`config/event.toml`: `enabled`, `host`, `port`, zero-based `screen`, and
+`approved_hosts`. The panel manages approval for the selected address.
 
 Enable audience output and the selected screen's Slide layer in its live Look.
 Sharing operates only while the Campus Caption event is **live**. Pausing,

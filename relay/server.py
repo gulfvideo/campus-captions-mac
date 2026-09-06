@@ -214,6 +214,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     slides = SlidePreview(slide_client, cfg.slides_enabled)
     slides.set_live(event.state == "live")
 
+    def slide_settings():
+        return {"enabled": cfg.slides_enabled, "host": cfg.slides_host,
+                "port": cfg.slides_port, "screen": cfg.slides_screen,
+                "allow_lan": cfg.slides_host in cfg.slides_approved_hosts,
+                "preview": slides.public()}
+
     last_preflight: dict = {"report": None}
 
     def overlay_key_list() -> list[dict]:
@@ -440,6 +446,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         # block with token_required and the config path stays on /api/status.
         "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip()},
         "propresenter": propresenter.status(),
+        "slide_settings": slide_settings(),
         "overlay_keys": overlay_key_list(),
         # The last preflight report, so a status page opened after the check
         # still shows it. A few KB.
@@ -1143,6 +1150,42 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         return JSONResponse(
             {"ok": True, **tunnel.status(), "public_hostname": cfg.public_hostname},
             headers=NO_STORE)
+
+    @app.get("/api/slide-settings")
+    async def get_slide_settings(request: Request) -> JSONResponse:
+        require_operator(request)
+        return JSONResponse(slide_settings(), headers=NO_STORE)
+
+    @app.post("/api/slide-settings")
+    async def set_slide_settings(request: Request) -> JSONResponse:
+        require_operator(request)
+        body = await read_json(request)
+        fields = {"enabled", "host", "port", "screen", "allow_lan"}
+        if not body or set(body) - fields:
+            raise HTTPException(status_code=400, detail="send slide settings only")
+        values = {key: body.get(key, slide_settings()[key]) for key in fields}
+        if type(values["enabled"]) is not bool or type(values["allow_lan"]) is not bool:
+            raise HTTPException(status_code=400, detail="enabled and allow_lan must be true or false")
+        host = values["host"]
+        if not isinstance(host, str) or not host or len(host) > 45:
+            raise HTTPException(status_code=400, detail="enter a literal IP address")
+        host = host.strip()
+        approved = [host] if values["allow_lan"] else []
+        try:
+            client = SlideClient(host, values["port"], values["screen"], approved)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            config_module.save_section(config_target(), "[slides]", {
+                "enabled": values["enabled"], "host": host, "port": values["port"],
+                "screen": values["screen"], "approved_hosts": approved})
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="could not save slide settings") from exc
+        cfg.slides_enabled = values["enabled"]
+        cfg.slides_host, cfg.slides_port = host, values["port"]
+        cfg.slides_screen, cfg.slides_approved_hosts = values["screen"], tuple(approved)
+        slides.configure(client, cfg.slides_enabled)
+        return JSONResponse(slide_settings(), headers=NO_STORE)
 
     @app.post("/api/propresenter")
     async def api_propresenter(request: Request) -> JSONResponse:

@@ -315,6 +315,41 @@
 </div>
 
 <div class="disclosure-panel">
+  <button class="disclosure-header" id="slides-toggle" aria-expanded="false" aria-controls="slides-body">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Slides + Captions</span>
+    <span class="badge" id="slides-badge">&mdash;</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="slides-body">
+      <label class="check"><input id="slides-enabled" type="checkbox">Share ProPresenter slides with attendees</label>
+      <div class="row">
+        <label for="slides-host">ProPresenter IP address</label>
+        <input id="slides-host" type="text" autocomplete="off" spellcheck="false" placeholder="127.0.0.1">
+      </div>
+      <div class="row">
+        <label for="slides-port">API port</label>
+        <input id="slides-port" type="text" inputmode="numeric" style="flex:0 1 110px">
+        <label for="slides-screen">Audience screen number</label>
+        <input id="slides-screen" type="text" inputmode="numeric" style="flex:0 1 90px" aria-describedby="slides-help">
+      </div>
+      <label class="check"><input id="slides-allow-lan" type="checkbox">Allow connection to this Mac on the local network</label>
+      <div class="row"><button id="btn-slides-save" type="button">Save and apply</button></div>
+      <div class="disclosure-sub" id="slides-status" role="status" aria-live="polite">&mdash;</div>
+      <div class="disclosure-sub" id="slides-help">
+        Enable Network/API access in ProPresenter and enter its displayed port.
+        Use 127.0.0.1 when both apps run on this Mac. For another Mac, enter its private
+        IP address and check the local network box. Screen 1 is the first screen in the current Look.
+        Enable audience output and that screen's Slide layer, then trigger a slide in Show view.
+        Sharing starts during a live event. Attendees choose Aa &rarr; Slides + Captions on their phones.
+        Static slide previews only; video, animations, and combined audience layers are not reproduced.
+        Saving applies immediately and is remembered after restarting Campus Captions.
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="disclosure-panel">
   <button class="disclosure-header" id="pp-toggle" aria-expanded="false" aria-controls="pp-body">
     <span class="chevron">&#9662;</span>
     <span class="title">ProPresenter (direct)</span>
@@ -655,6 +690,54 @@
   }
   // ---- ProPresenter -----------------------------------------------------
 
+  var slidesDirty = false;
+  var slidesSaving = false;
+  var slideInputs = ['slides-enabled', 'slides-host', 'slides-port', 'slides-screen', 'slides-allow-lan'];
+  function renderSlides(settings) {
+    if (!settings) return;
+    slideInputs.forEach(function (id) { $(id).disabled = slidesSaving; });
+    $('btn-slides-save').disabled = slidesSaving;
+    var preview = settings.preview || {};
+    $('slides-badge').textContent = settings.enabled ? 'Enabled' : 'Off';
+    $('slides-badge').className = 'badge' + (preview.visible ? ' live' : '');
+    var messages = {
+      off: settings.enabled ? 'Saved. Start a live event to share slides.' : 'Slide sharing is off.',
+      connecting: 'Connecting to ProPresenter…',
+      connected: 'Connected — sharing the current slide.',
+      clear: 'Connected — no shareable slide. Check audience output and the Slide layer, then trigger a slide in Show view.',
+      unavailable: 'Slide unavailable. Check the IP address, API port, audience screen, and ProPresenter Network settings. Retrying automatically.'
+    };
+    $('slides-status').textContent = messages[preview.state] || 'Waiting for slide status…';
+    if (!slidesDirty && !slidesSaving && slideInputs.indexOf(document.activeElement.id) === -1) {
+      $('slides-enabled').checked = settings.enabled;
+      $('slides-host').value = settings.host;
+      $('slides-port').value = settings.port;
+      $('slides-screen').value = Number(settings.screen) + 1;
+      $('slides-allow-lan').checked = settings.allow_lan;
+    }
+  }
+  function saveSlides() {
+    var portText = $('slides-port').value.trim();
+    var screenText = $('slides-screen').value.trim();
+    if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535 ||
+        !/^\d+$/.test(screenText) || Number(screenText) < 1 || Number(screenText) > 32) {
+      toast('Enter an API port from 1–65535 and an audience screen from 1–32.'); return;
+    }
+    var body = {enabled: $('slides-enabled').checked, host: $('slides-host').value.trim(),
+      port: Number(portText), screen: Number(screenText) - 1, allow_lan: $('slides-allow-lan').checked};
+    slidesSaving = true;
+    slideInputs.concat(['btn-slides-save']).forEach(function (id) { $(id).disabled = true; });
+    fetch('/api/slide-settings', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)}).then(jsonOrThrow).then(function (out) {
+        slidesSaving = false; slidesDirty = false; renderSlides(out);
+        toast('Slide settings saved and applied');
+      })['catch'](function (e) {
+        slidesSaving = false;
+        slideInputs.concat(['btn-slides-save']).forEach(function (id) { $(id).disabled = false; });
+        toast('Slide settings — ' + e.message);
+      });
+  }
+
   var ppDirty = false;
   var PP_STATES = {
     off:          ['Off',                       ''],
@@ -810,11 +893,13 @@
     renderTunnel(s.public_hostname, s.tunnel);
     renderKeywords(s.source || {});
     renderProPresenter(s.propresenter);
+    renderSlides(s.slide_settings);
     renderOverlayKeys(s.overlay_keys);
     $('meta').textContent = 'session ' + s.session_id + '  ·  up ' + Math.round(s.uptime / 60) + 'm';
   }
 
   function renderOffline() {
+    slideInputs.concat(['btn-slides-save']).forEach(function (id) { $(id).disabled = true; });
     $('meta').textContent = portMoving ? 'relay restarting on the new port…' : 'relay unreachable — retrying';
     $('btn-port-save').disabled = $('relay-port').disabled = true;
     EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
@@ -1053,6 +1138,9 @@
     setupDisclosure('youtube-toggle', 'settings-youtube-expanded');
     setupDisclosure('tunnel-toggle', 'settings-tunnel-expanded');
     setupDisclosure('keywords-toggle', 'settings-keywords-expanded');
+    setupDisclosure('slides-toggle', 'settings-slides-expanded');
+    $('btn-slides-save').onclick = saveSlides;
+    slideInputs.forEach(function (id) { $(id).oninput = function () { slidesDirty = true; }; });
     setupDisclosure('pp-toggle', 'settings-pp-expanded');
     setupDisclosure('keys-toggle', 'settings-keys-expanded');
     $('btn-pp-save').onclick = savePP;
