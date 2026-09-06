@@ -53,7 +53,7 @@
   }
   #brand.on { display: flex; }
   #brand img { display: block; height: 2.75rem; max-width: 100%; width: auto; }
-  #brand.on + #scroll { padding-top: 10px; }
+  #brand.on + #reading #scroll { padding-top: 10px; }
 
   /* Connection state, deliberately almost invisible: a hairline at the top
      edge. Amber while the link is down. The phone view may hint; the wall
@@ -64,6 +64,24 @@
   }
   #link.down { background: #b8860b; }
 
+  #reading { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  #reading.captions-first { flex-direction: column-reverse; }
+  #slide-pane { flex: 0 0 var(--slide-space, 35%); min-height: 0; position: relative;
+    padding: 8px 12px; display: flex; flex-direction: column; align-items: center; }
+  #slide-pane[hidden], #slide-options[hidden] { display: none; }
+  #slide-pane img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+  #slide-pane img[hidden] { display: none; }
+  #slide-enlarge { position: absolute; right: 16px; bottom: 12px; }
+  #slide-message { margin: auto; text-align: center; font-size: 1rem; }
+  #slide-dialog { background: #000; color: #fff; width: 96vw; max-width: none;
+    height: 92dvh; max-height: 92dvh; padding: 12px; border: 1px solid #777; }
+  #slide-dialog::backdrop { background: rgba(0,0,0,.85); }
+  #slide-dialog img { width: 100%; height: calc(100% - 60px); object-fit: contain; }
+  #slide-dialog button, #slide-enlarge { min-height: 44px; padding: 8px 12px;
+    background: #222; color: #fff; border: 1px solid #aaa; border-radius: 8px; }
+  #slide-layout, #slide-space { width: 100%; min-height: 44px; font: inherit; }
+  #settings { max-height: calc(100dvh - 90px); overflow-y: auto; }
+  #reading.captions-first #slide-pane { margin-bottom: 66px; }
   #scroll {
     flex: 1 1 auto; min-height: 0;
     overflow-y: auto;
@@ -316,11 +334,22 @@
   <button id="disclaimer-dismiss" type="button" aria-label="Dismiss disclaimer">&times;</button>
 </div>
 <header id="brand"><img id="brand-img" alt=""></header>
+<main id="reading">
+<section id="slide-pane" aria-label="Current presentation slide" hidden>
+  <p id="slide-message" role="status">Slides temporarily unavailable</p>
+  <img id="slide-image" alt="Current presentation slide" hidden>
+  <button id="slide-enlarge" type="button" hidden>Enlarge slide</button>
+</section>
 <div id="scroll" tabindex="0" role="region" aria-label="Captions">
   <div id="lang-note" hidden></div>
   <div id="lines" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
   <div id="interim" aria-hidden="true"></div>
 </div>
+</main>
+<dialog id="slide-dialog" aria-label="Enlarged presentation slide">
+  <button id="slide-close" type="button">Return to captions</button>
+  <img id="slide-large" alt="Current presentation slide">
+</dialog>
 <div id="event" aria-hidden="true">
   <div class="panel">
     <h1 id="event-title">Live captions</h1>
@@ -334,6 +363,16 @@
 <button id="settings-btn" type="button" aria-label="Caption display settings"
         aria-expanded="false" aria-controls="settings">Aa</button>
 <div id="settings" role="group" aria-label="Caption display settings">
+  <fieldset id="slide-options" class="row" hidden>
+    <legend class="label">Slides + Captions</legend>
+    <select id="slide-layout" aria-label="Viewing layout">
+      <option value="captions">Captions only</option>
+      <option value="slide-first">Slide above captions</option>
+      <option value="captions-first">Captions above slide</option>
+    </select>
+    <label for="slide-space">Slide space</label>
+    <input id="slide-space" type="range" min="20" max="60" value="35" step="5">
+  </fieldset>
   <fieldset class="row">
     <legend class="label">Text size</legend>
     <div class="size-row">
@@ -612,6 +651,106 @@
       })['catch'](function () {});
   }
 
+  // Optional slides: one relay-only polling loop, independent of caption sockets.
+  var slideAvailable = false, slideRevision = '', slideGeneration = 0;
+  var slideLayout = 'captions', slideSpace = 35, slideLastOK = 0;
+  function clearSlide(message) {
+    slideGeneration++;
+    slideRevision = '';
+    ['slide-image', 'slide-large'].forEach(function (id) {
+      var image = document.getElementById(id);
+      image.removeAttribute('src');
+    });
+    document.getElementById('slide-image').hidden = true;
+    document.getElementById('slide-enlarge').hidden = true;
+    document.getElementById('slide-message').hidden = false;
+    document.getElementById('slide-message').textContent = message;
+    var dialog = document.getElementById('slide-dialog');
+    if (dialog.open) dialog.close();
+  }
+  function slideLayoutChanged() {
+    var reading = document.getElementById('reading');
+    reading.className = slideLayout === 'captions-first' ? 'captions-first' : '';
+    reading.style.setProperty('--slide-space', slideSpace + '%');
+    document.getElementById('slide-pane').hidden = !slideAvailable || slideLayout === 'captions';
+    if (pinned) scrollToBottom();
+  }
+  function applySlide(state) {
+    slideAvailable = state.available === true;
+    document.getElementById('slide-options').hidden = !slideAvailable;
+    slideLayoutChanged();
+    if (!slideAvailable || !state.visible || !/^[a-f0-9]{64}$/.test(state.revision || '') ||
+        (eventInfo && eventInfo.state !== 'live')) {
+      clearSlide(state.state === 'clear' || state.state === 'off' ? 'No slide is being shared' : 'Slides temporarily unavailable');
+      return;
+    }
+    if (slideRevision === state.revision) return;
+    clearSlide('Loading slide…');
+    var generation = slideGeneration, revision = state.revision;
+    slideRevision = revision; // Do not restart a slow image load on every state poll.
+    var pending = new Image();
+    var imageTimer = setTimeout(function () {
+      if (generation === slideGeneration) clearSlide('Slides temporarily unavailable');
+    }, 5000);
+    pending.onload = function () {
+      clearTimeout(imageTimer);
+      if (generation !== slideGeneration) return;
+      slideRevision = revision;
+      document.getElementById('slide-image').src = pending.src;
+      document.getElementById('slide-large').src = pending.src;
+      document.getElementById('slide-image').hidden = false;
+      document.getElementById('slide-enlarge').hidden = false;
+      document.getElementById('slide-message').hidden = true;
+    };
+    pending.onerror = function () {
+      clearTimeout(imageTimer);
+      if (generation === slideGeneration) clearSlide('Slides temporarily unavailable');
+    };
+    pending.src = '/api/slides/image/' + revision;
+  }
+  function initSlides() {
+    var layout = document.getElementById('slide-layout');
+    var space = document.getElementById('slide-space');
+    try {
+      var saved = localStorage.getItem('cc.slideLayout');
+      if (['captions', 'slide-first', 'captions-first'].indexOf(saved) >= 0) slideLayout = saved;
+      slideSpace = Math.max(20, Math.min(60, Number(localStorage.getItem('cc.slideSpace')) || 35));
+    } catch (e) {}
+    layout.value = slideLayout; space.value = slideSpace;
+    layout.addEventListener('change', function () {
+      slideLayout = layout.value;
+      try { localStorage.setItem('cc.slideLayout', slideLayout); } catch (e) {}
+      slideLayoutChanged();
+    });
+    space.addEventListener('input', function () {
+      slideSpace = Number(space.value);
+      try { localStorage.setItem('cc.slideSpace', String(slideSpace)); } catch (e) {}
+      slideLayoutChanged();
+    });
+    document.getElementById('slide-enlarge').addEventListener('click', function () {
+      document.getElementById('slide-dialog').showModal();
+    });
+    document.getElementById('slide-close').addEventListener('click', function () {
+      document.getElementById('slide-dialog').close();
+    });
+    function pollSlides() {
+      var controller = new AbortController();
+      var timeout = setTimeout(function () { controller.abort(); }, 3000);
+      fetch('/api/slides', {cache: 'no-store', signal: controller.signal})
+        .then(function (r) { if (!r.ok) throw new Error('slide state'); return r.json(); })
+        .then(function (state) { slideLastOK = Date.now(); applySlide(state); })
+        ['catch'](function () { clearSlide('Slides temporarily unavailable'); })
+        .then(function () { clearTimeout(timeout); setTimeout(pollSlides, 1000); });
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (Date.now() - slideLastOK > 5000) clearSlide('Slides temporarily unavailable');
+    });
+    setInterval(function () {
+      if (Date.now() - slideLastOK > 5000) clearSlide('Slides temporarily unavailable');
+    }, 1000);
+    pollSlides();
+  }
+
   // ---- event state and status banner --------------------------------------
 
   function setStatus(text, calm) {
@@ -629,6 +768,7 @@
 
   function renderEvent() {
     var ev = eventInfo || {};
+    if (ev.state !== "live") clearSlide("No slide is being shared");
     var overlay = ev.state === 'starting' || ev.state === 'ended';
     if (overlay) {
       elEventTitle.textContent = ev.title || 'Live captions';
@@ -1076,6 +1216,7 @@
     startedAt = lastMsgAt = now();
     chosenLang = loadLang();
     loadLanguages();
+    try { initSlides(); } catch (e) { /* Optional feature never blocks captions. */ }
     setLink(false);
     requestWake();
     connect();
