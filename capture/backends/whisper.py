@@ -32,6 +32,7 @@ trusting it on a live wall.
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from pathlib import Path
 
@@ -40,13 +41,39 @@ import numpy as np
 from .base import ASRBackend
 from .support import WHISPER_DEFAULT_MODEL
 
-try:
-    from faster_whisper import WhisperModel
-    WHISPER_AVAILABLE = True
-    WHISPER_IMPORT_ERROR = ""
-except Exception as exc:                       # optional dependency
-    WHISPER_AVAILABLE = False
-    WHISPER_IMPORT_ERROR = f"{exc.__class__.__name__}: {exc}"
+# faster-whisper is imported on demand, not at module import.
+#
+# It used to be imported here, which fixed "is Whisper available?" for the
+# life of the process. That made installing it from inside the app pointless:
+# the answer was decided before the install happened, so the operator had to
+# restart. Deferring it means the Install button can pip-install the package
+# and the very next call sees it.
+_WHISPER: dict = {"model_cls": None, "error": "", "tried": False}
+
+
+def _load_whisper():
+    """(WhisperModel, "") once it imports, or (None, why not)."""
+    if not _WHISPER["tried"]:
+        _WHISPER["tried"] = True
+        try:
+            import importlib
+            # A package installed into this same interpreter after start is
+            # invisible until the finder's caches are dropped.
+            importlib.invalidate_caches()
+            from faster_whisper import WhisperModel
+            _WHISPER["model_cls"] = WhisperModel
+        except Exception as exc:               # optional dependency
+            _WHISPER["error"] = f"{exc.__class__.__name__}: {exc}"
+    return _WHISPER["model_cls"], _WHISPER["error"]
+
+
+def whisper_available() -> bool:
+    return _load_whisper()[0] is not None
+
+
+def forget_whisper_import() -> None:
+    """Try the import again next time - called after installing it."""
+    _WHISPER.update({"model_cls": None, "error": "", "tried": False})
 
 WHISPER_RATE = 16000            # Whisper only ever wants 16 kHz mono
 SPEECH_FLOOR = 0.006            # smoothed RMS above this counts as speech
@@ -85,6 +112,36 @@ MISSING_DEPS = (
 )
 
 
+def install_package(on_progress=None) -> None:
+    """pip install requirements-whisper.txt into the interpreter we are
+    running in. Source checkouts only - a frozen app has no venv to install
+    into, and its Whisper is either bundled or genuinely unavailable.
+
+    This exists because a source install has no faster-whisper: it is ~200 MB
+    of wheels that a Deepgram-only booth should not pay for, so it is not in
+    requirements.txt. That left the operator with a backend the app offered,
+    a Download button it disabled, and an instruction to open a terminal -
+    the exact step this project is meant to remove.
+    """
+    import subprocess
+    root = Path(__file__).resolve().parents[2]
+    requirements = root / "requirements-whisper.txt"
+    if not requirements.exists():
+        raise RuntimeError(f"{requirements.name} is missing from this copy")
+    if on_progress:
+        on_progress("installing Whisper (a few hundred megabytes)")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+         "-q", "-r", str(requirements)],
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        tail = (result.stderr or result.stdout or "").strip().splitlines()
+        raise RuntimeError(tail[-1] if tail else f"pip exited {result.returncode}")
+    forget_whisper_import()
+    if not whisper_available():
+        raise RuntimeError("Whisper installed but still will not import")
+
+
 def fetch_model(size: str, model_dir, on_progress=None) -> str:
     """Download a Whisper model into `model_dir` and return its path.
 
@@ -98,8 +155,8 @@ def fetch_model(size: str, model_dir, on_progress=None) -> str:
     loop and reports through `on_progress(message)` instead of logging into a
     console nobody is watching.
     """
-    if not WHISPER_AVAILABLE:
-        raise RuntimeError(f"{MISSING_DEPS} ({WHISPER_IMPORT_ERROR})")
+    if not whisper_available():
+        raise RuntimeError(f"{MISSING_DEPS} ({_load_whisper()[1]})")
     from faster_whisper import download_model
 
     Path(model_dir).mkdir(parents=True, exist_ok=True)
@@ -224,8 +281,9 @@ class LocalWhisperBackend(ASRBackend):
     async def open(self, sample_rate: int) -> None:
         if self._open:
             return
-        if not WHISPER_AVAILABLE:
-            self._error = f"{MISSING_DEPS} ({WHISPER_IMPORT_ERROR})"
+        model_cls, import_error = _load_whisper()
+        if model_cls is None:
+            self._error = f"{MISSING_DEPS} ({import_error})"
             return
         self.sample_rate = int(sample_rate)
         self._prompt = self._load_prompt()
@@ -313,11 +371,12 @@ class LocalWhisperBackend(ASRBackend):
     def _ensure_model(self):
         if self._model is not None:
             return self._model
+        model_cls, _ = _load_whisper()
         kwargs = {"compute_type": self.compute_type}
         if self.model_dir:
             kwargs["download_root"] = str(self.model_dir)
         try:
-            self._model = WhisperModel(self.model_size, device=self.device, **kwargs)
+            self._model = model_cls(self.model_size, device=self.device, **kwargs)
         except Exception as exc:
             if self.device == "cpu":
                 raise
@@ -326,7 +385,7 @@ class LocalWhisperBackend(ASRBackend):
             print(f"[whisper] device {self.device!r} unavailable ({exc.__class__.__name__}), "
                   f"falling back to cpu")
             self.device = "cpu"
-            self._model = WhisperModel(self.model_size, device="cpu", **kwargs)
+            self._model = model_cls(self.model_size, device="cpu", **kwargs)
         return self._model
 
     def _transcribe(self, audio: np.ndarray) -> str:

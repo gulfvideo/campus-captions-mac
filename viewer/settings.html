@@ -19,7 +19,11 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
-    padding: 22px; max-width: 900px;
+    /* Was 900px, which left most of a desktop window empty to the right of
+       the panels while their own contents wrapped. Wide enough for two
+       fields side by side, capped so a very wide monitor does not stretch a
+       line of help text across a foot of glass. */
+    padding: 22px 26px 60px; max-width: 1400px; margin: 0 auto;
   }
   h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
   header {
@@ -27,14 +31,19 @@
     margin-bottom: 20px;
   }
   header .meta { color: var(--dim); font-size: 13px; }
-  header a {
-    color: #7fb2f0; font-size: 14px; text-decoration: none;
+  /* Header links are buttons, not bare text. They sit next to each other in
+     the corner and get pressed as often as anything on the page, so they
+     should look pressable rather than like prose that happens to be blue. */
+  header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  header .nav a {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px;
+    padding: 8px 14px; white-space: nowrap;
   }
-  /* Only the first of the trailing links takes the free space, so the pair
-     stays together at the right rather than spreading across the header. */
-  header a:not(:last-child) { margin-left: auto; }
-  header a + a { margin-left: 16px; }
-  header a:hover { text-decoration: underline; }
+  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
 
   button {
     font: inherit; font-weight: 600; font-size: 15px;
@@ -111,6 +120,21 @@
   }
   .check input { width: 18px; height: 18px; accent-color: #5aa2f0; }
 
+  /* ---- help toggle ----------------------------------------------------
+     Several panels carry a paragraph explaining what they are for. Useful
+     the first time and clutter every time after, and ProPresenter's ran to
+     six lines above the controls it described. A "?" in the panel heading
+     shows and hides it, remembered per panel per browser. */
+  .help-toggle {
+    font: inherit; font-size: 12px; font-weight: 700; line-height: 1;
+    width: 20px; height: 20px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--edge); background: #262b33; color: var(--dim);
+    cursor: pointer; flex: none;
+  }
+  .help-toggle:hover { background: #2f353f; color: var(--text); }
+  .help-toggle.on { background: #2c3a4e; border-color: #3d5a80; color: #cfe0f5; }
+  .help-toggle:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+
   /* ---- labelled field ------------------------------------------------
      A bare row of placeholder-only boxes reads fine to whoever built it and
      as a guessing game to everyone else, so anything that is not obvious
@@ -122,15 +146,71 @@
     letter-spacing: .04em;
   }
   .field > .hint { font-size: 13px; color: var(--dim); }
-  .field input, .field select { width: 100%; }
+  /* .panel-body sets `flex: 1 1 340px` on inputs, which is a width in a row
+     flexbox and a HEIGHT in a column one - and .field is a column. Without
+     resetting it here every labelled box became a 340px slab. Matching that
+     rule's specificity exactly and coming later in the sheet is what makes
+     this win. */
+  .field input[type=text], .field input[type=password],
+  .field input[type=number], .field select {
+    width: 100%; flex: 0 0 auto;
+  }
+  .field > .row { gap: 8px; }
+  /* A bare <select> in a field stretched to the full column while the number
+     inputs beside it stayed narrow, so one dropdown looked several times the
+     size of everything else. */
+  .field select {
+    min-height: 48px; font: inherit; color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px; padding: 10px 34px 10px 12px;
+    max-width: 300px;
+  }
+  .field input[type=number] { max-width: 150px; }
+  .withunit { display: flex; align-items: center; gap: 9px; }
+  .withunit .unit { color: var(--dim); font-size: 13.5px; white-space: nowrap; }
+
+  /* A panel with more than three or four inputs reads as a wall of boxes if
+     they are just flexed into rows, especially when the only clue to what
+     each one is was its placeholder - which the browser truncates. Real
+     labels, two across where there is room. */
+  .fieldgrid {
+    display: grid; gap: 14px 18px; flex: 1 1 100%;
+    /* Two explicit columns, not auto-fit: on a wide window auto-fit made
+       four, and a row holding two fields left half the panel empty. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Without this each cell stretches to the tallest in its row, and
+       because .field is a column flexbox the input inside stretches with it
+       - which turned every text box into a several-hundred-pixel slab. */
+    align-items: start;
+  }
+  .fieldgrid .field.wide { grid-column: 1 / -1; }
+  @media (max-width: 760px) { .fieldgrid { grid-template-columns: 1fr; } }
+  .subhead {
+    flex: 1 1 100%; margin: 6px 0 -4px;
+    font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #7f8899;
+  }
+  .subhead:first-child { margin-top: 0; }
 
   /* ---- word list editor ---------------------------------------------- */
-  textarea.wordlist {
-    flex: 1 1 100%; min-height: 190px; resize: vertical;
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px;
-    line-height: 1.5; color: var(--text); background: #262b33;
-    border: 1px solid var(--edge); border-radius: 9px; padding: 11px 12px;
+  .termadd { align-items: center; }
+  .termadd input[type=text] { flex: 1 1 260px; }
+  .termlist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 12px; }
+  .termgroup-name {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #7f8899; margin-bottom: 6px;
   }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #262b33; border: 1px solid var(--edge); border-radius: 999px;
+    padding: 5px 6px 5px 13px; font-size: 14px;
+  }
+  .chip-x {
+    font: inherit; font-size: 15px; line-height: 1; color: var(--dim);
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    width: 22px; height: 22px; padding: 0;
+  }
+  .chip-x:hover { background: #7a2f2f; color: #fff; }
 
   /* Output key rows */
   .key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0;
@@ -166,8 +246,10 @@
 <header>
   <h1>Settings</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
-  <a href="/setup">Run setup again</a>
-  <a href="/status">&larr; Back to status</a>
+  <nav class="nav">
+    <a href="/setup">Run setup again</a>
+    <a href="/status">&larr; Back to status</a>
+  </nav>
 </header>
 
 <nav class="tabs" id="tabs" role="tablist">
@@ -189,52 +271,82 @@
   <h2 class="panel-head">Event &amp; welcome screen
   </h2>
   <div class="panel-body" id="event-body">
-      <div class="row">
-        <input id="event-title" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Event title, e.g. Fall Convocation" aria-label="Event title">
-        <input id="event-message" type="text" autocomplete="off"
-               placeholder="Welcome message (default: Live captions will begin when the program starts.)"
-               aria-label="Welcome message">
-      </div>
-      <div class="row">
-        <input id="event-notice" type="text" autocomplete="off"
-               placeholder="Notice, e.g. Captions are automatic. Accommodations: Disability Services, 334-555-0100"
-               aria-label="Notice shown under the welcome message">
-        <input id="event-pause-message" type="text" autocomplete="off" style="flex:0 1 300px"
-               placeholder="Message while paused, e.g. Intermission" aria-label="Message shown while paused">
-      </div>
-      <div class="row">
-        <input id="event-disclaimer" type="text" autocomplete="off"
-               placeholder="Caption accuracy disclaimer, shown once per device on the phone view. Blank disables it."
-               aria-label="Caption accuracy disclaimer, shown once per device">
-        <button id="btn-event-save" type="button">Save</button>
-      </div>
-      <div class="row">
-        <label class="file-label">Choose background image
-          <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
-        </label>
-        <button id="btn-event-image-remove" type="button">Remove image</button>
-        <span class="disclosure-sub" id="event-image-status" style="flex:1 1 200px">&mdash;</span>
-      </div>
-      <div class="row">
-        <label class="file-label">Choose logo
-          <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
-        </label>
-        <button id="btn-event-logo-remove" type="button">Remove logo</button>
-        <input id="event-logo-alt" type="text" autocomplete="off" style="flex:1 1 220px"
-               placeholder="Logo description for screen readers, e.g. Faulkner University"
-               aria-label="Logo description for screen readers">
-        <span class="disclosure-sub" id="event-logo-status" style="flex:1 1 200px">&mdash;</span>
-      </div>
       <div class="disclosure-sub">
         Attendees who open the phone view see the welcome screen until you press <b>Start event</b>
         on the status page, and again after <b>End event</b>. The words sit on a dark panel over
-        the image, so any photo keeps them readable. JPEG, PNG, or WebP, up to 5 MB. The logo sits
-        in a slim row above the captions while they are live &mdash; a transparent PNG works best,
-        since readers choose their own background colour. Give it a description so screen readers
-        announce the name, not the file. The disclaimer appears once per device the first time
-        someone opens the phone view, with a dismiss button &mdash; it reappears if you change the
-        wording, but not just because you saved the field again.
+        the image, so any photo keeps them readable. The logo sits in a slim row above the captions
+        while they are live. The disclaimer appears once per device the first time someone opens
+        the phone view, with a dismiss button &mdash; it reappears if you change the wording, but
+        not just because you saved the field again.
+      </div>
+
+      <div class="subhead">What the audience reads</div>
+      <div class="fieldgrid">
+        <div class="field">
+          <label for="event-title">Event title</label>
+          <input id="event-title" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Fall Convocation">
+        </div>
+        <div class="field">
+          <label for="event-message">Welcome message</label>
+          <input id="event-message" type="text" autocomplete="off"
+                 placeholder="Live captions will begin when the program starts.">
+          <span class="hint">Shown before the event starts. Blank uses that wording.</span>
+        </div>
+        <div class="field wide">
+          <label for="event-notice">Accessibility notice</label>
+          <input id="event-notice" type="text" autocomplete="off"
+                 placeholder="Captions are automatic. Accommodations: Disability Services, 334-555-0100">
+        </div>
+        <div class="field">
+          <label for="event-pause-message">Message while paused</label>
+          <input id="event-pause-message" type="text" autocomplete="off"
+                 placeholder="Intermission">
+          <span class="hint">Blank shows &ldquo;Captions paused&rdquo;.</span>
+        </div>
+        <div class="field">
+          <label for="event-disclaimer">Caption accuracy disclaimer</label>
+          <input id="event-disclaimer" type="text" autocomplete="off"
+                 placeholder="Captions are auto-generated and may not be 100% accurate.">
+          <span class="hint">Once per device, with a dismiss button. Blank disables it.</span>
+        </div>
+      </div>
+
+      <div class="subhead">Pictures</div>
+      <div class="fieldgrid">
+        <div class="field">
+          <label>Background image</label>
+          <div class="row">
+            <label class="file-label">Choose background image
+              <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+            </label>
+            <button id="btn-event-image-remove" type="button">Remove</button>
+          </div>
+          <span class="hint" id="event-image-status">&mdash;</span>
+          <span class="hint">JPEG, PNG or WebP, up to 5 MB.</span>
+        </div>
+        <div class="field">
+          <label>Logo</label>
+          <div class="row">
+            <label class="file-label">Choose logo
+              <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+            </label>
+            <button id="btn-event-logo-remove" type="button">Remove</button>
+          </div>
+          <span class="hint" id="event-logo-status">&mdash;</span>
+          <span class="hint">A transparent PNG works best &mdash; readers pick their own
+            background colour.</span>
+        </div>
+        <div class="field wide">
+          <label for="event-logo-alt">Logo description for screen readers</label>
+          <input id="event-logo-alt" type="text" autocomplete="off"
+                 placeholder="Faulkner University">
+          <span class="hint">So a screen reader announces the name, not the file.</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btn-event-save" class="go" type="button">Save welcome screen</button>
       </div>
     </div>
 </section>
@@ -242,6 +354,42 @@
 
 <div class="tabpanel" id="tabpanel-captions" role="tabpanel"
      aria-labelledby="tab-captions" hidden>
+<section class="panel" id="panel-keyterms">
+  <h2 class="panel-head">Names &amp; terms to get right
+    <span class="badge" id="keyterms-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">Speakers, buildings, hymns &mdash; anything the recognizer would otherwise guess at. Type it, pick where it belongs, press Add. Deepgram is told this list directly; Whisper uses the first few dozen; the Apple backend ignores it.</div>
+    <div class="row termadd">
+      <input id="keyterms-new" type="text" autocomplete="off" spellcheck="false"
+             placeholder="e.g. Dr. Amara Vasquez" aria-label="New term">
+      <select id="keyterms-cat" class="inline" aria-label="Category"></select>
+      <button id="keyterms-add" class="go" type="button">Add</button>
+    </div>
+    <div class="termlist" id="keyterms-list"></div>
+    <div class="disclosure-sub" id="keyterms-sub">&mdash;</div>
+  </div>
+</section>
+
+<section class="panel" id="panel-blocklist">
+  <h2 class="panel-head">Words to keep off the screen
+    <span class="badge" id="blocklist-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">Anything here is stripped from every caption, on every backend, after it is transcribed. Matched whole-word and case-insensitively. For ordinary strong language you do not need a list at all &mdash; use the profanity filter below.</div>
+    <div class="row termadd">
+      <input id="blocklist-new" type="text" autocomplete="off" spellcheck="false"
+             placeholder="a word or short phrase" aria-label="New term">
+      <select id="blocklist-cat" class="inline" aria-label="Category"></select>
+      <button id="blocklist-add" class="go" type="button">Add</button>
+    </div>
+    <label class="check"><input type="checkbox" id="blocklist-reveal">
+      Show the list</label>
+    <div class="termlist" id="blocklist-list"></div>
+    <div class="disclosure-sub" id="blocklist-sub">&mdash;</div>
+  </div>
+</section>
+
 <section class="panel" id="panel-deepgram">
   <h2 class="panel-head">Deepgram API key
     <span class="badge" id="deepgram-badge">&mdash;</span>
@@ -275,46 +423,65 @@
   </h2>
   <div class="panel-body">
     <div class="disclosure-sub">
-      Defaults are good for a lecture or a service. Changes apply straight
-      away &mdash; an open caption stream is closed and reopened to pick them
-      up. Each setting only affects the backend it belongs to.
+      Defaults are good for a lecture or a service. Changes apply straight away
+      &mdash; an open caption stream is closed and reopened to pick them up. Each
+      setting only affects the backend it belongs to, so the ones for a backend
+      you do not use can be ignored.
     </div>
 
-    <div class="field">
-      <label for="dg-inaudible">Deepgram &mdash; mark as [inaudible] below</label>
-      <input id="dg-inaudible" type="number" min="0" max="1" step="0.05">
-      <span class="hint">A committed word the model doubts this much is shown
-        as [inaudible] rather than a confident wrong guess. 0 turns it off.</span>
-    </div>
-    <div class="field">
-      <label>Deepgram &mdash; transcript style</label>
-      <label class="check"><input id="dg-diarize" type="checkbox">
-        Mark speaker changes with &gt;&gt;</label>
-      <label class="check"><input id="dg-filler" type="checkbox">
-        Keep filler words (um, uh)</label>
-    </div>
-
-    <div class="field">
-      <label for="wh-compute">Whisper &mdash; compute type</label>
-      <select id="wh-compute" class="inline"></select>
-      <span class="hint">int8 is fastest on a CPU; the float types need a GPU.</span>
-    </div>
-    <div class="field">
-      <label for="wh-interim">Whisper &mdash; interim every (seconds)</label>
-      <input id="wh-interim" type="number" min="0.2" max="5" step="0.1">
-      <span class="hint">How often the in-progress line is rewritten.</span>
-    </div>
-    <div class="field">
-      <label for="wh-silence">Whisper &mdash; commit after silence (seconds)</label>
-      <input id="wh-silence" type="number" min="0.2" max="5" step="0.1">
-      <span class="hint">How long a pause ends a sentence.</span>
+    <div class="subhead">Deepgram</div>
+    <div class="fieldgrid">
+      <div class="field">
+        <label for="dg-inaudible">Mark as [inaudible] below</label>
+        <input id="dg-inaudible" type="number" min="0" max="1" step="0.05">
+        <span class="hint">A committed word the model doubts this much is shown as
+          [inaudible] rather than a confident wrong guess. 0 turns it off.
+          <b>Default 0.3.</b></span>
+      </div>
+      <div class="field">
+        <label>Transcript style</label>
+        <label class="check"><input id="dg-diarize" type="checkbox">
+          Mark speaker changes with &gt;&gt;</label>
+        <label class="check"><input id="dg-filler" type="checkbox">
+          Keep filler words (um, uh)</label>
+        <span class="hint">Defaults: speaker changes on, filler words off.</span>
+      </div>
     </div>
 
-    <div class="field">
-      <label for="apple-locale">Apple on-device &mdash; locale</label>
-      <input id="apple-locale" type="text" spellcheck="false" placeholder="en-US">
-      <span class="hint">The language macOS recognises. Each one downloads a
-        model the first time it is used.</span>
+    <div class="subhead">Whisper</div>
+    <div class="fieldgrid">
+      <div class="field">
+        <label for="wh-compute">Compute type</label>
+        <select id="wh-compute"></select>
+        <span class="hint">int8 is fastest on a CPU; the float types need a GPU.</span>
+      </div>
+      <div class="field">
+        <label for="wh-interim">Rewrite the live line every</label>
+        <div class="withunit">
+          <input id="wh-interim" type="number" min="0.2" max="5" step="0.1">
+          <span class="unit">seconds</span>
+        </div>
+        <span class="hint">How often the in-progress line is redrawn.
+          <b>Default 0.9.</b></span>
+      </div>
+      <div class="field">
+        <label for="wh-silence">Finish a sentence after</label>
+        <div class="withunit">
+          <input id="wh-silence" type="number" min="0.2" max="5" step="0.1">
+          <span class="unit">seconds of silence</span>
+        </div>
+        <span class="hint">How long a pause ends a line. <b>Default 0.7.</b></span>
+      </div>
+    </div>
+
+    <div class="subhead">Apple on-device speech</div>
+    <div class="fieldgrid">
+      <div class="field">
+        <label for="apple-locale">Locale</label>
+        <input id="apple-locale" type="text" spellcheck="false" placeholder="en-US">
+        <span class="hint">The language macOS recognises. Each one downloads a model
+          the first time it is used. <b>Default en-US.</b></span>
+      </div>
     </div>
 
     <div class="row">
@@ -325,49 +492,7 @@
   </div>
 </section>
 
-<section class="panel" id="panel-keyterms">
-  <h2 class="panel-head">Names &amp; terms to get right
-    <span class="badge" id="keyterms-badge">&mdash;</span>
-  </h2>
-  <div class="panel-body">
-    <div class="disclosure-sub">
-      Speakers, buildings, hymns, anything the recognizer would otherwise
-      guess at. One name or short phrase per line; lines starting with
-      <code>#</code> are notes to yourself. Deepgram is told this list
-      directly; the others ignore it.
-    </div>
-    <textarea class="wordlist" id="keyterms-text" spellcheck="false"
-              aria-label="Names and terms to get right"
-              placeholder="Faulkner University&#10;Chapel of the Advocate&#10;Dr. Mitchell"></textarea>
-    <div class="row">
-      <button id="btn-keyterms-save" class="go" type="button">Save &amp; apply</button>
-      <button id="btn-keyterms-revert" type="button">Revert</button>
-      <span class="disclosure-sub" id="keyterms-sub" style="flex:1 1 auto">&mdash;</span>
-    </div>
-  </div>
-</section>
 
-<section class="panel" id="panel-blocklist">
-  <h2 class="panel-head">Words to keep off the screen
-    <span class="badge" id="blocklist-badge">&mdash;</span>
-  </h2>
-  <div class="panel-body">
-    <div class="disclosure-sub">
-      Anything here is stripped from every caption, on every backend, after
-      it is transcribed. One term or short phrase per line. For ordinary
-      strong language you do not need a list at all &mdash; use the profanity
-      filter below.
-    </div>
-    <textarea class="wordlist" id="blocklist-text" spellcheck="false"
-              aria-label="Words to keep off the screen"
-              placeholder="# one term per line"></textarea>
-    <div class="row">
-      <button id="btn-blocklist-save" class="go" type="button">Save &amp; apply</button>
-      <button id="btn-blocklist-revert" type="button">Revert</button>
-      <span class="disclosure-sub" id="blocklist-sub" style="flex:1 1 auto">&mdash;</span>
-    </div>
-  </div>
-</section>
 
 <section class="panel" id="panel-keywords">
   <h2 class="panel-head">Profanity filter
@@ -409,7 +534,7 @@
                placeholder="Target languages, e.g. es, fr, zh-Hans">
         <button id="btn-azure-save" type="button">Save</button>
       </div>
-      <div class="disclosure-sub" id="azure-hint">
+      <div class="disclosure-sub help" id="azure-hint">
         Get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
         &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
         <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
@@ -434,13 +559,14 @@
         <label for="slides-screen">Audience screen number</label>
         <input id="slides-screen" type="text" inputmode="numeric" style="flex:0 1 90px" aria-describedby="slides-help">
       </div>
-      <label class="check"><input id="slides-allow-lan" type="checkbox">Allow connection to this Mac on the local network</label>
+      <label class="check"><input id="slides-allow-lan" type="checkbox">Allow connecting to another computer on the local network</label>
       <div class="row"><button id="btn-slides-save" type="button">Save and apply</button></div>
       <div class="disclosure-sub" id="slides-status" role="status" aria-live="polite">&mdash;</div>
-      <div class="disclosure-sub" id="slides-help">
+      <div class="disclosure-sub help" id="slides-help">
         Enable Network/API access in ProPresenter and enter its displayed port.
-        Use 127.0.0.1 when both apps run on this Mac. For another Mac, enter its private
-        IP address and check the local network box. Screen 1 is the first screen in the current Look.
+        Use 127.0.0.1 when ProPresenter runs on this same computer. To reach a different
+        machine on the booth network, enter its private IP address and tick the local
+        network box. Screen 1 is the first screen in the current Look.
         Enable audience output and that screen's Slide layer, then trigger a slide in Show view.
         Sharing starts during a live event. Attendees choose Aa &rarr; Slides + Captions on their phones.
         Static slide previews only; video, animations, and combined audience layers are not reproduced.
@@ -491,7 +617,7 @@
         <button id="btn-pp-clear" type="button">Clear surface</button>
       </div>
       <div class="disclosure-sub" id="pp-sub">&mdash;</div>
-      <div class="disclosure-sub" id="pp-hint">
+      <div class="disclosure-sub help" id="pp-hint">
         In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note the port.
         <b>Stage message</b> needs a stage layout with a Stage Message element on the screen that
         should show captions. <b>Message</b> needs a Message with the name above and one text token
@@ -609,7 +735,7 @@
         <button id="btn-tunnel-disable" class="stop">Disable</button>
       </div>
       <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
-      <div class="disclosure-sub" id="tunnel-hint">
+      <div class="disclosure-sub help" id="tunnel-hint">
         One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
         Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
         this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
@@ -735,9 +861,14 @@
       tuning = out;
       var select = $('wh-compute');
       select.textContent = '';
-      (out.whisper_compute_choices || []).forEach(function (name) {
+      // The first choice the relay lists is what the shipped config uses, so
+      // it is labelled - otherwise "int8" and "float16" look like equally
+      // arbitrary picks to anyone who has not read the docs.
+      var choices = out.whisper_compute_choices || [];
+      choices.forEach(function (name, i) {
         var option = document.createElement('option');
-        option.value = option.textContent = name;
+        option.value = name;
+        option.textContent = name + (i === 0 ? '  (default)' : '');
         select.appendChild(option);
       });
       fillTuning();
@@ -768,70 +899,186 @@
   }
 
   // ---- word lists ------------------------------------------------------
-  // keyterms.txt and blocklist.txt used to be edited in a text editor, which
-  // meant finding a file inside an installed app to add a speaker's name.
-  // Loaded once on boot and kept here so Revert has something to go back to.
-  var wordlists = { keyterms: null, blocklist: null };
+  // keyterms.txt and blocklist.txt used to be edited as raw text: to add one
+  // speaker's name an operator scrolled past thirty lines of comment header
+  // and typed in the right place under the right "# --- people ---" marker.
+  // Now it is a box, a category, and Add. The file stays the source of truth
+  // and keeps its shape - the comment header is preserved verbatim and the
+  // section markers are what the categories are - so a hand-edited file still
+  // loads and a file this page writes is still readable by hand.
+  var CATEGORIES = {
+    keyterms: ['People', 'Places', 'Programs and terms', 'Other'],
+    blocklist: ['Names', 'Words and phrases', 'Other']
+  };
+  var lists = { keyterms: null, blocklist: null };
 
-  function countTerms(text) {
-    return text.split('\n').filter(function (line) {
-      var t = line.trim();
-      return t && t.charAt(0) !== '#';
-    }).length;
+  function parseList(text) {
+    var lines = String(text || '').split('\n');
+    var header = [], groups = [], current = null, seenTerm = false;
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i], line = raw.trim();
+      var marker = /^#\s*-{2,}\s*(.*?)\s*-{2,}\s*$/.exec(line);
+      if (marker) {
+        current = { name: marker[1] || 'Other', terms: [] };
+        groups.push(current);
+        seenTerm = true;
+        continue;
+      }
+      if (!line) { if (!seenTerm) header.push(raw); continue; }
+      if (line.charAt(0) === '#') {
+        // Comment lines before the first term or marker are the file's own
+        // explanation, and are kept exactly. After that they are notes
+        // somebody left inline; those are dropped, which is the one thing
+        // this editor cannot round-trip and is why the header is preserved.
+        if (!seenTerm) header.push(raw);
+        continue;
+      }
+      seenTerm = true;
+      if (!current) { current = { name: 'Other', terms: [] }; groups.push(current); }
+      current.terms.push(line);
+    }
+    return { header: header.join('\n'), groups: groups };
   }
 
-  function renderWordlist(name) {
-    var saved = wordlists[name];
-    var box = $(name + '-text');
+  function serialiseList(parsed) {
+    var out = [];
+    if (parsed.header) out.push(parsed.header.replace(/\s+$/, ''), '');
+    parsed.groups.forEach(function (g) {
+      if (!g.terms.length) return;
+      var bar = new Array(Math.max(3, 74 - g.name.length)).join('-');
+      out.push('# --- ' + g.name + ' ' + bar, g.terms.join('\n'), '');
+    });
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
+  }
+
+  function groupFor(parsed, name) {
+    for (var i = 0; i < parsed.groups.length; i++) {
+      if (parsed.groups[i].name.toLowerCase() === name.toLowerCase()) return parsed.groups[i];
+    }
+    var g = { name: name, terms: [] };
+    parsed.groups.push(g);
+    return g;
+  }
+
+  function termCount(parsed) {
+    var n = 0;
+    parsed.groups.forEach(function (g) { n += g.terms.length; });
+    return n;
+  }
+
+  function fillCategories(name) {
+    var select = $(name + '-cat');
+    if (select.options.length) return;          // built once
+    var seen = {}, names = [];
+    CATEGORIES[name].forEach(function (c) { seen[c.toLowerCase()] = 1; names.push(c); });
+    (lists[name] ? lists[name].groups : []).forEach(function (g) {
+      if (!seen[g.name.toLowerCase()]) { seen[g.name.toLowerCase()] = 1; names.push(g.name); }
+    });
+    names.forEach(function (c) {
+      var option = document.createElement('option');
+      option.value = option.textContent = c;
+      select.appendChild(option);
+    });
+  }
+
+  function renderList(name) {
+    var parsed = lists[name];
+    var host = $(name + '-list');
     var badge = $(name + '-badge');
     var sub = $(name + '-sub');
-    if (saved === null) {
-      badge.textContent = '—';
-      sub.textContent = 'Loading…';
+    host.textContent = '';
+    if (!parsed) { badge.textContent = '—'; sub.textContent = 'Loading…'; return; }
+
+    var count = termCount(parsed);
+    badge.textContent = count + (count === 1 ? ' term' : ' terms');
+    badge.className = 'badge' + (count ? ' live' : '');
+
+    var reveal = $(name + '-reveal');
+    if (reveal && !reveal.checked) {
+      host.hidden = true;
+      sub.textContent = count
+        ? count + ' term' + (count === 1 ? '' : 's') + ' saved and in use — tick '
+          + '“Show the list” to see or remove them.'
+        : 'Nothing blocked yet.';
       return;
     }
-    var dirty = box.value !== saved;
-    var terms = countTerms(box.value);
-    badge.textContent = terms + (terms === 1 ? ' term' : ' terms')
-      + (dirty ? ' · unsaved' : '');
-    badge.className = 'badge' + (dirty ? '' : (terms ? ' live' : ''));
-    sub.textContent = dirty
-      ? 'Not saved yet.'
-      : (terms ? 'Saved and in use.' : 'Empty — nothing to apply.');
+    host.hidden = false;
+
+    parsed.groups.forEach(function (g) {
+      if (!g.terms.length) return;
+      var section = document.createElement('div');
+      section.className = 'termgroup';
+      var head = document.createElement('div');
+      head.className = 'termgroup-name';
+      head.textContent = g.name;
+      section.appendChild(head);
+      var chips = document.createElement('div');
+      chips.className = 'chips';
+      g.terms.forEach(function (term, i) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        var label = document.createElement('span');
+        label.textContent = term;
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'chip-x';
+        remove.textContent = '×';
+        remove.title = 'Remove ' + term;
+        remove.setAttribute('aria-label', 'Remove ' + term);
+        remove.onclick = function () {
+          g.terms.splice(i, 1);
+          saveList(name);
+        };
+        chip.appendChild(label);
+        chip.appendChild(remove);
+        chips.appendChild(chip);
+      });
+      section.appendChild(chips);
+      host.appendChild(section);
+    });
+    sub.textContent = count ? 'Saved and in use.' : 'Nothing here yet.';
   }
 
-  function loadWordlist(name) {
+  function loadList(name) {
     return fetch('/api/wordlist/' + name).then(jsonOrThrow).then(function (out) {
-      wordlists[name] = out.text || '';
-      var box = $(name + '-text');
-      // Never clobber something half-typed: if the operator has already
-      // started editing, keep their text and just record what is on disk.
-      if (box.value === '' || box.value === box.defaultValue) box.value = wordlists[name];
-      renderWordlist(name);
+      lists[name] = parseList(out.text || '');
+      fillCategories(name);
+      renderList(name);
     })['catch'](function () {
       $(name + '-sub').textContent = 'Could not read the list from the relay.';
     });
   }
 
-  function saveWordlist(name) {
-    var box = $(name + '-text');
-    var button = $('btn-' + name + '-save');
-    button.disabled = true;
-    // Raw text, not JSON: a campus's worth of names runs past the relay's
-    // 16 KiB JSON cap, and this endpoint takes the body as-is.
-    fetch('/api/wordlist/' + name, {
+  function saveList(name) {
+    var body = serialiseList(lists[name]);
+    renderList(name);            // optimistic: the chip is already gone
+    return fetch('/api/wordlist/' + name, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      body: box.value
+      body: body
     }).then(jsonOrThrow).then(function (out) {
-      wordlists[name] = box.value;
-      renderWordlist(name);
       toast(out.delivered_to
         ? 'Saved — ' + out.terms + ' term' + (out.terms === 1 ? '' : 's') + ' now in use'
         : 'Saved — no capture client connected, it will load on the next start');
-    })['catch'](function (err) {
-      toast('Could not save: ' + (err && err.message ? err.message : 'relay unreachable'));
-    })['finally'](function () { button.disabled = false; });
+    })['catch'](function () {
+      toast('Could not save — reloading the list');
+      return loadList(name);
+    });
+  }
+
+  function addTerm(name) {
+    var box = $(name + '-new');
+    var term = box.value.trim();
+    if (!term) { toast('Type a term first'); return; }
+    if (term.charAt(0) === '#') { toast('A term cannot start with #'); return; }
+    var group = groupFor(lists[name], $(name + '-cat').value);
+    var already = group.terms.some(function (t) {
+      return t.toLowerCase() === term.toLowerCase();
+    });
+    if (already) { toast('Already in ' + group.name); box.value = ''; return; }
+    group.terms.push(term);
+    box.value = '';
+    saveList(name);
   }
 
   function renderWhisper(source) {
@@ -851,25 +1098,23 @@
       button.disabled = true;
       return;
     }
-    if (w.installed === false) {
-      badge.textContent = 'not installed';
+    if (w.installed === false && w.installable === false) {
+      badge.textContent = 'not included';
       badge.className = 'badge';
-      sub.textContent = w.packaged
-        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
-        : 'Whisper is not installed in this copy. Running from source, '
-          + 'install it once with: '
-          + 'python -m pip install -r requirements-whisper.txt';
+      sub.textContent = 'Whisper is not included in this build of Campus '
+        + 'Captions. Use Deepgram or, on a Mac new enough for it, Apple '
+        + 'on-device speech.';
       button.disabled = true;
       return;
     }
     if (w.state === 'downloading') {
-      badge.textContent = 'downloading';
+      badge.textContent = 'working';
       badge.className = 'badge';
-      sub.textContent = 'Downloading the ' + model + ' model'
-        + (w.message ? ' — ' + w.message : '')
+      sub.textContent = (w.message || 'downloading the ' + model + ' model')
+        .replace(/^./, function (c) { return c.toUpperCase(); })
         + '. This takes a few minutes and does not interrupt captions.';
       button.disabled = true;
-      button.textContent = 'Downloading…';
+      button.textContent = 'Working…';
       return;
     }
     if (w.state === 'error') {
@@ -889,13 +1134,17 @@
       button.disabled = true;
       button.textContent = 'Downloaded';
     } else {
-      badge.textContent = 'not downloaded';
+      var needsInstall = w.installed === false;
+      badge.textContent = needsInstall ? 'not set up' : 'not downloaded';
       badge.className = 'badge';
-      sub.textContent = 'Whisper needs a one-time model download (a few '
-        + 'hundred megabytes) before it can caption anything. Only this step '
-        + 'needs internet.';
+      sub.textContent = needsInstall
+        ? 'Whisper needs a one-time setup — the software and its speech '
+          + 'model, a few hundred megabytes in total. The button does both, '
+          + 'and only this step needs internet.'
+        : 'Whisper needs a one-time model download (a few hundred megabytes) '
+          + 'before it can caption anything. Only this step needs internet.';
       button.disabled = false;
-      button.textContent = 'Download the model';
+      button.textContent = needsInstall ? 'Set up Whisper' : 'Download the model';
     }
   }
 
@@ -972,7 +1221,9 @@
     var badge = $('tunnel-badge');
     var sub;
     if (!tunnel.installed) {
-      sub = 'cloudflared not found on this Mac — install it (brew install cloudflared), then reload this page.';
+      sub = 'cloudflared is not installed on this computer — get it from '
+          + 'developers.cloudflare.com/cloudflared (on a Mac, brew install cloudflared), '
+          + 'then reload this page.';
       badge.textContent = 'Not installed';
       badge.className = 'badge';
     } else if (!tunnel.configured) {
@@ -1588,6 +1839,47 @@
     }
   }
 
+  // A "?" in each panel heading that shows and hides that panel's
+  // explanation. Only static prose is targeted: a .disclosure-sub carrying
+  // the `help` class, or one with no id at all. Everything else with an id
+  // is a live status line ("A key is saved on this machine", "3 terms"),
+  // which must never be hidden behind a toggle.
+  function setupHelpToggles() {
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      (function (panel) {
+        var help = panel.querySelector(
+          '.panel-body > .disclosure-sub.help, .panel-body > .disclosure-sub:not([id])');
+        var head = panel.querySelector('.panel-head');
+        if (!help || !head) return;
+        var key = 'campus-captions:help:' + panel.id;
+        var open = false;
+        try { open = localStorage.getItem(key) === '1'; } catch (e) {}
+
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'help-toggle';
+        button.textContent = '?';
+        button.title = 'What this is for';
+        button.setAttribute('aria-label', 'What this is for');
+
+        function apply() {
+          help.hidden = !open;
+          button.setAttribute('aria-expanded', open ? 'true' : 'false');
+          button.className = 'help-toggle' + (open ? ' on' : '');
+        }
+        button.onclick = function () {
+          open = !open;
+          try { localStorage.setItem(key, open ? '1' : '0'); } catch (e) {}
+          apply();
+        };
+        apply();
+        var badge = head.querySelector('.badge');
+        if (badge) head.insertBefore(button, badge); else head.appendChild(button);
+      })(panels[i]);
+    }
+  }
+
   function setupTabs() {
     var tabs = document.querySelectorAll('.tab');
     for (var i = 0; i < tabs.length; i++) {
@@ -1619,6 +1911,7 @@
 
   function boot() {
     setupTabs();
+    setupHelpToggles();
     $('btn-port-save').onclick = savePort;
     $('relay-port').oninput = function () { relayPortDirty = true; };
     $('relay-port').onkeydown = function (e) { if (e.key === 'Enter') savePort(); };
@@ -1672,14 +1965,23 @@
     loadTuning();
 
     ['keyterms', 'blocklist'].forEach(function (name) {
-      $('btn-' + name + '-save').onclick = function () { saveWordlist(name); };
-      $('btn-' + name + '-revert').onclick = function () {
-        if (wordlists[name] === null) return;
-        $(name + '-text').value = wordlists[name];
-        renderWordlist(name);
+      $(name + '-add').onclick = function () { addTerm(name); };
+      $(name + '-new').onkeydown = function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addTerm(name); }
       };
-      $(name + '-text').oninput = function () { renderWordlist(name); };
-      loadWordlist(name);
+      var reveal = $(name + '-reveal');
+      if (reveal) {
+        // Blocked words stay out of sight until asked for: this list is
+        // exactly the words nobody wants appearing on a screen, and a
+        // settings page gets opened in front of other people.
+        var key = 'campus-captions:reveal-' + name;
+        try { reveal.checked = localStorage.getItem(key) === '1'; } catch (e) {}
+        reveal.onchange = function () {
+          try { localStorage.setItem(key, reveal.checked ? '1' : '0'); } catch (e) {}
+          renderList(name);
+        };
+      }
+      loadList(name);
     });
 
     $('btn-whisper-download').onclick = function () {
