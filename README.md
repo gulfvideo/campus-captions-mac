@@ -14,13 +14,21 @@ phone page with scrollback.
 | 3 | `capture/`, its ASR backends, `launcher/`, `SETUP.md` |
 
 **Running an event? Read [SETUP.md](SETUP.md), not this file.** It covers
-ProPresenter, firewall and IP requirements, audio device selection, the query
-parameters, keyterms, and a pre-event checklist.
+installing, ProPresenter, firewall and IP requirements, audio device selection,
+the query parameters, keyterms, and a pre-event checklist.
 
-**macOS and just want the app, not the source?** Grab the latest build from
-[Releases](https://github.com/koakley3/campus-captions/releases) — download
-`CampusCaptions.zip`, unzip it, and see "Packaging a macOS app" below for the
-first-launch Gatekeeper step.
+**Just want to run it, not work on it?** Take the download for your machine
+from [Releases](https://github.com/koakley3/campus-captions/releases). No
+Python, no terminal, no zip to unpack:
+
+| | |
+|---|---|
+| Windows | `CampusCaptions-Setup-<version>.exe` — double-click, click through the installer |
+| macOS | `CampusCaptions.zip` — unzip, drag to Applications, Control-click → Open the first time |
+
+Neither is code-signed, so each shows a one-time warning the first time it runs
+on a given computer (Windows: "More info" → "Run anyway"; macOS:
+Control-click → Open). See [SETUP.md §1](SETUP.md) for both, in order.
 
 This README is for working on the code.
 
@@ -28,11 +36,20 @@ This README is for working on the code.
 
 ## Operating it: the short version
 
-Double-click **`Start Captions.bat`** on Windows or **`Start Captions.command`**
-on macOS. It creates the virtual environment on
+The installed app runs as a **notification-area icon on Windows** and a **menu
+bar icon on macOS** — right-click it for the status, settings, wall and phone
+pages, and to quit.
+
+From a source checkout, double-click **`Start Captions.bat`** on Windows or
+**`Start Captions.command`** on macOS. It creates the virtual environment on
 first run, starts the relay and the capture client, opens the status page, and
-supervises both until the window is closed. Everything an operator needs is on
-the status page.
+supervises both until the window is closed.
+
+Either way the **first run opens a setup wizard** in the browser — microphone,
+transcription backend, event title, then the addresses to hand out — and every
+run after that goes straight to the status page. Everything an operator needs
+during an event is on the status page; one-time setup is on Settings, which has
+a **Run setup again** link back to the wizard.
 
 ---
 
@@ -131,8 +148,34 @@ venue with no internet, or any machine `apple_speech` can't run on. Its
 dependencies are ~200MB and optional on purpose: `python -m pip install -r
 requirements-whisper.txt` only on a machine that actually uses it.
 
-**Adding another backend** is one new file next to those four and one line in
-`capture/backends/registry.py`. Nothing in the relay or the viewers changes.
+**Adding another backend** is one new file next to those four, one line in
+`capture/backends/registry.py`, and one row in `capture/backends/support.py`'s
+`CATALOGUE` (the operator-facing name and description). `registry.py` asserts
+at import that the two agree. Nothing in the relay or the viewers changes.
+
+### Which backend a machine gets
+
+`capture/backends/support.py` answers "does this backend exist, and can this
+computer run it" **without importing any backend** — the relay and
+`capture/config.py` both need the answer, and the relay must stay clear of
+numpy, websockets and PortAudio (see `.github/workflows/ci.yml`). It is the
+authority for three things:
+
+- **`backend = "auto"`**, the shipped default in `config/event.example.toml`:
+  the first free, no-account backend this machine can run — `apple_speech` on
+  a Mac new enough for it, `mock` everywhere else. Never `deepgram` (it bills)
+  and never `whisper` (its wheels are an opt-in download).
+- **What gets offered.** The setup wizard and the status page's picker list
+  `supported()` only, so `apple_speech` is simply absent on Windows and Linux.
+- **What happens to a config naming a backend this machine cannot run.** It is
+  substituted for one that works, and the capture client prints why. Failing
+  instead would mean a volunteer with no captions and a config file to edit.
+
+This is what the shipped default used to get wrong: `event.example.toml` named
+`apple_speech`, and a fresh clone has no `config/event.toml`, so every Windows
+install came up on a macOS-only backend that could only ever report an error.
+`tests/test_backend_support.py` pins the behaviour, including that the shipped
+example never names a platform-bound backend again.
 
 The mock backend is first-class, not a stub: it obeys the same open/close
 lifecycle, so the whole operator flow can be rehearsed without hardware, an API
@@ -153,11 +196,49 @@ nothing installed:
 python tools/mock_relay.py
 ```
 
-## Packaging a distributable .app
+## Packaging
 
-For sending a runnable copy to someone who shouldn't need Python, Xcode, or a
-terminal at all: `macapp/` builds a self-contained macOS menu bar app with
-PyInstaller.
+Two packagers, one shared core. `launcher/embedded.py` runs the relay and the
+capture client as threads of one process — a frozen app has no `python -m X` to
+shell out to, so `launch.py`'s two-subprocess model cannot apply. Both front
+ends are thin: they draw a menu, show an alert, and hand a status callback to
+`embedded.Supervisor`. Everything else — starting the relay, restarting it when
+the Settings page changes the port, pointing the capture client at whichever
+port it actually got — lives in the shared file, so a fix cannot land on one
+platform and quietly miss the other.
+
+`launcher/version.py` is the only place the version number is written; both
+`.spec` files and the Windows installer read it.
+
+### Windows: an installer
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt `
+    -r winapp\requirements-build.txt -r requirements-whisper.txt
+powershell -ExecutionPolicy Bypass -File winapp\build.ps1
+```
+
+Two outputs in `winapp\dist`: the app folder, and
+`CampusCaptions-Setup-<version>.exe` — the single file to hand out. The
+installer step needs [Inno Setup 6](https://jrsoftware.org/isdl.php);
+without it the app still builds and the script says so.
+
+`winapp/tray.py` is the entry point: a notification-area icon (`pystray`), no
+console window. A **onedir** build, not onefile — a onefile re-extracts the
+whole interpreter to a temp folder on every launch, which on a booth PC with an
+aggressive antivirus is twenty seconds of a double-click appearing to do
+nothing. The installer hides the folder in Program Files anyway.
+
+`winapp/icons/*.ico` are generated from the macOS app icon by
+`winapp/icons/make_icons.py` and committed, so a Windows build needs neither
+Pillow nor the `.icns`. They are the blue app tile with a status dot rather
+than the macOS menu bar's template images: Windows does not recolour tray
+icons, so a black one vanishes on the default dark taskbar.
+
+Building it needs no Windows machine — see **Releasing** below.
+
+### macOS: a menu bar app
 
 ```
 .venv/bin/python3 -m pip install -r requirements.txt -r macapp/requirements-build.txt
@@ -166,21 +247,68 @@ macapp/build.sh
 
 Output is `macapp/dist/Campus Captions.app` — copy it to `/Applications` and
 double-click. It has no console window; a graduation-cap icon appears in the
-menu bar instead, with menu items to open the status/wall/phone pages and to
-quit. `macapp/menubar.py` is the entry point: it runs the relay and capture
-client as threads in one process instead of `launch.py`'s two subprocesses,
-since a frozen app has no `python -m X` to shell out to.
+menu bar instead. `macapp/menubar.py` is the entry point.
 
 The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
-`apple_speech` works with no Xcode on the machine it's installed on, and
-bundles `config/event.toml` as its default configuration — edit that file
-before building if the default backend or port should differ for whoever is
-receiving the app.
+`apple_speech` works with no Xcode on the machine it's installed on.
 
-It's ad-hoc signed, not notarized (no paid Apple Developer ID in this setup),
+### What ships, and what doesn't
+
+Only `config/event.example.toml` goes into either bundle. The real
+`event.toml`, the `.env` with the keys, and any uploaded images live in a
+per-user folder — `%LOCALAPPDATA%\Campus Captions` on Windows,
+`~/Library/Application Support/Campus Captions` on macOS (see
+`relay/config.py`'s `_data_dir()`), created on first run. So nothing personal
+or secret travels with a copy of the app, an upgrade keeps the operator's
+settings, and writing settings needs neither a writable Program Files nor a
+valid macOS code signature.
+
+### Releasing
+
+`.github/workflows/release.yml` builds both apps and attaches them to the
+GitHub release for a `v*` tag — so cutting a release needs neither a Windows
+machine nor a Mac. Two independent jobs, deliberately not chained: a macOS
+runner that cannot build the Swift speech helper must not stop the Windows
+installer from reaching the release.
+
+Neither job writes the release body. Every release here carries hand-written
+notes, so the workflow only attaches files: an existing release's notes
+survive a re-run, and the two jobs cannot overwrite each other. A tag pushed
+with no release yet gets an empty one to fill in.
+
+`tools/windows_build_check.py` and `tools/macos_build_check.py` run before
+either upload and fail the build on a hidden import PyInstaller missed or a
+platform default that regressed — a runner has no display, no audio device
+and no microphone permission, so importing what the frozen app imports is the
+most a machine can check.
+
+**The macOS job may need a Mac after all.** `speech_helper.swift` is built
+against SpeechAnalyzer, which needs the macOS 26 SDK (Xcode 26). If
+`macos-latest` is older than that, the job stops with an explanation rather
+than publishing an app whose free on-device backend silently does nothing.
+Two ways out: build the `.app` on a Mac with Xcode 26 and upload
+`CampusCaptions.zip` to the release by hand, or re-run the workflow from the
+Actions tab with **"Build the macOS app even if the Swift speech helper will
+not compile"** ticked, accepting that `apple_speech` will not work in that
+build. `macapp/build.sh --skip-helper` is the same choice locally.
+
+Run the workflow from the Actions tab (`workflow_dispatch`) to get a build
+without cutting a release; each app is uploaded as a workflow artifact and no
+release is touched.
+
+`launcher/version.py` is the one place the version is written. It carries the
+full label including any pre-release suffix (`0.3.0-beta`); `VERSION_NUMBER`
+is the numeric part, which is what the Windows VERSIONINFO resource and Inno
+Setup's `VersionInfoVersion` need.
+
+### Signing
+
+Neither is signed. The macOS app is ad-hoc signed (no paid Apple Developer ID),
 so first launch on another Mac needs Control-click → Open once to get past
-Gatekeeper's "unidentified developer" warning. That's a one-time step per
-machine, not per launch.
+Gatekeeper. The Windows installer is unsigned, so it shows SmartScreen's
+"Windows protected your PC" once per machine — More info → Run anyway. Both are
+one-time per computer, not per launch. A certificate is the only thing that
+removes either.
 
 ## Configuration
 
@@ -237,7 +365,7 @@ a password:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /wall` `/phone` `/status` `/settings` `/tune` | the five pages, served `no-store` (all but `/wall`/`/phone` are operator-only) |
+| `GET /wall` `/phone` `/status` `/settings` `/tune` `/setup` | the six pages, served `no-store` (all but `/wall`/`/phone` are operator-only) |
 | `GET /<name>` | any other `viewer/<name>.html`, no code change needed (operator-only unless listed public) |
 | `WS /ws/viewer?role=wall\|phone` | caption feed; `role` sets replay depth |
 | `WS /ws/source` | capture client, bidirectional; source token as `Authorization: Bearer` |
@@ -248,6 +376,8 @@ a password:
 | `GET /api/transcript.{srt,vtt,txt,json,csv}` | recorded captions as a file, `?lang=` and `?offset=` (operator-only); `.txt` takes `?timestamps=0` |
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
+| `GET /api/setup` | what the first-run wizard needs: the backends this machine can run and how to describe them, plus the addresses to hand out (operator-only) |
+| `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
 | `POST /api/preflight` | run the preflight check now: a verdict plus findings with what to do about each, see below |
 | `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
@@ -568,6 +698,29 @@ Message types: `hello`, `interim`, `final`, `clear`, `heartbeat`, plus `status`
 and `control` on the capture side.
 
 ---
+
+## Setup wizard
+
+`viewer/setup.html`, at `/setup`. Five steps: welcome, microphone (with a live
+level meter, because "we captioned the built-in mic all night" is the failure
+worth spending a step on), transcription backend, event title and notice, and
+the addresses to hand out.
+
+**A signed-in operator hitting `/status` is redirected here until it is
+finished.** That is deliberately the same URL the launcher prints, the tray
+menu opens and every page of the docs names — a first run lands somewhere
+useful without a second link to teach. `[setup] completed = true` in
+`event.toml` is what ends it; Settings has a **Run setup again** link back.
+
+An `event.toml` that has no `[setup]` section is treated as a first run — that
+covers the shipped example and every config written before the wizard existed.
+*No config file at all* is not, since a booth whose `event.toml` was deleted
+mid-event should not be put in front of a wizard.
+
+The wizard saves nothing of its own beyond that one flag: the microphone, the
+backend and the Deepgram key all go through `/api/control`, and the title and
+notice through `/api/event` — the endpoints the status and settings pages
+already use. One writer per setting, so the three pages cannot drift.
 
 ## Status page
 

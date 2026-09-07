@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import platform
 import subprocess
 import sys
 from pathlib import Path
 
 from .base import ASRBackend
+from .support import apple_speech_unsupported
 
 FROZEN = getattr(sys, "frozen", False)
 # In a PyInstaller bundle, NATIVE_DIR's datas land next to this file's frozen
@@ -56,17 +56,11 @@ BINARY = NATIVE_DIR / "build" / "speech_helper"
 DRAIN_SECONDS = 3.0
 
 
-def _unsupported_reason() -> str | None:
-    """None if this Mac can run SpeechAnalyzer, else why it can't."""
-    if sys.platform != "darwin":
-        return "apple_speech only runs on macOS"
-    try:
-        major = int(platform.mac_ver()[0].split(".")[0])
-    except (ValueError, IndexError):
-        return None  # unknown version string; let the helper itself decide
-    if major < 26:
-        return f"apple_speech needs macOS 26 or newer (this Mac has {platform.mac_ver()[0]})"
-    return None
+# The rule itself lives in support.py, which the relay and capture/config.py
+# import to decide what to offer *before* any backend module is loaded - see
+# that file. This alias keeps the call sites below reading the same as they
+# did when the check was written here.
+_unsupported_reason = apple_speech_unsupported
 
 
 def _ensure_built() -> str | None:
@@ -95,6 +89,16 @@ def _ensure_built() -> str | None:
 
 class AppleSpeechBackend(ASRBackend):
     name = "apple_speech"
+
+    @classmethod
+    def unsupported_reason(cls) -> str | None:
+        # SpeechAnalyzer is a macOS 26 API with no equivalent anywhere else,
+        # so a Windows or Linux machine can never run this however it is
+        # configured. Saying so here keeps it out of the status page's picker
+        # and out of the automatic default on those machines - it used to be
+        # the shipped default for everyone, which put every fresh Windows
+        # install on a backend that could only ever report an error.
+        return _unsupported_reason()
 
     def __init__(self, config: dict | None = None):
         super().__init__(config)

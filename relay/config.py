@@ -18,15 +18,54 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
-# (where the .spec's `datas` land) when frozen into the macOS app.
+# (where the .spec's `datas` land) when frozen into the packaged app.
 FROZEN = bool(getattr(sys, "frozen", False))
 ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
+APP_NAME = "Campus Captions"
+
+
+def _data_dir() -> Path:
+    """Where per-machine state lives in the packaged app: event.toml, .env,
+    uploaded images, logs. Never inside the bundle - it is signed, shared as
+    a download, and replaced on every update, so a Deepgram key written into
+    it would break the signature and travel with the next copy someone
+    passes around.
+
+    Each platform's own conventional location, so the folder is where the
+    operator's OS (and its backup tool) already expects an app's settings to
+    be. Running from source it is simply the checkout.
+    """
+    if not FROZEN:
+        return ROOT
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        return Path(base or Path.home() / "AppData" / "Local") / APP_NAME
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    base = os.environ.get("XDG_DATA_HOME", "").strip()
+    return Path(base or Path.home() / ".local" / "share") / APP_NAME
+
+
+def _log_dir() -> Path:
+    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
+    temp directory that's gone by the next launch, so its logs go in a
+    standard per-user location instead - Console.app finds ~/Library/Logs/*
+    on its own, and the Windows tray app's "Show Logs" opens this folder.
+    Running from source, next to the code."""
+    if not FROZEN:
+        return ROOT / "logs"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Logs" / APP_NAME
+    # Windows and Linux have no equivalent per-user log convention that a
+    # tool would find on its own, so they go beside the config the tray
+    # app's menu already opens.
+    return _data_dir() / "logs"
+
+
 # Per-machine state - event.toml, .env, uploaded images - lives in the
-# checkout when run from source, and in the user's Application Support folder
-# when packaged. Never inside the .app: a bundle is signed, shared as a zip,
-# and replaced on every update, so a Deepgram key written into it would break
-# the signature and travel with the next copy someone passes around.
-DATA_DIR = (Path.home() / "Library" / "Application Support" / "Campus Captions") if FROZEN else ROOT
+# checkout when run from source, and in the platform's own per-user
+# application-data folder when packaged.
+DATA_DIR = _data_dir()
 DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 VIEWER_DIR = ROOT / "viewer"
@@ -35,18 +74,20 @@ ENV_FILE = DATA_DIR / ".env"
 
 # Hand-edited files that must exist somewhere writable. resolve_path() looks
 # in DATA_DIR before the bundle, so without seeding these the packaged app
-# reads the copies inside the .app - which is read-only and code-signed.
-# Editing one there breaks the signature ("a sealed resource is missing or
-# invalid"), so the Settings page would be telling the operator to edit a
-# file they cannot edit, and "Reload keyterms & blocklist" would re-read the
-# shipped one every time.
+# reads the copies inside the bundle - which on macOS is read-only and
+# code-signed (editing one there breaks the signature: "a sealed resource is
+# missing or invalid") and on Windows lives under Program Files, which a
+# standard user account cannot write to at all. Either way the Settings page
+# would be telling the operator to edit a file they cannot edit, and "Reload
+# keyterms & blocklist" would re-read the shipped one every time.
 SEEDED_CONFIG_FILES = ("keyterms.txt", "blocklist.txt")
 
 
 def ensure_data_dir() -> None:
     """First run of the packaged app: give it real files to edit, copied from
     the ones shipped in the bundle, in the folder the status page writes to
-    and the menu bar's "Show Config Folder in Finder" opens."""
+    and the menu bar's "Show Config Folder in Finder" (macOS) or the tray
+    menu's "Open Config Folder" (Windows) opens."""
     if not FROZEN:
         return
     try:
@@ -59,16 +100,6 @@ def ensure_data_dir() -> None:
                 local.write_bytes(shipped.read_bytes())
     except OSError as exc:
         print(f"[relay] could not prepare {DATA_DIR}: {exc}")
-
-
-def _log_dir() -> Path:
-    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
-    temp directory that's gone by the next launch, so its logs go in the
-    standard per-user macOS location instead - Console.app finds
-    ~/Library/Logs/* on its own. Running from source, next to the code."""
-    if getattr(sys, "frozen", False):
-        return Path.home() / "Library" / "Logs" / "Campus Captions"
-    return ROOT / "logs"
 
 
 class _Tee:
@@ -284,6 +315,15 @@ class RelayConfig:
     # output. Empty means the wall needs no key (the pre-key behaviour).
     overlay_keys: dict[str, str] = field(default_factory=dict)
 
+    # [setup] - has anyone been through the first-run wizard on this machine?
+    # False sends /status to /setup once. Defaults to True when there is no
+    # config file to read it from, because that is not a fresh install: it is
+    # a machine whose event.toml was deleted or has not been written yet, and
+    # sending a working booth to a wizard mid-event would be worse than
+    # showing a wizard one time too few. load() sets it to False explicitly
+    # when the file exists and does not answer.
+    setup_completed: bool = True
+
     config_path: Path | None = None
 
     @property
@@ -373,6 +413,11 @@ def load(path: Path | None = None) -> RelayConfig:
                 cfg.overlay_keys = parse_overlay_keys(keys)
             cfg.translate_provider = str(
                 (data.get("translate", {}) or {}).get("provider", cfg.translate_provider))
+
+            # Absent means a config written before the wizard existed, or
+            # the example file: either way nobody has been through it here.
+            cfg.setup_completed = bool(
+                (data.get("setup", {}) or {}).get("completed", False))
 
             ev = data.get("event", {}) or {}
             cfg.event_state = str(ev.get("state", cfg.event_state))
@@ -498,10 +543,10 @@ def save_audio_device(path: Path, device: str) -> None:
     already accepts a name substring, so the name round-trips.
 
     This only ever writes the per-machine event.toml (the checkout's when
-    running from source, ~/Library/Application Support/... when packaged).
-    The shipped example keeps `device = ""`, meaning the system default, so
-    a fresh install on someone else's Mac still comes up on their own
-    default rather than on whatever hardware this one happened to have.
+    running from source, _data_dir()'s when packaged). The shipped example
+    keeps `device = ""`, meaning the system default, so a fresh install on
+    someone else's computer still comes up on their own default rather than
+    on whatever hardware this one happened to have.
     """
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     lines = text.splitlines()
@@ -767,6 +812,16 @@ def save_section(path: Path, header: str, values: dict) -> None:
         lines.extend(f"{key} = {value}" for key, value in wanted.items())
     path.parent.mkdir(parents=True, exist_ok=True)
     write_private(path, "\n".join(lines) + "\n")
+
+
+def save_setup_complete(path: Path, completed: bool = True) -> None:
+    """Record that the first-run wizard has been finished (or skipped) on
+    this machine, so /status stops sending the operator back to it.
+
+    Written into event.toml rather than kept in memory: the point is that
+    the *next* launch goes straight to the dashboard.
+    """
+    save_section(path, "[setup]", {"completed": bool(completed)})
 
 
 def save_event_settings(path: Path, fields: dict[str, str]) -> None:

@@ -10,6 +10,12 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller injects SPECPATH
 
+# A .spec is exec'd, not imported, and ROOT is not on sys.path when it runs -
+# so read the one place the version lives rather than importing it.
+_version_ns: dict = {}
+exec((ROOT / "launcher" / "version.py").read_text(encoding="utf-8"), _version_ns)
+VERSION = _version_ns["VERSION"]
+
 # Only the *example* config ships in the bundle. The real event.toml, the
 # .env with the keys, and any uploaded images live in
 # ~/Library/Application Support/Campus Captions/ (see relay/config.py) - the
@@ -21,12 +27,25 @@ datas = [
     (str(ROOT / "config" / "keyterms.txt"), "config"),
     (str(ROOT / "config" / "blocklist.txt"), "config"),
     (str(ROOT / "config" / "mock_script.txt"), "config"),
-    (str(ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"),
-     "capture/backends/native/build"),
     (str(ROOT / "macapp" / "icons" / "menubar_idle.png"), "macapp/icons"),
     (str(ROOT / "macapp" / "icons" / "menubar_streaming.png"), "macapp/icons"),
     (str(ROOT / "macapp" / "icons" / "menubar_inactive.png"), "macapp/icons"),
 ]
+
+# The Swift on-device speech helper, when one has been built. PyInstaller
+# errors on a `datas` entry that does not exist, and build.sh normally builds
+# it first - but it needs the macOS 26 SDK, which not every machine (or CI
+# runner) has. Omitting it produces an app that works on everything except
+# apple_speech, which apple_speech.py reports as "speech_helper is missing
+# from this app bundle" rather than failing mysteriously. Better than no
+# macOS build at all; worse than a complete one, so build.sh only skips it
+# when told to.
+_helper = ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"
+if _helper.exists():
+    datas.append((str(_helper), "capture/backends/native/build"))
+else:
+    print("[spec] WARNING: no speech_helper - apple_speech will not work "
+          "in this bundle")
 
 hiddenimports = [
     "uvicorn.logging",
@@ -85,7 +104,7 @@ app = BUNDLE(  # noqa: F821
     info_plist={
         "CFBundleName": "Campus Captions",
         "CFBundleDisplayName": "Campus Captions",
-        "CFBundleShortVersionString": "0.2.5",
+        "CFBundleShortVersionString": VERSION,
         "LSUIElement": True,
         "NSMicrophoneUsageDescription":
             "Campus Captions needs the microphone to generate live captions.",

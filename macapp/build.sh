@@ -16,14 +16,33 @@
 # The app is ad-hoc signed (no Apple Developer ID), so the first launch on
 # another Mac needs Control-click -> Open once to get past Gatekeeper. There
 # is no way around that without a paid Developer ID to notarize with.
+#
+#   macapp/build.sh [--skip-helper]
+#
+# --skip-helper leaves capture/backends/native/build/speech_helper alone,
+# for a caller that has already built it (CI does, so it can report a
+# too-old SDK in its own step rather than inside this script). If no helper
+# binary exists at all the app still builds - the spec omits it and
+# apple_speech.py says so at runtime - so never pass this without knowing
+# why: a bundle with no helper cannot do on-device speech on any Mac.
 set -eu
+
+skip_helper=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-helper) skip_helper=1 ;;
+        *) echo "unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 venv_py="$root/.venv/bin/python3"
 
-echo "--- building the on-device speech helper ---"
-"$root/capture/backends/native/build.sh"
+if [ "$skip_helper" -eq 0 ]; then
+    echo "--- building the on-device speech helper ---"
+    "$root/capture/backends/native/build.sh"
+fi
 
 echo "--- running PyInstaller ---"
 cd "$here"

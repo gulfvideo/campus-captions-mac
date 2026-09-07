@@ -63,11 +63,18 @@ from .hub import CONTROL_ACTIONS, INTERNAL_CONTROL_ACTIONS, RELAY_ACTIONS, Clien
 from .youtube import ALLOWED_HOSTS as YOUTUBE_HOSTS
 from .youtube import YouTubeCaptionPusher, urls_from_env, valid_ingestion_url
 
+# The only import the relay makes from the capture package, and deliberately
+# its leaf module: it names and platform-checks the ASR backends without
+# importing any of them, so the relay stays clear of numpy, websockets and
+# PortAudio (see capture/backends/support.py, and ci.yml on why that matters).
+from capture.backends import support as backend_support
+
 HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
 
 PAGES = {"wall": "wall.html", "phone": "phone.html", "status": "status.html",
-         "settings": "settings.html", "tune": "tune.html", "qr": "qr.html"}
+         "settings": "settings.html", "tune": "tune.html", "qr": "qr.html",
+         "setup": "setup.html"}
 
 # Bundled font files, served under /fonts/<name>. See serve_font() below.
 FONT_FILES = {
@@ -222,6 +229,10 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 "preview": slides.public()}
 
     last_preflight: dict = {"report": None}
+    # Mutable so /api/setup can flip it without a relay restart: the wizard's
+    # last step writes [setup] completed into event.toml, and the very next
+    # request to /status must already go to the dashboard.
+    setup_state = {"completed": cfg.setup_completed}
 
     def overlay_key_list() -> list[dict]:
         base = cfg.base_url(local_ip())
@@ -587,11 +598,20 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     def page(name: str) -> FileResponse:
         return file_page(config_module.VIEWER_DIR / PAGES[name])
 
-    def operator_page(request: Request, path: Path) -> Response:
-        """An operator-only page. `?token=...` on the URL signs the browser
-        in (cookie) and redirects to the same URL without it; from then on
-        the cookie alone is enough. No token and no cookie gets a short
-        page saying where the link is, not the dashboard."""
+    def operator_gate(request: Request) -> Response | None:
+        """The sign-in half of an operator-only page: None once this request
+        is authenticated, otherwise the response to send instead.
+
+        `?token=...` on the URL signs the browser in (cookie) and redirects
+        to the same URL without it; from then on the cookie alone is enough.
+        No token and no cookie gets a short page saying where the link is,
+        not the dashboard.
+
+        Split out from operator_page so /status can decide *after* signing
+        the browser in whether the dashboard or the setup wizard is what
+        this operator should be looking at - the answer depends on config,
+        which someone with no token has no business learning.
+        """
         require_local(request.headers)
         offered = request.query_params.get("token")
         if offered is not None:
@@ -606,7 +626,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             return response
         if not operator_ok(request.headers, request.cookies):
             return HTMLResponse(OPERATOR_LOGIN_HTML, status_code=401, headers=NO_STORE)
-        return file_page(path)
+        return None
+
+    def operator_page(request: Request, path: Path) -> Response:
+        """An operator-only page."""
+        return operator_gate(request) or file_page(path)
 
     @app.get("/")
     async def root(request: Request) -> Response:
@@ -626,7 +650,23 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     @app.get("/status")
     async def status_page(request: Request) -> Response:
-        return operator_page(request, config_module.VIEWER_DIR / PAGES["status"])
+        blocked = operator_gate(request)
+        if blocked is not None:
+            return blocked
+        # First run goes to the wizard, not the dashboard. The dashboard is
+        # for watching a configured system; on a machine where nobody has
+        # picked a microphone or a transcription backend there is nothing
+        # yet to watch. Checked here rather than with a separate link so the
+        # status URL the launcher prints, the tray menu opens and every page
+        # of the docs names keeps working unchanged - it just lands somewhere
+        # more useful the first time.
+        if not setup_state["completed"]:
+            return RedirectResponse(url="/setup", status_code=303, headers=NO_STORE)
+        return file_page(config_module.VIEWER_DIR / PAGES["status"])
+
+    @app.get("/setup")
+    async def setup_page(request: Request) -> Response:
+        return operator_page(request, config_module.VIEWER_DIR / PAGES["setup"])
 
     @app.get("/tune")
     async def tune_page(request: Request) -> Response:
@@ -1023,6 +1063,61 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    @app.get("/api/setup")
+    async def api_setup(request: Request) -> JSONResponse:
+        """Everything the first-run wizard needs that it cannot get from
+        /api/status: which backends this machine could run and what each one
+        is, whether the keys they need are already saved, and where the
+        finished system will be reachable.
+
+        The live half - audio devices, input levels, whether the capture
+        client is even connected - comes from /api/status, which the wizard
+        polls like the status page does.
+        """
+        require_operator(request)
+        ip = local_ip()
+        return JSONResponse({
+            "completed": setup_state["completed"],
+            "backends": [backend_support.describe(name)
+                         for name in backend_support.supported()],
+            "auto_backend": backend_support.resolve_auto(),
+            "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
+            "event": {"title": cfg.event_title, "notice": cfg.event_notice},
+            # The LAN address, not localhost: these are the three links the
+            # wizard's last step tells the operator to hand out, and a phone
+            # cannot open 127.0.0.1.
+            "urls": {
+                "status": f"http://{ip}:{cfg.port}/status",
+                "wall": f"http://{ip}:{cfg.port}/wall",
+                "phone": f"{cfg.base_url(ip)}/phone",
+            },
+        }, headers=NO_STORE)
+
+    @app.post("/api/setup")
+    async def api_setup_save(request: Request) -> JSONResponse:
+        """{"completed": true} - the wizard's Finish button, and its Skip.
+
+        Only this one field: every actual setting the wizard collects is
+        saved through the endpoint that already owns it (/api/control for
+        the microphone, backend and Deepgram key, /api/event for the title
+        and notice), so there is one writer per setting and the wizard
+        cannot drift from what the status and settings pages do.
+        """
+        require_operator(request)
+        body = await read_json(request)
+        completed = (body or {}).get("completed", True)
+        if not isinstance(completed, bool):
+            raise HTTPException(status_code=400, detail="completed must be a boolean")
+        try:
+            config_module.save_setup_complete(config_target(), completed)
+        except OSError as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"could not write the config file: {exc}") from None
+        setup_state["completed"] = completed
+        cfg.setup_completed = completed
+        print(f"[relay] first-run setup marked {'complete' if completed else 'incomplete'}")
+        return JSONResponse({"ok": True, "completed": completed}, headers=NO_STORE)
 
     @app.post("/api/preflight")
     async def api_preflight(request: Request) -> JSONResponse:

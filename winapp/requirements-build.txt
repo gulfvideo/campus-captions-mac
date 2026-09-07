@@ -1,0 +1,17 @@
+# Build-only dependencies for packaging the Windows app. Not needed to run
+# Campus Captions from source - see requirements.txt for that.
+#
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt ^
+#       -r winapp\requirements-build.txt -r requirements-whisper.txt
+#   powershell -ExecutionPolicy Bypass -File winapp\build.ps1
+#
+# The installer itself is built by Inno Setup 6, which is a separate download
+# (https://jrsoftware.org/isdl.php), not a pip package.
+
+pyinstaller==6.22.2
+pyinstaller-hooks-contrib==2026.7
+
+# The notification-area icon and its menu - what rumps is to macapp. pystray
+# needs Pillow for the icon images; requirements.txt already pins Pillow for
+# the relay's slide thumbnails, so it is not repeated here.
+pystray==0.19.5

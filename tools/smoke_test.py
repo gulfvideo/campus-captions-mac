@@ -94,6 +94,44 @@ try:
     check("GET /status?token=good -> 303 to /status?x=1", st == 303 and h.get("location") == "/status?x=1", f"{st} {h.get('Location')}")
     check("  sets HttpOnly SameSite=strict cookie", "captions_operator=" in cookie_hdr and "HttpOnly" in cookie_hdr and "samesite=strict" in cookie_hdr.lower(), cookie_hdr)
     cookie = {"Cookie": f"captions_operator={OPTOK}"}
+
+    # --- first run: the setup wizard -------------------------------------
+    # The config this test runs against is the shipped example, which carries
+    # no [setup] completed - i.e. exactly what a fresh install looks like. A
+    # signed-in operator on such a machine gets the wizard, not the dashboard.
+    st, h, b = http("GET", "/status", headers=cookie)
+    check("first run: GET /status with cookie -> 303 /setup",
+          st == 303 and h.get("location") == "/setup", f"{st} {h.get('location')}")
+    st, h, b = http("GET", "/setup")
+    check("GET /setup without token -> 401", st == 401, f"{st}")
+    st, h, b = http("GET", "/setup.html")
+    check("GET /setup.html without token -> 401", st == 401, f"{st}")
+    st, h, b = http("GET", "/api/setup")
+    check("GET /api/setup without token -> 401", st == 401, f"{st}")
+    st, h, b = http("GET", "/setup", headers=cookie)
+    check("GET /setup with cookie -> 200 wizard", st == 200 and b"Set up Campus Captions" in b, f"{st}")
+    st, h, b = http("GET", "/api/setup", headers={"Authorization": f"Bearer {OPTOK}"})
+    wizard = json.loads(b or b"{}")
+    check("GET /api/setup -> not completed, with backends",
+          st == 200 and wizard.get("completed") is False and bool(wizard.get("backends")),
+          f"{st} {b[:120]}")
+    check("  apple_speech is not offered off macOS",
+          sys.platform == "darwin"
+          or all(x["name"] != "apple_speech" for x in wizard.get("backends", [])),
+          str([x["name"] for x in wizard.get("backends", [])]))
+    check("  the automatic default is a backend this machine can run",
+          wizard.get("auto_backend") in [x["name"] for x in wizard.get("backends", [])],
+          f"{wizard.get('auto_backend')}")
+    st, h, b = http("POST", "/api/setup", body={"completed": "yes"},
+                    headers={**cookie, "Sec-Fetch-Site": "same-origin"})
+    check("POST /api/setup with a non-boolean -> 400", st == 400, f"{st}")
+    st, h, b = http("POST", "/api/setup", body={"completed": True},
+                    headers={**cookie, "Sec-Fetch-Site": "same-origin"})
+    check("POST /api/setup -> 200 and saved", st == 200, f"{st} {b[:120]}")
+    with open(cfg_path, encoding="utf-8") as fh:
+        check("  [setup] completed written to event.toml", "completed = true" in fh.read())
+
+    # --- and from here on, the dashboard ---------------------------------
     st, h, b = http("GET", "/status", headers=cookie)
     check("GET /status with cookie -> 200 dashboard", st == 200 and b"Campus Captions" in b, f"{st}")
     st, h, b = http("GET", "/tune", headers=cookie)

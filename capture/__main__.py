@@ -20,7 +20,8 @@ from pathlib import Path
 from . import audio as audio_mod
 from . import config as config_mod
 from . import host as host_mod
-from .backends import BACKENDS, create as create_backend
+from .backends import create as create_backend
+from .backends import support as backend_support
 from .relay_client import RelayClient
 
 STATUS_HZ = 4.0
@@ -128,8 +129,16 @@ class CaptureApp:
         name = str(name).strip()
         if not name or name == self.cfg.backend:
             return
-        if name not in BACKENDS:
-            print(f"[capture] unknown backend {name!r}; available: {', '.join(sorted(BACKENDS))}")
+        if name not in backend_support.BY_NAME:
+            print(f"[capture] unknown backend {name!r}; available: "
+                  f"{', '.join(backend_support.supported())}")
+            return
+        reason = backend_support.unsupported_reason(name)
+        if reason:
+            # The picker does not offer these, so this is a hand-crafted
+            # request or a stale page. Refuse it rather than swapping a
+            # working backend out for one that cannot open.
+            print(f"[capture] cannot switch to {name}: {reason}")
             return
         if name == "deepgram":
             if not os.environ.get("DEEPGRAM_API_KEY", "").strip():
@@ -263,7 +272,11 @@ class CaptureApp:
                 "clipping": bool(getattr(self.input, "clipping", False)),
                 "stream_open": self.backend.stream_open,
                 "backend": self.cfg.backend,
-                "available_backends": sorted(BACKENDS),
+                # Only what this machine can run. The status page turns this
+                # straight into its picker, and offering apple_speech on a
+                # Windows booth is offering a choice that can only ever
+                # report an error.
+                "available_backends": backend_support.supported(),
                 "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
                 "device": str(self.input.device),
                 "device_index": self.input.device.index,
@@ -365,7 +378,8 @@ def main() -> None:
         description="Campus Captions capture client.")
     parser.add_argument("--list-devices", action="store_true",
                         help="print this machine's audio inputs and exit")
-    parser.add_argument("--backend", default=None, help="mock | deepgram | apple_speech")
+    parser.add_argument("--backend", default=None,
+                        help="auto | " + " | ".join(backend_support.BY_NAME))
     parser.add_argument("--device", default=None,
                         help="input device index or part of its name")
     parser.add_argument("--relay", default=None, help="relay source websocket URL")
@@ -383,7 +397,15 @@ def main() -> None:
 
     cfg = config_mod.load(args.config)
     if args.backend:
-        cfg.backend = args.backend
+        # Same resolution the config file gets, so --backend auto works and
+        # --backend apple_speech on a PC lands somewhere usable instead of
+        # on a backend that cannot open.
+        chosen = backend_support.resolve(args.backend)
+        if chosen != args.backend and args.backend != "auto":
+            print(f"[capture] {args.backend} cannot run on this machine "
+                  f"({backend_support.unsupported_reason(args.backend)}); "
+                  f"using {chosen}")
+        cfg.backend = chosen
     if args.device is not None:
         cfg.device = args.device
     if args.relay:
