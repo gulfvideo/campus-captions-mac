@@ -2,7 +2,7 @@
 defaults are the Windows ones.
 
 Run against the *build* virtual environment after PyInstaller finishes - see
-.github/workflows/release-windows.yml. A GitHub runner has no display and no
+.github/workflows/release.yml. A GitHub runner has no display and no
 audio device, so the tray cannot be started there; what this catches instead
 is the failure a frozen build is actually prone to, an import that only
 resolves on the developer's machine, plus the platform-default regression

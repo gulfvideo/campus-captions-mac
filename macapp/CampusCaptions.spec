@@ -27,12 +27,25 @@ datas = [
     (str(ROOT / "config" / "keyterms.txt"), "config"),
     (str(ROOT / "config" / "blocklist.txt"), "config"),
     (str(ROOT / "config" / "mock_script.txt"), "config"),
-    (str(ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"),
-     "capture/backends/native/build"),
     (str(ROOT / "macapp" / "icons" / "menubar_idle.png"), "macapp/icons"),
     (str(ROOT / "macapp" / "icons" / "menubar_streaming.png"), "macapp/icons"),
     (str(ROOT / "macapp" / "icons" / "menubar_inactive.png"), "macapp/icons"),
 ]
+
+# The Swift on-device speech helper, when one has been built. PyInstaller
+# errors on a `datas` entry that does not exist, and build.sh normally builds
+# it first - but it needs the macOS 26 SDK, which not every machine (or CI
+# runner) has. Omitting it produces an app that works on everything except
+# apple_speech, which apple_speech.py reports as "speech_helper is missing
+# from this app bundle" rather than failing mysteriously. Better than no
+# macOS build at all; worse than a complete one, so build.sh only skips it
+# when told to.
+_helper = ROOT / "capture" / "backends" / "native" / "build" / "speech_helper"
+if _helper.exists():
+    datas.append((str(_helper), "capture/backends/native/build"))
+else:
+    print("[spec] WARNING: no speech_helper - apple_speech will not work "
+          "in this bundle")
 
 hiddenimports = [
     "uvicorn.logging",

@@ -236,11 +236,7 @@ Pillow nor the `.icns`. They are the blue app tile with a status dot rather
 than the macOS menu bar's template images: Windows does not recolour tray
 icons, so a black one vanishes on the default dark taskbar.
 
-**You do not need a Windows machine.** `.github/workflows/release-windows.yml`
-builds the installer on `windows-latest` and attaches it to the GitHub release
-when you push a `v*` tag; run it from the Actions tab to get a build without
-cutting a release. `tools/windows_build_check.py` runs there first and fails
-the build if a hidden import is missing or the platform defaults regress.
+Building it needs no Windows machine — see **Releasing** below.
 
 ### macOS: a menu bar app
 
@@ -266,6 +262,44 @@ per-user folder — `%LOCALAPPDATA%\Campus Captions` on Windows,
 or secret travels with a copy of the app, an upgrade keeps the operator's
 settings, and writing settings needs neither a writable Program Files nor a
 valid macOS code signature.
+
+### Releasing
+
+`.github/workflows/release.yml` builds both apps and attaches them to the
+GitHub release for a `v*` tag — so cutting a release needs neither a Windows
+machine nor a Mac. Two independent jobs, deliberately not chained: a macOS
+runner that cannot build the Swift speech helper must not stop the Windows
+installer from reaching the release.
+
+Neither job writes the release body. Every release here carries hand-written
+notes, so the workflow only attaches files: an existing release's notes
+survive a re-run, and the two jobs cannot overwrite each other. A tag pushed
+with no release yet gets an empty one to fill in.
+
+`tools/windows_build_check.py` and `tools/macos_build_check.py` run before
+either upload and fail the build on a hidden import PyInstaller missed or a
+platform default that regressed — a runner has no display, no audio device
+and no microphone permission, so importing what the frozen app imports is the
+most a machine can check.
+
+**The macOS job may need a Mac after all.** `speech_helper.swift` is built
+against SpeechAnalyzer, which needs the macOS 26 SDK (Xcode 26). If
+`macos-latest` is older than that, the job stops with an explanation rather
+than publishing an app whose free on-device backend silently does nothing.
+Two ways out: build the `.app` on a Mac with Xcode 26 and upload
+`CampusCaptions.zip` to the release by hand, or re-run the workflow from the
+Actions tab with **"Build the macOS app even if the Swift speech helper will
+not compile"** ticked, accepting that `apple_speech` will not work in that
+build. `macapp/build.sh --skip-helper` is the same choice locally.
+
+Run the workflow from the Actions tab (`workflow_dispatch`) to get a build
+without cutting a release; each app is uploaded as a workflow artifact and no
+release is touched.
+
+`launcher/version.py` is the one place the version is written. It carries the
+full label including any pre-release suffix (`0.3.0-beta`); `VERSION_NUMBER`
+is the numeric part, which is what the Windows VERSIONINFO resource and Inno
+Setup's `VersionInfoVersion` need.
 
 ### Signing
 

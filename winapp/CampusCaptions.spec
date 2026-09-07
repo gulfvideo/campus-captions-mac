@@ -22,6 +22,9 @@ ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller injects SPECPATH
 _version_ns: dict = {}
 exec((ROOT / "launcher" / "version.py").read_text(encoding="utf-8"), _version_ns)
 VERSION = _version_ns["VERSION"]
+# The numeric part: a VERSIONINFO FileVersion string of "0.3.0-beta" is
+# accepted but shows oddly in Properties, and Windows sorts on the tuple.
+VERSION_NUMBER = _version_ns["VERSION_NUMBER"]
 VERSION_TUPLE = _version_ns["VERSION_TUPLE"]
 
 # Windows' VERSIONINFO resource: what the .exe's Properties > Details tab
@@ -42,7 +45,7 @@ VERSION_FILE.write_text(f"""VSVersionInfo(
       StringTable('040904B0', [
         StringStruct('CompanyName', 'Campus Captions'),
         StringStruct('FileDescription', 'Campus Captions - live event captioning'),
-        StringStruct('FileVersion', '{VERSION}'),
+        StringStruct('FileVersion', '{VERSION_NUMBER}'),
         StringStruct('InternalName', 'CampusCaptions'),
         StringStruct('OriginalFilename', 'Campus Captions.exe'),
         StringStruct('ProductName', 'Campus Captions'),

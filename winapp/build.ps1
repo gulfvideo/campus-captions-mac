@@ -52,6 +52,8 @@ if (-not (Test-Path $venvPython)) {
 # One source of truth for the version; the .spec reads the same file.
 $version = & $venvPython -c "import sys; sys.path.insert(0, r'$root'); from launcher.version import VERSION; print(VERSION)"
 if ($LASTEXITCODE -ne 0) { throw 'Could not read launcher/version.py' }
+$versionNumber = & $venvPython -c "import sys; sys.path.insert(0, r'$root'); from launcher.version import VERSION_NUMBER; print(VERSION_NUMBER)"
+if ($LASTEXITCODE -ne 0) { throw 'Could not read launcher/version.py' }
 Write-Host "--- Campus Captions $version ---" -ForegroundColor Cyan
 
 Write-Host '--- running PyInstaller ---' -ForegroundColor Cyan
@@ -89,7 +91,7 @@ the single-file installer.
     }
 
     Write-Host '--- building the installer ---' -ForegroundColor Cyan
-    & $iscc "/DAppVersion=$version" 'installer.iss'
+    & $iscc "/DAppVersion=$version" "/DAppVersionNumber=$versionNumber" 'installer.iss'
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
 
     $setup = Join-Path $here "dist\CampusCaptions-Setup-$version.exe"

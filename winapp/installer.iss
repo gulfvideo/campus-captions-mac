@@ -14,6 +14,13 @@
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
+; The numeric part of AppVersion, e.g. "0.3.0" for "0.3.0-beta". Inno derives
+; VersionInfoVersion from AppVersion only when that parses as a version
+; number, and this project tags releases with a -beta suffix - so it is
+; passed separately rather than left to chance.
+#ifndef AppVersionNumber
+  #define AppVersionNumber AppVersion
+#endif
 
 #define AppName "Campus Captions"
 #define AppPublisher "Campus Captions"
@@ -27,6 +34,7 @@ AppId={{8E4C1F27-6D3A-4B92-A5E8-0C7B9D2F4A61}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
+VersionInfoVersion={#AppVersionNumber}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
