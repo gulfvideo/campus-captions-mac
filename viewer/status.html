@@ -32,15 +32,16 @@
      the corner and get pressed as often as anything on the page, so they
      should look pressable rather than like prose that happens to be blue. */
   header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  header .nav a {
+  header .nav a, header .nav button {
+    font-family: inherit; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 14px; font-weight: 600; text-decoration: none;
     color: var(--text); background: #262b33;
     border: 1px solid var(--edge); border-radius: 9px;
     padding: 8px 14px; white-space: nowrap;
   }
-  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
-  header .nav a:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  header .nav a:hover, header .nav button:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:focus-visible, header .nav button:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
 
   /* ---- two columns ----------------------------------------------------
      Every block used to run the full width of the window, so a desktop
@@ -305,6 +306,7 @@
   <h1>Campus Captions</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
   <nav class="nav">
+    <button type="button" data-tour-start>Take the tour</button>
     <a href="/tune">Tune the wall</a>
     <a href="/settings">Settings &rarr;</a>
   </nav>
@@ -1027,6 +1029,13 @@
         // address when there is one, like the QR code does.
         $('url-phone').textContent = (s.relay.public_hostname
           ? 'https://' + s.relay.public_hostname : base) + '/phone';
+        // First launch on this machine: show the operator round before
+        // they have to guess what any of this is. Offered from here rather
+        // than from the tour itself because the answer comes from the
+        // relay, and only this page is somewhere a first launch lands.
+        if (window.CampusTour) {
+          window.CampusTour.offerIfUnseen(s.relay.tour_completed !== false);
+        }
       }
     })['catch'](function () {});
 
@@ -1042,5 +1051,7 @@
   boot();
 })();
 </script>
+
+<!-- include tour.js -->
 </body>
 </html>

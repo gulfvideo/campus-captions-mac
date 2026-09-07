@@ -46,10 +46,13 @@ first run, starts the relay and the capture client, opens the status page, and
 supervises both until the window is closed.
 
 Either way the **first run opens a setup wizard** in the browser — microphone,
-transcription backend, event title, then the addresses to hand out — and every
-run after that goes straight to the status page. Everything an operator needs
-during an event is on the status page; one-time setup is on Settings, which has
-a **Run setup again** link back to the wizard.
+transcription backend, event title, then the addresses to hand out — and then a
+**guided tour** that points at each control on the real page and says what it
+is for. Every run after that goes straight to the status page. Everything an
+operator needs during an event is on the status page; one-time setup is on
+Settings, which has a **Run setup again** link back to the wizard. **Take the
+tour** in the top corner of the status, tuner and settings pages replays the
+tour whenever someone wants it again.
 
 ---
 
@@ -377,6 +380,7 @@ a password:
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `GET /api/setup` | what the first-run wizard needs: the backends this machine can run and how to describe them, plus the addresses to hand out (operator-only) |
+| `POST /api/setup` | `{"completed": bool}` and/or `{"tour_completed": bool}` — the wizard's Finish and Skip, and the tour's (operator-only) |
 | `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |
 | `GET`/`POST /api/wordlist/{keyterms,blocklist}` | the two hand-maintained word lists as plain text; saving rewrites the file and reloads it into the capture client. The body is raw text, not JSON - a campus's worth of names runs past `MAX_JSON_BYTES` |
 | `POST /api/ui` | `{"window_mode": "app"\|"browser"}` - whether the app's own pages open in a chromeless window or a browser tab, saved to `[ui]` in `event.toml` |
@@ -724,6 +728,40 @@ The wizard saves nothing of its own beyond that one flag: the microphone, the
 backend and the Deepgram key all go through `/api/control`, and the title and
 notice through `/api/event` — the endpoints the status and settings pages
 already use. One writer per setting, so the three pages cannot drift.
+
+### The guided tour
+
+`viewer/tour.js`. Twenty-three steps across the status page, the tuner and
+Settings, each one dimming the page, ringing a real control and saying what it
+is for — pointing at the thing itself rather than at a picture of it, so it
+cannot go quietly out of date the way a screenshot does.
+
+It starts itself on a machine nobody has been shown round yet, and **Take the
+tour** in the header of all three pages replays it. Steps whose panel is
+collapsed open it first; steps on a Settings tab switch to it. A step whose
+target is not on the page — a panel a build does not have — is skipped rather
+than shown ringing nothing.
+
+**Where it is up to** is in `localStorage`, because the tour crosses three
+pages and has to survive the navigation. **Whether it has ever been finished**
+is on the relay, in `[setup] tour_completed` beside `completed`: an app window
+and an ordinary tab are not always the same storage, and being shown round
+twice because you opened the other one reads as a bug. Skipping counts as
+finishing — someone who has said no once should not be asked every launch.
+
+A config file that does not mention the tour answers for it with
+`setup.completed`, so a booth that was already running does not get ambushed by
+one, while a fresh install gets the wizard and then the tour. Finishing the
+wizard writes the flag explicitly so that inference cannot later reverse it.
+
+**Shared JavaScript, under a hash-based CSP.** The pages' policy names the
+hashes of their own inline scripts and deliberately has no `script-src 'self'`,
+so `tour.js` cannot be loaded with `src=`. `<!-- include tour.js -->` in a page
+is replaced with the file's contents by `expand_includes()` in
+`relay/server.py` before the page is hashed, so one copy serves three pages
+with the strict policy intact. The page cache is keyed on the included file's
+modification time as well as the page's, so editing `tour.js` updates every
+page carrying it.
 
 ## App window
 

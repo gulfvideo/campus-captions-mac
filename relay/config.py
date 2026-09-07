@@ -356,6 +356,12 @@ class RelayConfig:
     # when the file exists and does not answer.
     setup_completed: bool = True
 
+    # [setup] - has anyone been shown round the operator pages on this
+    # machine? Same default and the same reason: a booth with no config file
+    # is not a fresh install, and a guided tour that opens over a live
+    # dashboard is worse than one that never offers itself.
+    tour_completed: bool = True
+
     config_path: Path | None = None
 
     @property
@@ -452,8 +458,14 @@ def load(path: Path | None = None) -> RelayConfig:
 
             # Absent means a config written before the wizard existed, or
             # the example file: either way nobody has been through it here.
-            cfg.setup_completed = bool(
-                (data.get("setup", {}) or {}).get("completed", False))
+            setup = data.get("setup", {}) or {}
+            cfg.setup_completed = bool(setup.get("completed", False))
+            # A config that predates the tour answers for it with whether the
+            # wizard has been done: a booth already set up has been running
+            # for a while and does not want to be shown round, a fresh one is
+            # about to go through the wizard and then the tour.
+            cfg.tour_completed = bool(setup.get("tour_completed",
+                                                cfg.setup_completed))
 
             ev = data.get("event", {}) or {}
             cfg.event_state = str(ev.get("state", cfg.event_state))
@@ -882,6 +894,17 @@ def save_setup_complete(path: Path, completed: bool = True) -> None:
     the *next* launch goes straight to the dashboard.
     """
     save_section(path, "[setup]", {"completed": bool(completed)})
+
+
+def save_tour_complete(path: Path, completed: bool = True) -> None:
+    """Record that the guided tour has been finished (or skipped) here.
+
+    Beside setup.completed rather than in the browser's storage: the app
+    window and an ordinary tab are different origins' worth of storage on
+    some machines, and being shown round twice because you opened the other
+    one is exactly the kind of thing a volunteer reports as a bug.
+    """
+    save_section(path, "[setup]", {"tour_completed": bool(completed)})
 
 
 def save_event_settings(path: Path, fields: dict[str, str]) -> None:

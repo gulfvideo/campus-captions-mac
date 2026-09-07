@@ -154,6 +154,13 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
 }
 SCRIPT_RE = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
+# `<!-- include name.js -->` in a viewer page, replaced with that file's
+# contents wrapped in a <script> before the page is hashed and served. The
+# CSP names hashes of a page's own inline blocks and nothing else - there is
+# deliberately no 'self' in script-src - so a shared module cannot be pulled
+# in with src=. Stitching it in here keeps the strict policy and still lets
+# several pages share one copy of a script instead of carrying a copy each.
+INCLUDE_RE = re.compile(rb"<!--\s*include\s+([A-Za-z0-9_][A-Za-z0-9_.-]*\.js)\s*-->")
 SAFE_HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
@@ -168,6 +175,44 @@ def _script_hash(script: bytes) -> str:
     """
     normalized = script.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return "'sha256-" + base64.b64encode(hashlib.sha256(normalized).digest()).decode() + "'"
+
+
+def expand_includes(html: bytes,
+                    viewer_dir: Path) -> tuple[bytes, tuple[tuple[Path, float], ...]]:
+    """Stitch every `<!-- include name.js -->` into the page, and report what
+    was pulled in and when it was last written, so a caller caching the result
+    can tell that a *shared* file has changed underneath it.
+
+    The name may not contain a path separator, and the file has to resolve
+    inside the viewer directory: these pages are edited by whoever runs the
+    booth, and a page is not a place from which to read the rest of the disk.
+    """
+    used: list[tuple[Path, float]] = []
+
+    def one(match: re.Match[bytes]) -> bytes:
+        name = match.group(1).decode()
+        path = (viewer_dir / name).resolve()
+        if path.parent != viewer_dir.resolve() or not path.is_file():
+            raise HTTPException(
+                status_code=500,
+                detail=f"{name} is included by a page but is not in the viewer directory")
+        used.append((path, path.stat().st_mtime))
+        # A newline either side, so the module's first line cannot land inside
+        # a comment that happened to precede the marker.
+        return b"<script>\n" + path.read_bytes() + b"\n</script>"
+
+    return INCLUDE_RE.sub(one, html), tuple(used)
+
+
+def includes_current(used: tuple[tuple[Path, float], ...]) -> bool:
+    """True while every file stitched into a cached page is as it was."""
+    for path, mtime in used:
+        try:
+            if path.stat().st_mtime != mtime:
+                return False
+        except OSError:
+            return False
+    return True
 
 
 def page_csp(html: bytes) -> str:
@@ -234,7 +279,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # Mutable so /api/setup can flip it without a relay restart: the wizard's
     # last step writes [setup] completed into event.toml, and the very next
     # request to /status must already go to the dashboard.
-    setup_state = {"completed": cfg.setup_completed}
+    setup_state = {"completed": cfg.setup_completed,
+                   "tour": cfg.tour_completed}
 
     def overlay_key_list() -> list[dict]:
         base = cfg.base_url(local_ip())
@@ -464,7 +510,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         # has to be here as well.
         "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip(),
                   "window_mode": cfg.window_mode,
-                  "app_window": appwindow.describe()},
+                  "app_window": appwindow.describe(),
+                  # Whether anyone has been shown round here yet. The tour
+                  # starts itself off this, so it has to arrive with the
+                  # first frame rather than after a second request.
+                  "tour_completed": setup_state["tour"]},
         "propresenter": propresenter.status(),
         "slide_settings": slide_settings(),
         "overlay_keys": overlay_key_list(),
@@ -582,12 +632,18 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     # -- pages -----------------------------------------------------------
 
-    page_cache: dict[Path, tuple[float, bytes, str]] = {}
+    # path -> (page mtime, [(included path, its mtime)], html, csp)
+    page_cache: dict[Path, tuple[float, tuple[tuple[Path, float], ...], bytes, str]] = {}
 
     def file_page(path: Path) -> Response:
         """A viewer page with a Content-Security-Policy that names the hash
         of its inline script. Read per request (the file may change during
-        an event), hashed once per file version."""
+        an event), hashed once per file version.
+
+        A cached page is also invalidated when a shared script it includes
+        changes, so editing tour.js updates every page carrying it and not
+        just the ones nobody has opened yet.
+        """
         try:
             mtime = path.stat().st_mtime
         except OSError:
@@ -595,11 +651,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if not path.is_file():
             raise HTTPException(status_code=404, detail=f"{path.name} not found")
         cached = page_cache.get(path)
-        if cached is None or cached[0] != mtime:
-            html = path.read_bytes()
-            cached = (mtime, html, page_csp(html))
+        if cached is None or cached[0] != mtime or not includes_current(cached[1]):
+            html, includes = expand_includes(path.read_bytes(), config_module.VIEWER_DIR)
+            cached = (mtime, includes, html, page_csp(html))
             page_cache[path] = cached
-        _, html, csp = cached
+        html, csp = cached[2], cached[3]
         return Response(content=html, media_type="text/html; charset=utf-8",
                         headers={**NO_STORE, "Content-Security-Policy": csp})
 
@@ -866,6 +922,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "public_hostname": cfg.public_hostname,
             "window_mode": cfg.window_mode,
             "app_window": appwindow.describe(),
+            "tour_completed": setup_state["tour"],
         }
         return JSONResponse(snap, headers=NO_STORE)
 
@@ -1281,6 +1338,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         ip = local_ip()
         return JSONResponse({
             "completed": setup_state["completed"],
+            "tour_completed": setup_state["tour"],
             "backends": [backend_support.describe(name)
                          for name in backend_support.supported()],
             "auto_backend": backend_support.resolve_auto(),
@@ -1327,27 +1385,50 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     @app.post("/api/setup")
     async def api_setup_save(request: Request) -> JSONResponse:
         """{"completed": true} - the wizard's Finish button, and its Skip.
+        {"tour_completed": true} - the guided tour's Finish, and its Skip.
 
-        Only this one field: every actual setting the wizard collects is
+        Only these two flags: every actual setting either of them touches is
         saved through the endpoint that already owns it (/api/control for
         the microphone, backend and Deepgram key, /api/event for the title
         and notice), so there is one writer per setting and the wizard
-        cannot drift from what the status and settings pages do.
+        cannot drift from what the status and settings pages do. The tour
+        writes no settings at all.
         """
         require_operator(request)
         body = await read_json(request)
-        completed = (body or {}).get("completed", True)
-        if not isinstance(completed, bool):
-            raise HTTPException(status_code=400, detail="completed must be a boolean")
+        body = body or {}
+        # Two independent flags, and a request may carry either. The tour
+        # ends on a page the wizard never sees, so it reports on its own.
+        for key in ("completed", "tour_completed"):
+            if key in body and not isinstance(body[key], bool):
+                raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
+        if "completed" not in body and "tour_completed" not in body:
+            body = {"completed": True}
+
         try:
-            config_module.save_setup_complete(config_target(), completed)
+            if "completed" in body:
+                config_module.save_setup_complete(config_target(), body["completed"])
+                setup_state["completed"] = body["completed"]
+                cfg.setup_completed = body["completed"]
+                print("[relay] first-run setup marked "
+                      f"{'complete' if body['completed'] else 'incomplete'}")
+                if "tour_completed" not in body:
+                    # A config file that does not mention the tour answers
+                    # for it with setup.completed (see load()), so writing
+                    # only completed=true here would tell the next launch
+                    # the tour had been seen when it has not. Pin it.
+                    body = dict(body, tour_completed=setup_state["tour"])
+            if "tour_completed" in body:
+                config_module.save_tour_complete(config_target(), body["tour_completed"])
+                setup_state["tour"] = body["tour_completed"]
+                cfg.tour_completed = body["tour_completed"]
+                print("[relay] guided tour marked "
+                      f"{'seen' if body['tour_completed'] else 'unseen'}")
         except OSError as exc:
             raise HTTPException(status_code=500,
                                 detail=f"could not write the config file: {exc}") from None
-        setup_state["completed"] = completed
-        cfg.setup_completed = completed
-        print(f"[relay] first-run setup marked {'complete' if completed else 'incomplete'}")
-        return JSONResponse({"ok": True, "completed": completed}, headers=NO_STORE)
+        return JSONResponse({"ok": True, "completed": setup_state["completed"],
+                             "tour_completed": setup_state["tour"]}, headers=NO_STORE)
 
     @app.post("/api/preflight")
     async def api_preflight(request: Request) -> JSONResponse:
