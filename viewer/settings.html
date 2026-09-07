@@ -28,8 +28,12 @@
   }
   header .meta { color: var(--dim); font-size: 13px; }
   header a {
-    color: #7fb2f0; font-size: 14px; text-decoration: none; margin-left: auto;
+    color: #7fb2f0; font-size: 14px; text-decoration: none;
   }
+  /* Only the first of the trailing links takes the free space, so the pair
+     stays together at the right rather than spreading across the header. */
+  header a:not(:last-child) { margin-left: auto; }
+  header a + a { margin-left: 16px; }
   header a:hover { text-decoration: underline; }
 
   button {
@@ -124,6 +128,7 @@
 <header>
   <h1>Settings</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
+  <a href="/setup">Run setup again</a>
   <a href="/status">&larr; Back to status</a>
 </header>
 

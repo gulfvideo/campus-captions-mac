@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Campus Captions — Setup</title>
+<style>
+  /* Same palette and controls as the status and settings pages: this is the
+     first thing an operator ever sees, and nothing it teaches them should
+     have to be relearned two screens later. */
+  :root {
+    --bg: #14161a;
+    --panel: #1e2127;
+    --edge: #2c313a;
+    --text: #eceff4;
+    --dim: #939bab;
+    --ok: #3fbf6f;
+    --warn: #d8a33a;
+    --bad: #d95c5c;
+    --link: #7fb2f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; background: var(--bg); color: var(--text);
+    font: 16px/1.55 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+    padding: 26px 22px 60px; max-width: 720px;
+  }
+  h1 { font-size: 23px; margin: 0 0 6px; font-weight: 600; }
+  h2 { font-size: 19px; margin: 0 0 10px; font-weight: 600; }
+  p { margin: 0 0 14px; }
+  p.sub { color: var(--dim); font-size: 14.5px; }
+  a { color: var(--link); }
+  code {
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px;
+    background: #262b33; border: 1px solid var(--edge); border-radius: 5px;
+    padding: 1px 5px; word-break: break-all;
+  }
+
+  /* ---- progress rail ---- */
+  ol.rail {
+    display: flex; gap: 6px; list-style: none; margin: 0 0 24px; padding: 0;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--dim); font-weight: 700;
+  }
+  ol.rail li {
+    flex: 1; padding-top: 9px; border-top: 3px solid var(--edge);
+    transition: border-color 200ms, color 200ms;
+  }
+  ol.rail li.done { border-top-color: #2b8a51; color: var(--dim); }
+  ol.rail li.now { border-top-color: var(--link); color: var(--text); }
+
+  /* ---- step card ---- */
+  section.step {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 14px; padding: 22px;
+  }
+  section.step[hidden] { display: none; }
+
+  .field { margin: 0 0 18px; }
+  .field > label {
+    display: block; font-size: 13px; font-weight: 700; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 7px;
+  }
+  input[type=text], input[type=password], select {
+    width: 100%; min-height: 48px; font: inherit; color: var(--text);
+    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 12px;
+  }
+  select { padding-right: 36px; }
+
+  button {
+    font: inherit; font-weight: 600; font-size: 15px;
+    padding: 13px 21px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  }
+  button:hover:not(:disabled) { background: #2f353f; }
+  button:disabled { opacity: .38; cursor: default; }
+  button.go { background: #1f6b3d; border-color: #2b8a51; }
+  button.go:hover:not(:disabled) { background: #248049; }
+  button.quiet { background: none; border-color: transparent; color: var(--dim); font-weight: 500; }
+  button.quiet:hover:not(:disabled) { background: #262b33; color: var(--text); }
+
+  nav.actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--edge);
+  }
+  nav.actions .spacer { flex: 1; }
+
+  /* ---- backend choices ---- */
+  .choice {
+    display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px;
+    border: 1px solid var(--edge); border-radius: 11px; margin-bottom: 9px;
+    cursor: pointer;
+  }
+  .choice:hover { background: #262b33; }
+  .choice input { margin-top: 4px; width: 18px; height: 18px; flex: none; accent-color: #5aa2f0; }
+  .choice.picked { border-color: var(--link); background: #232935; }
+  .choice .name { font-weight: 600; display: block; }
+  .choice .why { color: var(--dim); font-size: 14px; display: block; margin-top: 2px; }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; border-radius: 999px; padding: 2px 8px;
+    margin-left: 7px; vertical-align: 1px;
+  }
+  .tag.cost { background: #4a3a17; color: #e6bf68; }
+  .tag.free { background: #1d3d29; color: #6cc98d; }
+
+  /* ---- level meter ---- */
+  .meter {
+    height: 22px; border-radius: 7px; background: #262b33;
+    border: 1px solid var(--edge); overflow: hidden; margin-bottom: 8px;
+  }
+  .meter > i {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, #3fbf6f, #c9d15a 72%, #d95c5c 92%);
+    transition: width 90ms linear;
+  }
+  .verdict { font-size: 14.5px; min-height: 1.5em; }
+  .verdict.ok { color: var(--ok); }
+  .verdict.warn { color: var(--warn); }
+  .verdict.bad { color: var(--bad); }
+
+  ul.links { list-style: none; margin: 0 0 16px; padding: 0; }
+  ul.links li { padding: 11px 0; border-top: 1px solid var(--edge); }
+  ul.links li:first-child { border-top: 0; }
+  ul.links .what { font-weight: 600; }
+  ul.links .who { color: var(--dim); font-size: 14px; }
+
+  .note {
+    border-left: 3px solid var(--edge); padding: 2px 0 2px 13px;
+    color: var(--dim); font-size: 14.5px; margin: 0 0 16px;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note.bad { border-left-color: var(--bad); color: var(--text); }
+
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
+    padding: 11px 19px; border-radius: 9px; font-size: 14px;
+    opacity: 0; transition: opacity 220ms; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+
+<h1>Set up Campus Captions</h1>
+<p class="sub" id="intro">Three questions, then the addresses to hand out.
+Nothing here is permanent — all of it can be changed later on the Settings
+page.</p>
+
+<ol class="rail" id="rail">
+  <li data-step="0">Start</li>
+  <li data-step="1">Microphone</li>
+  <li data-step="2">Captions</li>
+  <li data-step="3">Event</li>
+  <li data-step="4">Done</li>
+</ol>
+
+<!-- 0 ------------------------------------------------------------------ -->
+<section class="step" id="step-0" hidden>
+  <h2>Welcome</h2>
+  <p>Campus Captions listens to the room, turns speech into captions, and puts
+  them on two screens: a <strong>wall view</strong> for the projector or LED
+  wall, and a <strong>phone view</strong> the audience opens on their own
+  devices.</p>
+  <p>This wizard picks the microphone, chooses how captions are produced, and
+  ends with the links to hand out. It takes about two minutes.</p>
+  <p class="note">Captions never start on their own. Even after setup, no
+  transcript is produced until someone presses <em>Open ASR stream</em> on the
+  status page — so you can leave this running through rehearsal at no cost.</p>
+  <nav class="actions">
+    <button class="go" id="go-0">Get started</button>
+    <span class="spacer"></span>
+    <button class="quiet" id="skip">Skip setup</button>
+  </nav>
+</section>
+
+<!-- 1 ------------------------------------------------------------------ -->
+<section class="step" id="step-1" hidden>
+  <h2>Which microphone?</h2>
+  <p class="sub">Pick the input carrying the room — usually a feed from the
+  sound desk rather than the computer's built-in mic.</p>
+
+  <div class="field">
+    <label for="device">Audio input</label>
+    <select id="device"><option>Waiting for the capture client&hellip;</option></select>
+  </div>
+
+  <div class="field">
+    <label for="meter">Input level</label>
+    <div class="meter" id="meter" role="img" aria-live="off"
+         aria-label="Live input level"><i id="meter-fill"></i></div>
+    <div class="verdict" id="mic-verdict">Speak into the microphone, or ask
+      someone to talk on the stage mic.</div>
+  </div>
+
+  <p class="note" id="mic-note" hidden></p>
+
+  <nav class="actions">
+    <button id="back-1">Back</button>
+    <span class="spacer"></span>
+    <button class="go" id="go-1">Next</button>
+  </nav>
+</section>
+
+<!-- 2 ------------------------------------------------------------------ -->
+<section class="step" id="step-2" hidden>
+  <h2>How should captions be produced?</h2>
+  <p class="sub">Only the options this computer can actually run are listed.</p>
+
+  <div id="backends"></div>
+
+  <div class="field" id="key-field" hidden>
+    <label for="dg-key">Deepgram API key</label>
+    <input id="dg-key" type="password" autocomplete="off" spellcheck="false"
+           placeholder="Paste the key from console.deepgram.com">
+    <p class="sub" id="key-hint" style="margin-top:8px">Create a free account at
+      <a href="https://console.deepgram.com" target="_blank" rel="noreferrer noopener">console.deepgram.com</a>,
+      make an API key, and paste it here. It is saved on this computer only.</p>
+  </div>
+
+  <nav class="actions">
+    <button id="back-2">Back</button>
+    <span class="spacer"></span>
+    <button class="go" id="go-2">Next</button>
+  </nav>
+</section>
+
+<!-- 3 ------------------------------------------------------------------ -->
+<section class="step" id="step-3" hidden>
+  <h2>About this event</h2>
+  <p class="sub">Both are optional, and both are shown to the audience on their
+  phones before captions begin.</p>
+
+  <div class="field">
+    <label for="ev-title">Event title</label>
+    <input id="ev-title" type="text" autocomplete="off"
+           placeholder="e.g. Fall Convocation">
+  </div>
+
+  <div class="field">
+    <label for="ev-notice">Accessibility notice</label>
+    <input id="ev-notice" type="text" autocomplete="off"
+           placeholder="e.g. Accommodations: Disability Services, 334-555-0100">
+  </div>
+
+  <nav class="actions">
+    <button id="back-3">Back</button>
+    <span class="spacer"></span>
+    <button class="go" id="go-3">Next</button>
+  </nav>
+</section>
+
+<!-- 4 ------------------------------------------------------------------ -->
+<section class="step" id="step-4" hidden>
+  <h2>Ready</h2>
+  <p>These are the addresses to hand out. They work for anything on the same
+  wifi as this computer.</p>
+
+  <ul class="links" id="urls"></ul>
+
+  <p class="note">The status page has a printable QR code for the phone link,
+  and the buttons that start and stop captions.</p>
+
+  <nav class="actions">
+    <button id="back-4">Back</button>
+    <span class="spacer"></span>
+    <button class="go" id="finish">Finish &amp; open the status page</button>
+  </nav>
+</section>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STEPS = 5;
+  var step = 0;
+  var setup = null;          // /api/setup, fetched once
+  var chosenBackend = null;
+  var keySaved = false;
+  var sock = null, reconnTimer = null, attempts = 0, signedOut = false;
+  var latest = null;         // most recent /api/status-shaped snapshot
+  var deviceTouched = false; // don't fight the operator's own selection
+  var deviceSignature = null;
+  var liveSeen = false;      // has this input ever carried real audio?
+
+  function $(id) { return document.getElementById(id); }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'on';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = ''; }, 2800);
+  }
+
+  function postJSON(path, body) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    });
+  }
+
+  // ---- navigation ------------------------------------------------------
+
+  function show(n) {
+    step = Math.max(0, Math.min(STEPS - 1, n));
+    for (var i = 0; i < STEPS; i++) $('step-' + i).hidden = (i !== step);
+    var items = $('rail').children;
+    for (var j = 0; j < items.length; j++) {
+      items[j].className = j < step ? 'done' : (j === step ? 'now' : '');
+    }
+    window.scrollTo(0, 0);
+    if (step === 4) renderUrls();
+  }
+
+  // ---- step 1: microphone ---------------------------------------------
+
+  function renderDevices(source) {
+    var select = $('device');
+    var devices = Array.isArray(source.audio_devices) ? source.audio_devices : [];
+    var signature = devices.map(function (d) { return d.index + ':' + d.name; }).join('|');
+
+    if (signature !== deviceSignature) {
+      deviceSignature = signature;
+      select.textContent = '';
+      if (!devices.length) {
+        var empty = document.createElement('option');
+        empty.textContent = source.connected
+          ? 'No audio inputs found on this computer'
+          : 'Waiting for the capture client…';
+        select.appendChild(empty);
+      } else {
+        devices.forEach(function (d) {
+          var option = document.createElement('option');
+          option.value = String(d.index);
+          option.textContent = d.name;
+          select.appendChild(option);
+        });
+      }
+      // A fresh list means the remembered selection may have moved; re-sync
+      // once even if the operator has already picked, since the index they
+      // picked may no longer mean the same device.
+      deviceTouched = false;
+    }
+    select.disabled = !source.connected || !devices.length;
+    if (!deviceTouched && source.device_index !== null && source.device_index !== undefined) {
+      select.value = String(source.device_index);
+    }
+  }
+
+  function renderMeter(snapshot) {
+    var source = snapshot.source || {};
+    var audio = snapshot.audio || {};
+    var level = Number(audio.level) || 0;
+    // Same curve as the status page's meter: a linear bar makes speech look
+    // like almost nothing, because the RMS of ordinary talking is a few
+    // percent.
+    $('meter-fill').style.width = Math.min(100, Math.sqrt(level) * 118).toFixed(1) + '%';
+
+    // audio.state is the relay's own verdict (relay/state.py's
+    // audio_status), the same one the status page renders - so "is this
+    // input working" is decided in one place and cannot mean one thing here
+    // and another there. Once it has said "live" for this input, keep
+    // saying so: speech is intermittent, and a message that flickered back
+    // to "speak into the microphone" between sentences would read as a
+    // failure rather than a pause.
+    if (audio.state === 'live') liveSeen = true;
+
+    var verdict = $('mic-verdict');
+    if (!source.connected || audio.state === 'no_source') {
+      verdict.className = 'verdict bad';
+      verdict.textContent = 'The capture client is not connected yet — give it a moment.';
+    } else if (source.device_busy) {
+      verdict.className = 'verdict bad';
+      verdict.textContent = 'Another program is holding this input. Close it, then pick the device again.';
+    } else if (audio.state === 'stale') {
+      verdict.className = 'verdict bad';
+      verdict.textContent = 'Audio has stopped arriving from the capture client.';
+    } else if (audio.clipping) {
+      verdict.className = 'verdict warn';
+      verdict.textContent = 'Too loud — the signal is clipping. Turn the send down at the desk.';
+    } else if (liveSeen) {
+      verdict.className = 'verdict ok';
+      verdict.textContent = 'Audio is arriving on this input.';
+    } else {
+      verdict.className = 'verdict';
+      verdict.textContent = 'Speak into the microphone, or ask someone to talk on the stage mic.';
+    }
+
+    var note = $('mic-note');
+    if (source.error) {
+      note.hidden = false;
+      note.className = 'note bad';
+      note.textContent = source.error;
+    } else {
+      note.hidden = true;
+    }
+  }
+
+  // ---- step 2: backend -------------------------------------------------
+
+  function renderBackends() {
+    var host = $('backends');
+    host.textContent = '';
+    (setup.backends || []).forEach(function (b) {
+      var label = document.createElement('label');
+      label.className = 'choice';
+
+      var radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'backend';
+      radio.value = b.name;
+      radio.checked = (b.name === chosenBackend);
+
+      var body = document.createElement('span');
+      var name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = b.label;
+
+      var tag = document.createElement('span');
+      tag.className = 'tag ' + (b.billed ? 'cost' : 'free');
+      tag.textContent = b.billed ? 'costs money' : 'free';
+      name.appendChild(tag);
+
+      var why = document.createElement('span');
+      why.className = 'why';
+      why.textContent = b.summary;
+
+      body.appendChild(name);
+      body.appendChild(why);
+      label.appendChild(radio);
+      label.appendChild(body);
+
+      radio.addEventListener('change', function () { pickBackend(b.name); });
+      host.appendChild(label);
+    });
+    paintChoice();
+  }
+
+  function paintChoice() {
+    var labels = $('backends').children;
+    for (var i = 0; i < labels.length; i++) {
+      var radio = labels[i].querySelector('input');
+      labels[i].className = 'choice' + (radio && radio.checked ? ' picked' : '');
+    }
+    var wantsKey = false;
+    (setup.backends || []).forEach(function (b) {
+      if (b.name === chosenBackend && b.needs_key) wantsKey = true;
+    });
+    $('key-field').hidden = !wantsKey;
+    if (wantsKey && (setup.has_deepgram_key || keySaved)) {
+      $('key-hint').textContent =
+        'A key is already saved on this computer. Leave this blank to keep it, '
+        + 'or paste a new one to replace it.';
+    }
+  }
+
+  function pickBackend(name) {
+    chosenBackend = name;
+    var labels = $('backends').querySelectorAll('input');
+    for (var i = 0; i < labels.length; i++) labels[i].checked = (labels[i].value === name);
+    paintChoice();
+  }
+
+  // ---- step 4: the links ----------------------------------------------
+
+  function renderUrls() {
+    var host = $('urls');
+    host.textContent = '';
+    var rows = [
+      ['Phone view', 'For the audience, on their own phones', setup.urls.phone],
+      ['Wall view', 'For ProPresenter, OBS, or a browser on the projector', setup.urls.wall],
+      ['Status page', 'For you — starts and stops the captions', setup.urls.status]
+    ];
+    rows.forEach(function (row) {
+      var li = document.createElement('li');
+      var what = document.createElement('div');
+      what.className = 'what';
+      what.textContent = row[0];
+      var who = document.createElement('div');
+      who.className = 'who';
+      who.textContent = row[1];
+      var link = document.createElement('a');
+      link.href = row[2];
+      link.textContent = row[2];
+      li.appendChild(what);
+      li.appendChild(who);
+      li.appendChild(link);
+      host.appendChild(li);
+    });
+  }
+
+  // ---- saving ----------------------------------------------------------
+
+  function saveDevice() {
+    var value = $('device').value;
+    if (!deviceTouched || value === '' || isNaN(Number(value))) return Promise.resolve();
+    return postJSON('/api/control', {
+      action: 'select_audio_device', device: Number(value)
+    })['catch'](function () { toast('Could not save the microphone choice.'); });
+  }
+
+  function saveBackend() {
+    var chain = Promise.resolve();
+    var key = $('dg-key').value.trim();
+    if (key) {
+      // The key first: switching to deepgram without one is refused by the
+      // capture client, so saving in the other order would lose the switch.
+      chain = postJSON('/api/control', { action: 'set_deepgram_key', key: key })
+        .then(function () { keySaved = true; $('dg-key').value = ''; })
+        ['catch'](function () { toast('Could not save the Deepgram key.'); });
+    }
+    if (!chosenBackend) return chain;
+    return chain.then(function () {
+      return postJSON('/api/control', { action: 'select_backend', backend: chosenBackend });
+    })['catch'](function () { toast('Could not set the transcription backend.'); });
+  }
+
+  function saveEvent() {
+    return postJSON('/api/event', {
+      title: $('ev-title').value.trim(),
+      notice: $('ev-notice').value.trim()
+    })['catch'](function () { toast('Could not save the event details.'); });
+  }
+
+  function finish() {
+    $('finish').disabled = true;
+    postJSON('/api/setup', { completed: true })
+      .then(function () { location.href = '/status'; })
+      ['catch'](function () {
+        $('finish').disabled = false;
+        toast('Could not save. Is the relay still running?');
+      });
+  }
+
+  // ---- transport -------------------------------------------------------
+
+  function render(snapshot) {
+    latest = snapshot;
+    var source = (snapshot && snapshot.source) || {};
+    renderDevices(source);
+    renderMeter(snapshot || {});
+    // The wizard's Deepgram hint should stop saying "paste a key" the moment
+    // one is saved, whether it was saved here or on the settings page.
+    if (source.has_deepgram_key) {
+      setup.has_deepgram_key = true;
+      if (step === 2) paintChoice();
+    }
+  }
+
+  function connect() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var host = location.host || 'localhost:8000';
+    try {
+      sock = new WebSocket(proto + '//' + host + '/ws/status');
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+    sock.onopen = function () { attempts = 0; };
+    sock.onmessage = function (ev) {
+      try { render(JSON.parse(ev.data)); } catch (e) {}
+    };
+    function dropped() {
+      if (sock) { sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null; }
+      sock = null;
+      if (signedOut) {
+        $('intro').textContent =
+          'Not signed in — open the setup link from the launcher window (it ends in ?token=…).';
+        return;
+      }
+      scheduleReconnect();
+    }
+    sock.onclose = function (ev) {
+      if (ev && ev.code === 4401) signedOut = true;
+      dropped();
+    };
+    sock.onerror = function () { dropped(); };
+  }
+
+  function scheduleReconnect() {
+    if (reconnTimer) return;
+    attempts++;
+    var delay = Math.min(8000, 400 * Math.pow(2, Math.min(attempts, 5)));
+    reconnTimer = setTimeout(function () { reconnTimer = null; connect(); }, delay);
+  }
+
+  // ---- wiring ----------------------------------------------------------
+
+  $('device').addEventListener('change', function () {
+    deviceTouched = true;
+    liveSeen = false;                // judge the new input on its own audio
+  });
+
+  $('go-0').onclick = function () { show(1); };
+  $('back-1').onclick = function () { show(0); };
+  $('go-1').onclick = function () { saveDevice().then(function () { show(2); }); };
+  $('back-2').onclick = function () { show(1); };
+  $('go-2').onclick = function () { saveBackend().then(function () { show(3); }); };
+  $('back-3').onclick = function () { show(2); };
+  $('go-3').onclick = function () { saveEvent().then(function () { show(4); }); };
+  $('back-4').onclick = function () { show(3); };
+  $('finish').onclick = finish;
+
+  // Skip still marks setup done: someone who has been here before and wants
+  // the dashboard should not be asked again on every launch. Everything the
+  // wizard sets is on the settings page too.
+  $('skip').onclick = function () {
+    $('skip').disabled = true;
+    postJSON('/api/setup', { completed: true })
+      .then(function () { location.href = '/status'; })
+      ['catch'](function () {
+        $('skip').disabled = false;
+        toast('Could not save. Is the relay still running?');
+      });
+  };
+
+  // ---- start -----------------------------------------------------------
+
+  fetch('/api/setup').then(function (r) {
+    if (!r.ok) throw new Error(String(r.status));
+    return r.json();
+  }).then(function (data) {
+    setup = data;
+    chosenBackend = data.auto_backend || (data.backends[0] && data.backends[0].name) || null;
+    $('ev-title').value = (data.event && data.event.title) || '';
+    $('ev-notice').value = (data.event && data.event.notice) || '';
+    renderBackends();
+    show(0);
+    connect();
+  })['catch'](function () {
+    $('intro').textContent =
+      'Could not reach the relay. Close this tab and start Campus Captions again.';
+    $('intro').style.color = '#d95c5c';
+  });
+})();
+</script>
+</body>
+</html>

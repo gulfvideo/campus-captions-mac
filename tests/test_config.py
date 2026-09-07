@@ -54,6 +54,54 @@ class SaveSectionTests(unittest.TestCase):
         self.assertEqual(self.read()["overlay"]["keys"], ["obs:ab\"c", "lobby:xyz"])
 
 
+class SetupCompleteTests(unittest.TestCase):
+    """[setup] completed - what decides whether /status shows the dashboard
+    or sends the operator to the first-run wizard."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = Path(self.dir.name) / "event.toml"
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def read(self) -> dict:
+        with self.path.open("rb") as fh:
+            return tomllib.load(fh)
+
+    def test_writes_into_a_file_that_does_not_exist_yet(self):
+        config.save_setup_complete(self.path)
+        self.assertIs(self.read()["setup"]["completed"], True)
+
+    def test_round_trips_through_load(self):
+        config.save_setup_complete(self.path)
+        self.assertTrue(config.load(self.path).setup_completed)
+        config.save_setup_complete(self.path, False)
+        self.assertFalse(config.load(self.path).setup_completed)
+
+    def test_a_config_without_the_section_is_treated_as_a_first_run(self):
+        # Every event.toml written before the wizard existed, and the shipped
+        # example - a machine nobody has been through setup on.
+        self.path.write_text("[relay]\nport = 8000\n", encoding="utf-8")
+        self.assertFalse(config.load(self.path).setup_completed)
+
+    def test_no_config_file_at_all_is_not_treated_as_a_first_run(self):
+        # A deleted or not-yet-written event.toml is not a fresh install, and
+        # putting a working booth into a wizard mid-event would be worse than
+        # showing the wizard one time too few.
+        missing = Path(self.dir.name) / "gone.toml"
+        self.assertTrue(config.load(missing).setup_completed)
+
+    def test_leaves_the_rest_of_the_file_alone(self):
+        self.path.write_text(
+            '# a comment\n[relay]\nport = 8123   # keep me\n', encoding="utf-8")
+        config.save_setup_complete(self.path)
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("# a comment", text)
+        self.assertIn("port = 8123   # keep me", text)
+        self.assertEqual(self.read()["relay"]["port"], 8123)
+
+
 class OverlayKeyTests(unittest.TestCase):
     def test_round_trip(self):
         keys = {"obs": "abc123", "lobby": "def456"}

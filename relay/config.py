@@ -284,6 +284,15 @@ class RelayConfig:
     # output. Empty means the wall needs no key (the pre-key behaviour).
     overlay_keys: dict[str, str] = field(default_factory=dict)
 
+    # [setup] - has anyone been through the first-run wizard on this machine?
+    # False sends /status to /setup once. Defaults to True when there is no
+    # config file to read it from, because that is not a fresh install: it is
+    # a machine whose event.toml was deleted or has not been written yet, and
+    # sending a working booth to a wizard mid-event would be worse than
+    # showing a wizard one time too few. load() sets it to False explicitly
+    # when the file exists and does not answer.
+    setup_completed: bool = True
+
     config_path: Path | None = None
 
     @property
@@ -373,6 +382,11 @@ def load(path: Path | None = None) -> RelayConfig:
                 cfg.overlay_keys = parse_overlay_keys(keys)
             cfg.translate_provider = str(
                 (data.get("translate", {}) or {}).get("provider", cfg.translate_provider))
+
+            # Absent means a config written before the wizard existed, or
+            # the example file: either way nobody has been through it here.
+            cfg.setup_completed = bool(
+                (data.get("setup", {}) or {}).get("completed", False))
 
             ev = data.get("event", {}) or {}
             cfg.event_state = str(ev.get("state", cfg.event_state))
@@ -767,6 +781,16 @@ def save_section(path: Path, header: str, values: dict) -> None:
         lines.extend(f"{key} = {value}" for key, value in wanted.items())
     path.parent.mkdir(parents=True, exist_ok=True)
     write_private(path, "\n".join(lines) + "\n")
+
+
+def save_setup_complete(path: Path, completed: bool = True) -> None:
+    """Record that the first-run wizard has been finished (or skipped) on
+    this machine, so /status stops sending the operator back to it.
+
+    Written into event.toml rather than kept in memory: the point is that
+    the *next* launch goes straight to the dashboard.
+    """
+    save_section(path, "[setup]", {"completed": bool(completed)})
 
 
 def save_event_settings(path: Path, fields: dict[str, str]) -> None:
