@@ -29,10 +29,18 @@ exactly those shapes; if the real thing disagrees, fix both.
 
 Design notes:
 
-* Finals only by default. Interims can be sent (`interims = true`) but only
-  the newest pending one is ever delivered - a slot, not a queue - because a
-  presentation system redrawing a text box twenty times a second is exactly
-  the "visual stability" problem N-04 asks about.
+* How the caption arrives is `reveal`. "line" (the default) sends finals
+  only: the surface changes once per sentence. "word" also sends the
+  in-progress text, but only the newest pending interim is ever delivered -
+  a slot, not a queue - because a presentation system redrawing a text box
+  twenty times a second is exactly the "visual stability" problem N-04 asks
+  about. The wall takes the same `reveal` setting, so both surfaces can be
+  described to an operator in one sentence.
+* Never more than `lines` lines (two, hard-capped by MAX_LINES). ProPresenter
+  reflows and shrinks whatever it is handed, so the wrapping happens here,
+  against an operator-set `chars_per_line` - the API gives us no way to ask
+  how wide the text box is. A final too long for one page becomes several,
+  delivered in order and each held long enough to read.
 * Every call is timed. `status()` reports the median and p95 of the round
   trip, which is the N-06 "no more than 500 ms added at p95" figure, measured
   rather than asserted.
@@ -61,6 +69,91 @@ DEGRADED_AFTER = 3               # consecutive push failures before "disconnecte
 LATENCY_WINDOW = 200
 MAX_TEXT_CHARS = 500             # a caption line, not a paragraph
 
+# How the caption arrives on the surface. "word" streams the in-progress
+# text as it is spoken - current, but the box redraws under the reader.
+# "line" waits for the sentence to be final - stable, one screen behind.
+REVEALS = ("word", "line")
+
+# Two lines, never three. ProPresenter will happily reflow a paragraph into
+# a text box and shrink it to fit; a caption that has to be squinted at is
+# worse than one that arrives a beat later, so long speech is paged instead.
+MAX_LINES = 2
+DEFAULT_CHARS_PER_LINE = 42      # ProPresenter never tells us the box width
+MIN_CHARS_PER_LINE = 12
+MAX_CHARS_PER_LINE = 120
+
+# A page held too briefly cannot be read; held too long it lags the room.
+# Same curve the wall uses for its own roll-out (viewer/wall.html holdFor).
+PAGE_HOLD_MIN = 0.7              # seconds
+PAGE_HOLD_MAX = 2.0
+PAGE_HOLD_PER_CHAR = 0.04
+
+
+def wrap(text: str, width: int) -> list[str]:
+    """Break `text` into lines of at most `width`, on word boundaries. A
+    single token longer than a whole line is cut - it is a URL or a mash of
+    two words, and losing the rest of the sentence to it is worse."""
+    lines: list[str] = []
+    current = ""
+    for word in " ".join(str(text).split()).split(" "):
+        if not word:
+            continue
+        while len(word) > width:
+            if current:
+                lines.append(current)
+                current = ""
+            lines.append(word[:width])
+            word = word[width:]
+        if not current:
+            current = word
+        elif len(current) + 1 + len(word) <= width:
+            current += " " + word
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def paginate(text: str, width: int, lines: int) -> list[str]:
+    """A final, cut into pages of at most `lines` lines. Nothing is dropped:
+    a long sentence becomes several pages, delivered in order."""
+    wrapped = wrap(text, width)
+    if not wrapped:
+        return []
+    return ["\n".join(wrapped[i:i + lines]) for i in range(0, len(wrapped), lines)]
+
+
+def tail_lines(text: str, width: int, lines: int) -> str:
+    """An interim, cut to its last `lines` lines. Interims are replaced, not
+    paged - the words just spoken are the ones worth showing."""
+    wrapped = wrap(text, width)
+    return "\n".join(wrapped[-lines:]) if wrapped else ""
+
+
+def page_hold(page: str) -> float:
+    return min(PAGE_HOLD_MAX, max(PAGE_HOLD_MIN, len(page) * PAGE_HOLD_PER_CHAR))
+
+
+def normalize_reveal(value) -> str:
+    value = str(value or "").strip().lower()
+    return value if value in REVEALS else "line"
+
+
+def normalize_lines(value) -> int:
+    try:
+        return max(1, min(MAX_LINES, int(value)))
+    except (TypeError, ValueError):
+        return MAX_LINES
+
+
+def normalize_chars_per_line(value) -> int:
+    try:
+        return max(MIN_CHARS_PER_LINE, min(MAX_CHARS_PER_LINE, int(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_CHARS_PER_LINE
+
 # The API this module was written against. `GET /version` reports
 # `api_version`; anything else is flagged, not refused - the spike decides.
 SUPPORTED_API = "v1"
@@ -78,15 +171,23 @@ STATES = ("off", "connecting", "connected", "degraded", "disconnected", "unsuppo
 class ProPresenterOutput:
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT,
                  surface: str = "stage_message", message: str = "Live Captions",
-                 token: str = "Caption", language: str = "", interims: bool = False,
-                 start_enabled: bool = False):
+                 token: str = "Caption", language: str = "",
+                 reveal: str = "line", lines: int = MAX_LINES,
+                 chars_per_line: int = DEFAULT_CHARS_PER_LINE,
+                 start_enabled: bool = False, interims: bool | None = None):
         self.host = (host or "").strip()
         self.port = int(port or DEFAULT_PORT)
         self.surface = surface if surface in SURFACES else "stage_message"
         self.message = (message or "").strip()
         self.token = (token or "").strip()
         self.language = (language or "").strip()      # "" = the source language
-        self.interims = bool(interims)
+        # `interims` is the name this setting shipped under; `reveal` replaced
+        # it. An event.toml or an API caller written against the old name is
+        # still honoured, and still means exactly the same thing.
+        self.reveal = normalize_reveal(reveal if interims is None else
+                                       ("word" if interims else "line"))
+        self.lines = normalize_lines(lines)
+        self.chars_per_line = normalize_chars_per_line(chars_per_line)
         self.enabled = bool(start_enabled) and self.configured
 
         self.state = "off"
@@ -112,19 +213,36 @@ class ProPresenterOutput:
     def configured(self) -> bool:
         return bool(self.host and self.port)
 
+    @property
+    def interims(self) -> bool:
+        """The old name for `reveal`, kept because callers and tests use it."""
+        return self.reveal == "word"
+
     def configure(self, **changes) -> None:
         """Apply any subset of host, port, surface, message, token, language,
-        interims. A changed host/port/surface/message forgets the resolved
-        message id and the version so the next probe re-checks them."""
+        reveal, lines, chars_per_line. A changed host/port/surface/message
+        forgets the resolved message id and the version so the next probe
+        re-checks them."""
+        changes = dict(changes)
+        legacy = changes.pop("interims", None)
+        if legacy is not None and "reveal" not in changes:
+            changes["reveal"] = "word" if legacy else "line"
         reconnect = False
-        for key in ("host", "port", "surface", "message", "token", "language", "interims"):
+        for key in ("host", "port", "surface", "message", "token", "language",
+                    "reveal", "lines", "chars_per_line"):
             if key not in changes or changes[key] is None:
                 continue
             value = changes[key]
             if key == "port":
                 value = int(value)
-            elif key == "interims":
-                value = bool(value)
+            elif key == "lines":
+                value = normalize_lines(value)
+            elif key == "chars_per_line":
+                value = normalize_chars_per_line(value)
+            elif key == "reveal":
+                if str(value) not in REVEALS:
+                    raise ValueError(f"reveal must be one of {', '.join(REVEALS)}")
+                value = str(value)
             elif key == "surface":
                 if value not in SURFACES:
                     raise ValueError(f"surface must be one of {', '.join(SURFACES)}")
@@ -350,10 +468,18 @@ class ProPresenterOutput:
             # Finals first, in order; then whatever interim is newest.
             while not self._finals.empty():
                 text = self._finals.get_nowait()
-                await self._deliver(text)
+                pages = paginate(text, self.chars_per_line, self.lines)
+                for index, page in enumerate(pages):
+                    await self._deliver(page)
+                    # Hold each page long enough to be read before the next
+                    # replaces it. The last page of a final is not held: the
+                    # next final (or the interim below) decides how long it
+                    # stays up, exactly as it does on the wall.
+                    if index < len(pages) - 1:
+                        await asyncio.sleep(page_hold(page))
             if self._pending_interim is not None:
                 text, self._pending_interim = self._pending_interim, None
-                await self._deliver(text)
+                await self._deliver(tail_lines(text, self.chars_per_line, self.lines))
 
     async def _deliver(self, text: str) -> None:
         if not self.enabled or self.state in ("off", "unsupported"):
@@ -438,7 +564,10 @@ class ProPresenterOutput:
             "token": self.token,
             "message_id": self.message_id,
             "language": self.language,
-            "interims": self.interims,
+            "reveal": self.reveal,
+            "lines": self.lines,
+            "chars_per_line": self.chars_per_line,
+            "interims": self.interims,          # the old name for reveal
             "version": self.version,
             "pushed": self.pushed,
             "cleared": self.cleared,

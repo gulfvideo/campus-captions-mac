@@ -201,7 +201,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     propresenter = propresenter_module.ProPresenterOutput(
         host=cfg.pp_host, port=cfg.pp_port, surface=cfg.pp_surface,
         message=cfg.pp_message, token=cfg.pp_token, language=cfg.pp_language,
-        interims=cfg.pp_interims, start_enabled=cfg.pp_start_enabled)
+        reveal=cfg.pp_reveal, lines=cfg.pp_lines,
+        chars_per_line=cfg.pp_chars_per_line, start_enabled=cfg.pp_start_enabled)
 
     last_preflight: dict = {"report": None}
 
@@ -1119,7 +1120,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         switch the direct ProPresenter output (relay/propresenter.py).
 
         Any subset of {"host", "port", "surface", "message", "token",
-        "language", "interims"} is applied and saved into event.toml's
+        "language", "reveal", "lines", "chars_per_line"} is applied and
+        saved into event.toml's
         [propresenter] section; {"enabled": bool} starts or stops delivery;
         {"probe": true} re-checks the connection now; {"clear": true} takes
         the caption off the surface. Returns the output's status().
@@ -1127,7 +1129,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         require_operator(request)
         body = await read_json(request)
         body = body or {}
-        known = ("host", "port", "surface", "message", "token", "language", "interims",
+        known = ("host", "port", "surface", "message", "token", "language",
+                 "reveal", "lines", "chars_per_line", "interims",
                  "enabled", "probe", "clear")
         if not any(k in body for k in known):
             raise HTTPException(status_code=400, detail=f"send one of: {', '.join(known)}")
@@ -1160,10 +1163,38 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             if language and not transcript_module.SAFE_LANG.match(language):
                 raise HTTPException(status_code=400, detail="language must look like: en, es, zh-Hans")
             changes["language"] = language
-        if "interims" in body:
+        if "reveal" in body:
+            reveal = body.get("reveal")
+            if reveal not in propresenter_module.REVEALS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"reveal must be one of {', '.join(propresenter_module.REVEALS)}")
+            changes["reveal"] = reveal
+        elif "interims" in body:
+            # The name this setting shipped under, still accepted.
             if not isinstance(body.get("interims"), bool):
                 raise HTTPException(status_code=400, detail="interims must be a boolean")
             changes["interims"] = body["interims"]
+        if "lines" in body:
+            count = body.get("lines")
+            if isinstance(count, str) and count.strip().isdigit():
+                count = int(count)
+            if isinstance(count, bool) or not isinstance(count, int) \
+                    or not (1 <= count <= propresenter_module.MAX_LINES):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"lines must be 1-{propresenter_module.MAX_LINES}")
+            changes["lines"] = count
+        if "chars_per_line" in body:
+            width = body.get("chars_per_line")
+            if isinstance(width, str) and width.strip().isdigit():
+                width = int(width)
+            low, high = (propresenter_module.MIN_CHARS_PER_LINE,
+                         propresenter_module.MAX_CHARS_PER_LINE)
+            if isinstance(width, bool) or not isinstance(width, int) or not (low <= width <= high):
+                raise HTTPException(status_code=400,
+                                    detail=f"chars_per_line must be {low}-{high}")
+            changes["chars_per_line"] = width
         if changes:
             propresenter.configure(**changes)
             try:
@@ -1171,7 +1202,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                     "host": propresenter.host, "port": propresenter.port,
                     "surface": propresenter.surface, "message": propresenter.message,
                     "token": propresenter.token, "language": propresenter.language,
-                    "interims": propresenter.interims,
+                    "reveal": propresenter.reveal, "lines": propresenter.lines,
+                    "chars_per_line": propresenter.chars_per_line,
                 })
             except OSError as exc:
                 print(f"[relay] could not save ProPresenter settings to disk: {exc}")

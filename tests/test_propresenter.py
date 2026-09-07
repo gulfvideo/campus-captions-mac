@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fake_propresenter import FakeProPresenter  # noqa: E402
+from relay import propresenter  # noqa: E402
 from relay.propresenter import ProPresenterOutput  # noqa: E402
 
 
@@ -25,6 +26,24 @@ async def settle(out: ProPresenterOutput, timeout: float = 2.0) -> None:
             if out._finals.empty() and out._pending_interim is None:
                 return
         await asyncio.sleep(0.02)
+
+
+async def sent_pages(pp) -> list[str]:
+    return [c[2] for c in pp.calls if c[0] == "PUT"]
+
+
+async def settle_pages(pp, text: str, timeout: float = 8.0) -> list[str]:
+    """Wait until every page of `text` has been delivered. settle() cannot do
+    this: the finals queue empties on the first page, and the worker then
+    holds each page long enough to be read before sending the next."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        pages = await sent_pages(pp)
+        if " ".join(p.replace("\n", " ") for p in pages) == text:
+            return pages
+        await asyncio.sleep(0.05)
+    return await sent_pages(pp)
 
 
 def run(coro):
@@ -198,3 +217,102 @@ class FailureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShapingTests(unittest.TestCase):
+    """Wrapping and paging are pure functions - test them without a socket."""
+
+    def test_wrap_breaks_on_word_boundaries_and_never_exceeds_width(self):
+        lines = propresenter.wrap(
+            "the dean of students will speak about the semester schedule", 20)
+        self.assertTrue(all(len(line) <= 20 for line in lines), lines)
+        self.assertEqual(" ".join(lines),
+                         "the dean of students will speak about the semester schedule")
+
+    def test_a_token_longer_than_a_line_is_cut_not_dropped(self):
+        lines = propresenter.wrap("see " + "x" * 25 + " now", 10)
+        self.assertTrue(all(len(line) <= 10 for line in lines), lines)
+        self.assertIn("now", " ".join(lines))
+        self.assertEqual("".join(lines).count("x"), 25)
+
+    def test_paginate_never_exceeds_two_lines_and_keeps_every_word(self):
+        text = ("the campus chapel service continues this morning with a reading "
+                "from the second letter to the church at corinth followed by "
+                "remarks from the dean of students")
+        pages = propresenter.paginate(text, 42, 2)
+        self.assertGreater(len(pages), 1)
+        for page in pages:
+            self.assertLessEqual(len(page.split("\n")), 2, page)
+            self.assertTrue(all(len(line) <= 42 for line in page.split("\n")), page)
+        self.assertEqual(" ".join(p.replace("\n", " ") for p in pages), text)
+
+    def test_tail_lines_keeps_the_newest_words(self):
+        text = "a b c d e f g h i j k l m n o p q r s t u v w x y z"
+        got = propresenter.tail_lines(text, 10, 2)
+        self.assertLessEqual(len(got.split("\n")), 2)
+        self.assertTrue(got.endswith("z"), got)
+
+    def test_lines_is_capped_at_two_however_it_is_set(self):
+        out = ProPresenterOutput(lines=9)
+        self.assertEqual(out.lines, propresenter.MAX_LINES)
+        out.configure(lines=5)
+        self.assertEqual(out.lines, propresenter.MAX_LINES)
+        out.configure(lines=1)
+        self.assertEqual(out.lines, 1)
+
+    def test_reveal_replaces_interims_but_the_old_name_still_works(self):
+        out = ProPresenterOutput()
+        self.assertEqual(out.reveal, "line")          # finals only, as before
+        self.assertFalse(out.interims)
+        out.configure(interims=True)
+        self.assertEqual(out.reveal, "word")
+        self.assertTrue(out.interims)
+        out.configure(reveal="line")
+        self.assertFalse(out.interims)
+        self.assertEqual(ProPresenterOutput(interims=True).reveal, "word")
+        with self.assertRaises(ValueError):
+            out.configure(reveal="sentence")
+
+
+class TwoLineDeliveryTests(unittest.TestCase):
+    def test_a_long_final_is_paged_two_lines_at_a_time_losing_nothing(self):
+        async def go():
+            with FakeProPresenter() as pp:
+                out = ProPresenterOutput(port=pp.port, chars_per_line=20)
+                await out.start()
+                text = ("the library will keep extended hours through the end "
+                        "of examination week")
+                out.submit(text, True)
+                sent = await settle_pages(pp, text)
+                self.assertGreater(len(sent), 1)       # it did not arrive as one blob
+                for page in sent:
+                    self.assertLessEqual(len(page.split("\n")), 2, page)
+                self.assertEqual(" ".join(p.replace("\n", " ") for p in sent), text)
+        run(go())
+
+    def test_an_interim_is_cut_to_two_lines_of_the_newest_words(self):
+        async def go():
+            with FakeProPresenter() as pp:
+                out = ProPresenterOutput(port=pp.port, reveal="word",
+                                         chars_per_line=15)
+                await out.start()
+                out.submit("one two three four five six seven eight nine ten", False)
+                await settle(out)
+                self.assertIsNotNone(pp.stage_message)
+                self.assertLessEqual(len(pp.stage_message.split("\n")), 2,
+                                     pp.stage_message)
+                self.assertTrue(pp.stage_message.endswith("ten"), pp.stage_message)
+                await out.stop()
+        run(go())
+
+    def test_a_short_final_still_arrives_as_one_page(self):
+        async def go():
+            with FakeProPresenter() as pp:
+                out = ProPresenterOutput(port=pp.port)
+                await out.start()
+                out.submit("Good morning.", True)
+                await settle(out)
+                self.assertEqual(pp.stage_message, "Good morning.")
+                self.assertEqual(out.pushed, 1)
+                await out.stop()
+        run(go())

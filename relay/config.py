@@ -265,7 +265,12 @@ class RelayConfig:
     pp_message: str = "Live Captions"
     pp_token: str = "Caption"
     pp_language: str = ""            # "" = the source language
-    pp_interims: bool = False
+    # "line" = finals only, "word" = stream the in-progress text too. The
+    # wall takes the same setting under the same name (viewer/wall.html
+    # ?reveal=), so an operator learns it once.
+    pp_reveal: str = "line"
+    pp_lines: int = 2                # never more than two; see propresenter.MAX_LINES
+    pp_chars_per_line: int = 42
     pp_start_enabled: bool = False
 
     # [overlay] keys = ["obs:abc123", ...] - one revocable key per browser-source
@@ -333,7 +338,17 @@ def load(path: Path | None = None) -> RelayConfig:
             cfg.pp_message = str(pp.get("message", cfg.pp_message))
             cfg.pp_token = str(pp.get("token", cfg.pp_token))
             cfg.pp_language = str(pp.get("language", cfg.pp_language)).strip()
-            cfg.pp_interims = bool(pp.get("interims", cfg.pp_interims))
+            # `interims = true/false` is what this setting was called before
+            # it grew a second value; an existing event.toml still works.
+            if "reveal" in pp:
+                cfg.pp_reveal = str(pp.get("reveal") or cfg.pp_reveal).strip().lower()
+            elif "interims" in pp:
+                cfg.pp_reveal = "word" if bool(pp.get("interims")) else "line"
+            if cfg.pp_reveal not in ("word", "line"):
+                cfg.pp_reveal = "line"
+            cfg.pp_lines = max(1, min(2, int(pp.get("lines", cfg.pp_lines))))
+            cfg.pp_chars_per_line = max(12, min(120, int(
+                pp.get("chars_per_line", cfg.pp_chars_per_line))))
             cfg.pp_start_enabled = bool(pp.get("start_enabled", cfg.pp_start_enabled))
 
             keys = (data.get("overlay", {}) or {}).get("keys") or []

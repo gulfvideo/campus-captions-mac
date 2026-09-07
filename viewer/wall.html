@@ -160,7 +160,15 @@
       opacity:  num('opacity', 0.85, 0.6, 1),     // floor: white on 60% black over white video is still 5.7:1
       bar:      hex('bar', '#000000'),
       color:    hex('color', '#ffffff'),
-      lines:    Math.round(num('lines', 3, 2, 4)), // 3 gives a slow reader ~8 s per line at speech rate
+      // Two lines, never three. A third row buys context nobody in a room
+      // reads - eyes are on the speaker - at the cost of a taller bar over
+      // the video. Long finals still roll through, a row at a time.
+      lines:    Math.round(num('lines', 2, 1, 2)),
+      // How the caption arrives. 'word' streams the in-progress text as it
+      // is spoken; 'line' waits for the sentence to be final, so the row
+      // never rewrites itself under a reader. Same names, same meaning, as
+      // the ProPresenter output's reveal setting.
+      reveal:   P.get('reveal') === 'line' ? 'line' : 'word',
       idle:     num('idle', 15, 0, 3600),         // seconds, 0 = never fade
       nostatus: flag('nostatus'),                 // hide the reconnecting/paused line
       welcome:  flag('welcome'),                  // also show the welcome/ended message
@@ -313,6 +321,9 @@
   }
 
   function onInterim(text) {
+    // Line-by-line: nothing is painted until the sentence is final. The
+    // interim still arrives on the socket, it just does not reach a row.
+    if (cfg.reveal === 'line') return;
     var t = tail(text, maxChars());
     if (!t) return;
     if (queue.length || drainTimer) { pendingInterim = text; return; }
@@ -566,6 +577,7 @@
         '   idle ' + ((n - lastTextAt) / 1000).toFixed(1) + 's\n' +
       'maxchars  ' + maxChars() + ' (ceiling ' + cfg.maxchars + ', fits ' + (fittedChars || '?') + ')' +
         (clipped ? '   *** TEXT CLIPPED ***' : '') + '\n' +
+      'reveal    ' + cfg.reveal + '\n' +
       'rows      ' + cfg.lines + '   queued ' + queue.length +
         '   event ' + (eventInfo ? eventInfo.state : '-') +
         '   fault ' + (health && health.fault ? health.fault : '-') + '\n' +

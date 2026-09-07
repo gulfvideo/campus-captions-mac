@@ -678,6 +678,8 @@ parameters works.
 | `idle` | `5` | seconds of no new text before the bar fades out; `0` = never |
 | `fade` | `600` | fade duration, ms |
 | `maxchars` | `42` | characters per line |
+| `lines` | `2` | rows in the bar, `1` or `2`. Two is the ceiling: a third row buys context nobody in a room reads and costs height over the video |
+| `reveal` | `word` | how the caption arrives. `word` streams the in-progress text as it is spoken; `line` waits for the finished sentence, so the bottom row never rewrites itself under a reader. Same name and meaning as the ProPresenter setting |
 | `watchdog` | `120` | seconds dead before the page reloads itself |
 | `debug` | off | diagnostics overlay, top left |
 | `text` | — | static sample text, opens no connection |
@@ -701,11 +703,18 @@ fastest way to tune the pair against the real wall.
 
 ### Layout behaviour
 
-Two lines, always. Space for both is reserved even when only one has text, so
-the bar never jumps between one- and two-line states. New text pushes the older
-line up and out. In-progress text rewrites the bottom line in place; only a
-completed sentence commits a line and only a completed sentence causes a line
-break.
+Two lines, never three. Space for both is reserved even when only one has
+text, so the bar never jumps between one- and two-line states. New text pushes
+the older line up and out. Only a completed sentence commits a line and only a
+completed sentence causes a line break; a sentence longer than the rows roll
+out a row at a time, each held long enough to read.
+
+`?reveal=word` (the default) rewrites the bottom line in place as words are
+recognised - current, but the row moves under a reader. `?reveal=line` paints
+nothing until the sentence is final: the bar changes once per sentence, about
+a sentence behind the room. Word suits a wall people glance at; line suits one
+they read. `?lines=1` drops to a single row for a short bar over a lower
+third.
 
 ---
 
@@ -737,9 +746,16 @@ should name ProPresenter and its API version. **Enable** to start sending.
 
 What to expect:
 
-- Committed lines only, by default. "Send in-progress text too" adds the
-  word-by-word text; only the newest is ever sent, but try it before a
-  service - some layouts flicker.
+- **Line by line** (the default) sends finished sentences only. **Word by
+  word** also sends the in-progress text; only the newest is ever sent, but
+  try it before a service - some layouts flicker. It is the same choice, and
+  the same word, as the wall's `?reveal=`.
+- **At most two lines.** ProPresenter reflows and shrinks whatever it is
+  handed, so the wrapping happens on our side against **characters per line**
+  (42 by default). Set it to what one line of your text box actually holds:
+  too high and ProPresenter shrinks the type, too low and you waste the box.
+  A sentence longer than two lines is sent as two lines and then paged, each
+  page held long enough to read - nothing is dropped.
 - **Clear captions**, pausing or ending the event, and **Disable** all clear
   the surface, so nothing stale sits on a screen.
 - The line under the badge shows how much time the ProPresenter hop adds

@@ -349,8 +349,15 @@ Which one is right is the N-04 spike's question, answered on a real
 ProPresenter - `docs/PROPRESENTER_SPIKE.md` is the test plan. Nothing else in
 ProPresenter is ever touched: no slides, playlists, props or macros.
 
-Behaviour worth knowing: interims are off by default and, when on, only the
-newest pending one is ever delivered (a slot, not a queue). Every API call is
+Behaviour worth knowing: `reveal` decides how the caption arrives - `line`
+(the default) changes the surface once per finished sentence, `word` also
+streams the in-progress text, and when it does only the newest pending
+interim is ever delivered (a slot, not a queue). The wall takes the same
+setting under the same name, so it is one thing to explain to an operator.
+Captions are wrapped here to at most two lines against `chars_per_line`,
+because the API gives no way to ask how wide the text box is and
+ProPresenter will otherwise reflow and shrink a paragraph to fit; a sentence
+too long for one page becomes several, each held long enough to read. Every API call is
 timed and the panel shows the median and p95 round trip - the N-06 "adds no
 more than 500 ms at p95" figure, measured. Three consecutive failures mark it
 `disconnected`; it then probes every few seconds and resumes on its own.
