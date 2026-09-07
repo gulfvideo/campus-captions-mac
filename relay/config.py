@@ -273,6 +273,13 @@ class RelayConfig:
     pp_chars_per_line: int = 42
     pp_start_enabled: bool = False
 
+    # [slides] - separate, read-only audience thumbnails; disabled by default.
+    slides_enabled: bool = False
+    slides_host: str = "127.0.0.1"
+    slides_port: int = 1025
+    slides_screen: int = 0
+    slides_approved_hosts: tuple[str, ...] = ()
+
     # [overlay] keys = ["obs:abc123", ...] - one revocable key per browser-source
     # output. Empty means the wall needs no key (the pre-key behaviour).
     overlay_keys: dict[str, str] = field(default_factory=dict)
@@ -350,6 +357,16 @@ def load(path: Path | None = None) -> RelayConfig:
             cfg.pp_chars_per_line = max(12, min(120, int(
                 pp.get("chars_per_line", cfg.pp_chars_per_line))))
             cfg.pp_start_enabled = bool(pp.get("start_enabled", cfg.pp_start_enabled))
+
+            slides = data.get("slides", {})
+            if not isinstance(slides, dict):
+                slides = {}
+            cfg.slides_enabled = slides.get("enabled", False) is True
+            cfg.slides_host = str(slides.get("host", "127.0.0.1"))
+            cfg.slides_port = slides.get("port", 1025)
+            cfg.slides_screen = slides.get("screen", 0)
+            approved = slides.get("approved_hosts", [])
+            cfg.slides_approved_hosts = tuple(approved) if isinstance(approved, list) else ()
 
             keys = (data.get("overlay", {}) or {}).get("keys") or []
             if isinstance(keys, list):

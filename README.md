@@ -632,3 +632,10 @@ tools/youtube_upload.py       optional: upload a recorded .srt to a video
 
 Viewers are self-contained single files: no build step, no framework, no CDN, no
 external network dependency beyond the relay itself.
+
+## Optional phone slide previews
+
+[Slides + Captions](docs/PHONE-SLIDES.md) adds relay-cached, read-only static
+ProPresenter cue thumbnails to the phone viewer. It is disabled by default and
+independent of outgoing caption delivery. See the setup and preview limitations
+before enabling it for an event.

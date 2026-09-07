@@ -44,5 +44,8 @@ jobs:
         # `git add`ed, before the slower test below runs.
         run: python -m compileall -q relay capture launcher macapp tools
 
+      - name: Unit tests (including fake ProPresenter)
+        run: python -m unittest discover -s tests -q
+
       - name: Smoke test
         run: python tools/smoke_test.py "$GITHUB_WORKSPACE"

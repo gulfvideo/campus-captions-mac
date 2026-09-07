@@ -17,6 +17,8 @@ numpy==2.5.2               # RMS level metering on the audio callback
 segno==1.6.6               # QR code as server-rendered SVG for /qr
 psutil==7.2.2              # CPU/memory of the caption computer, for the preflight check
 
+Pillow==12.3.0           # validate and strip metadata from optional slide thumbnails
+
 # --- pulled in by the above, pinned so a rebuild on show day is identical --
 PyYAML==6.0.3
 annotated-doc==0.0.5
