@@ -35,15 +35,16 @@
      the corner and get pressed as often as anything on the page, so they
      should look pressable rather than like prose that happens to be blue. */
   header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  header .nav a {
+  header .nav a, header .nav button {
+    font-family: inherit; cursor: pointer;
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 14px; font-weight: 600; text-decoration: none;
     color: var(--text); background: #262b33;
     border: 1px solid var(--edge); border-radius: 9px;
     padding: 8px 14px; white-space: nowrap;
   }
-  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
-  header .nav a:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  header .nav a:hover, header .nav button:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:focus-visible, header .nav button:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
 
   button {
     font: inherit; font-weight: 600; font-size: 15px;
@@ -247,6 +248,7 @@
   <h1>Settings</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
   <nav class="nav">
+    <button type="button" data-tour-start>Take the tour</button>
     <a href="/setup">Run setup again</a>
     <a href="/status">&larr; Back to status</a>
   </nav>
@@ -2072,5 +2074,7 @@
   boot();
 })();
 </script>
+
+<!-- include tour.js -->
 </body>
 </html>

@@ -141,13 +141,14 @@
     display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px;
   }
   header .nav { margin-left: auto; }
-  header .nav a {
+  header .nav a, header .nav button {
+    font-family: inherit; cursor: pointer;
     display: inline-flex; align-items: center; font-size: 14px; font-weight: 600;
     text-decoration: none; color: var(--text); background: #262b33;
     border: 1px solid var(--edge); border-radius: 9px; padding: 8px 14px;
     white-space: nowrap;
   }
-  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:hover, header .nav button:hover { background: #2f353f; border-color: #3a424e; }
 
   /* The URL is what this page exists to produce, so it sits at the top
      where it is found without scrolling - and, with the presets blurb
@@ -186,7 +187,10 @@
 <body>
 <header>
   <h1>Tune the wall view</h1>
-  <nav class="nav"><a href="/status">&larr; Back to status</a></nav>
+  <nav class="nav">
+    <button type="button" data-tour-start>Take the tour</button>
+    <a href="/status">&larr; Back to status</a>
+  </nav>
 </header>
 <p class="lede">Drag until it looks right, then copy the URL into the Prop. Nothing here
   changes the live wall.</p>
@@ -782,5 +786,7 @@
   boot();
 })();
 </script>
+
+<!-- include tour.js -->
 </body>
 </html>

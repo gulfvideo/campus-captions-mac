@@ -65,6 +65,21 @@ browser. Four steps, about two minutes:
 Everything it sets can be changed afterwards on the **Settings** page, and
 **Run setup again** in that page's top-right corner reopens the wizard.
 
+### The guided tour
+
+When the wizard finishes, Campus Captions shows you round. It dims the page,
+draws a ring around one control at a time and says what that control is for —
+the listening switch, the level meter, the two addresses to hand out, the
+sliders in the tuner, the settings worth knowing about. Twenty-three steps
+across three pages, a couple of minutes, and **Skip** at any point.
+
+Nothing in the tour changes a setting: it opens panels and switches tabs to
+show you things, and that is all.
+
+**Take the tour** in the top corner of the status, tuner and settings pages
+runs it again whenever you want it — before handing the booth to a new
+volunteer, or when you come back to it after a term away.
+
 After the first run, Campus Captions goes straight to the status page instead.
 
 ### Running from source instead
