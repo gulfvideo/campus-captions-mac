@@ -851,25 +851,23 @@
       button.disabled = true;
       return;
     }
-    if (w.installed === false) {
-      badge.textContent = 'not installed';
+    if (w.installed === false && w.installable === false) {
+      badge.textContent = 'not included';
       badge.className = 'badge';
-      sub.textContent = w.packaged
-        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
-        : 'Whisper is not installed in this copy. Running from source, '
-          + 'install it once with: '
-          + 'python -m pip install -r requirements-whisper.txt';
+      sub.textContent = 'Whisper is not included in this build of Campus '
+        + 'Captions. Use Deepgram or, on a Mac new enough for it, Apple '
+        + 'on-device speech.';
       button.disabled = true;
       return;
     }
     if (w.state === 'downloading') {
-      badge.textContent = 'downloading';
+      badge.textContent = 'working';
       badge.className = 'badge';
-      sub.textContent = 'Downloading the ' + model + ' model'
-        + (w.message ? ' — ' + w.message : '')
+      sub.textContent = (w.message || 'downloading the ' + model + ' model')
+        .replace(/^./, function (c) { return c.toUpperCase(); })
         + '. This takes a few minutes and does not interrupt captions.';
       button.disabled = true;
-      button.textContent = 'Downloading…';
+      button.textContent = 'Working…';
       return;
     }
     if (w.state === 'error') {
@@ -889,13 +887,17 @@
       button.disabled = true;
       button.textContent = 'Downloaded';
     } else {
-      badge.textContent = 'not downloaded';
+      var needsInstall = w.installed === false;
+      badge.textContent = needsInstall ? 'not set up' : 'not downloaded';
       badge.className = 'badge';
-      sub.textContent = 'Whisper needs a one-time model download (a few '
-        + 'hundred megabytes) before it can caption anything. Only this step '
-        + 'needs internet.';
+      sub.textContent = needsInstall
+        ? 'Whisper needs a one-time setup — the software and its speech '
+          + 'model, a few hundred megabytes in total. The button does both, '
+          + 'and only this step needs internet.'
+        : 'Whisper needs a one-time model download (a few hundred megabytes) '
+          + 'before it can caption anything. Only this step needs internet.';
       button.disabled = false;
-      button.textContent = 'Download the model';
+      button.textContent = needsInstall ? 'Set up Whisper' : 'Download the model';
     }
   }
 

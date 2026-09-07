@@ -218,6 +218,10 @@ class CaptureApp:
             # onnxruntime, which faster-whisper needs, ships no macOS x86_64
             # wheel for this Python.
             "packaged": config_mod.FROZEN,
+            # Source checkouts can install it from the app; a frozen build
+            # cannot, so the UI offers a button in one case and an
+            # explanation in the other.
+            "installable": not config_mod.FROZEN,
             "present": present,
             "state": "ready" if present and self.whisper_state == "idle"
                      else self.whisper_state,
@@ -246,9 +250,17 @@ class CaptureApp:
             size = self.cfg.backend_config.get(
                 "whisper_model", backend_support.WHISPER_DEFAULT_MODEL)
             target = self.whisper_model_dir()
-            print(f"[capture] downloading whisper model {size} into {target}")
+            loop = asyncio.get_running_loop()
             try:
-                await asyncio.get_running_loop().run_in_executor(
+                # One button, whatever this machine actually needs. From
+                # source that is usually both steps; in a packaged app the
+                # library is already there and only the model is missing.
+                if not whisper_mod.whisper_available() and not config_mod.FROZEN:
+                    print("[capture] installing faster-whisper")
+                    await loop.run_in_executor(
+                        None, whisper_mod.install_package, progress)
+                print(f"[capture] downloading whisper model {size} into {target}")
+                await loop.run_in_executor(
                     None, whisper_mod.fetch_model, size, target, progress)
             except Exception as exc:
                 self.whisper_state = "error"
