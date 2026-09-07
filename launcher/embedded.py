@@ -24,11 +24,11 @@ import time
 import types
 import urllib.error
 import urllib.request
-import webbrowser
 from collections.abc import Callable
 
 import uvicorn
 
+from launcher import appwindow
 from capture import config as capture_config
 from capture.__main__ import CaptureApp
 from relay import config as relay_config
@@ -113,6 +113,13 @@ class Supervisor:
         never for the wall or phone links an operator might read out loud."""
         base = f"http://127.0.0.1:{self.port}{path}"
         return f"{base}?token={self.token}" if signed_in else base
+
+    def open(self, path: str, signed_in: bool = False) -> str:
+        """Open one of this relay's pages the way the operator has asked for
+        - an app window or a browser tab. Returns which it managed."""
+        return appwindow.open_link(
+            self.link(path, signed_in=signed_in),
+            self.cfg.window_mode, relay_config.DATA_DIR)
 
     def status_link(self) -> str:
         # /status redirects to /setup until the first-run wizard is done, so
@@ -204,9 +211,15 @@ class Supervisor:
                              daemon=True).start()
             threading.Thread(target=self.poll_status, daemon=True).start()
             if open_browser:
-                try:
-                    webbrowser.open(self.status_link())
-                except Exception:
-                    pass  # no browser is not a reason to fail to start
+                opened = appwindow.open_link(
+                    self.status_link(), self.cfg.window_mode,
+                    relay_config.DATA_DIR)
+                if opened != self.cfg.window_mode:
+                    # Asked for an app window and got a tab: no Chromium-family
+                    # browser here. Worth one line in the log, since the
+                    # Settings page says the same thing and an operator who
+                    # ticked "app window" deserves to know why it did not.
+                    print("[relay] no browser that can open an app window; "
+                          "opened a browser tab instead")
 
         threading.Thread(target=then_capture, daemon=True).start()

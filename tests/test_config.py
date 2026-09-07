@@ -132,6 +132,36 @@ class SetupCompleteTests(unittest.TestCase):
         self.assertEqual(self.read()["relay"]["port"], 8123)
 
 
+class WindowModeTests(unittest.TestCase):
+    """[ui] window_mode - whether the app opens its own window or a tab."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = Path(self.dir.name) / "event.toml"
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_defaults_to_an_app_window(self):
+        self.assertEqual(config.load(self.path).window_mode, "app")
+
+    def test_round_trip(self):
+        config.save_window_mode(self.path, "browser")
+        self.assertEqual(config.load(self.path).window_mode, "browser")
+        config.save_window_mode(self.path, "app")
+        self.assertEqual(config.load(self.path).window_mode, "app")
+
+    def test_an_unknown_mode_is_refused_at_the_write(self):
+        # The launcher only knows two modes; anything else would silently
+        # become "browser" at read time and confuse whoever set it.
+        with self.assertRaises(ValueError):
+            config.save_window_mode(self.path, "hologram")
+
+    def test_an_unreadable_value_falls_back_rather_than_failing(self):
+        self.path.write_text('[ui]\nwindow_mode = "nonsense"\n', encoding="utf-8")
+        self.assertEqual(config.load(self.path).window_mode, "app")
+
+
 class OverlayKeyTests(unittest.TestCase):
     def test_round_trip(self):
         keys = {"obs": "abc123", "lobby": "def456"}

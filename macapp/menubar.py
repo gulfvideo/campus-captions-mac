@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import webbrowser
 from pathlib import Path
 
 import rumps
 
-from launcher import embedded
+from launcher import appwindow, embedded
 from launcher.version import VERSION
 from relay import config as relay_config
 
@@ -107,10 +106,10 @@ class CampusCaptionsApp(rumps.App):
         )
 
     def open_status(self, _sender) -> None:
-        webbrowser.open(self.supervisor.status_link())
+        self.supervisor.open("/status", signed_in=True)
 
     def open_settings(self, _sender) -> None:
-        webbrowser.open(self.supervisor.settings_link())
+        self.supervisor.open("/settings", signed_in=True)
 
     def show_config_folder(self, _sender) -> None:
         reveal_in_finder(relay_config.DATA_DIR)
@@ -119,10 +118,10 @@ class CampusCaptionsApp(rumps.App):
         reveal_in_finder(logs_dir())
 
     def open_wall(self, _sender) -> None:
-        webbrowser.open(self.supervisor.link("/wall"))
+        self.supervisor.open("/wall")
 
     def open_phone(self, _sender) -> None:
-        webbrowser.open(self.supervisor.link("/phone"))
+        self.supervisor.open("/phone")
 
     def quit_app(self, _sender) -> None:
         rumps.quit_application()
@@ -134,7 +133,9 @@ def main() -> None:
     if embedded.port_in_use(port):
         session = embedded.existing_session(port, rcfg.operator_token)
         if session is not None:
-            webbrowser.open(f"http://127.0.0.1:{port}/status?token={rcfg.operator_token}")
+            appwindow.open_link(
+                f"http://127.0.0.1:{port}/status?token={rcfg.operator_token}",
+                rcfg.window_mode, relay_config.DATA_DIR)
             rumps.alert("Campus Captions",
                         "Already running - opened its status page.\n\n"
                         "Quit the other copy first if you want a fresh start.")

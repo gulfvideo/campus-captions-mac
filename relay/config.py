@@ -339,6 +339,14 @@ class RelayConfig:
     # output. Empty means the wall needs no key (the pre-key behaviour).
     overlay_keys: dict[str, str] = field(default_factory=dict)
 
+    # [ui] - how the app opens its own pages. "app" is a chromeless browser
+    # window that looks and behaves like a program; "browser" is an ordinary
+    # tab. Defaults to app: this is a program as far as its operator is
+    # concerned, and a tab among twenty others is easy to lose during an
+    # event. A machine with only Firefox falls back to a tab anyway - see
+    # launcher/appwindow.py.
+    window_mode: str = "app"
+
     # [setup] - has anyone been through the first-run wizard on this machine?
     # False sends /status to /setup once. Defaults to True when there is no
     # config file to read it from, because that is not a fresh install: it is
@@ -437,6 +445,10 @@ def load(path: Path | None = None) -> RelayConfig:
                 cfg.overlay_keys = parse_overlay_keys(keys)
             cfg.translate_provider = str(
                 (data.get("translate", {}) or {}).get("provider", cfg.translate_provider))
+
+            ui = data.get("ui", {}) or {}
+            mode = str(ui.get("window_mode", cfg.window_mode)).strip().lower()
+            cfg.window_mode = mode if mode in ("app", "browser") else cfg.window_mode
 
             # Absent means a config written before the wizard existed, or
             # the example file: either way nobody has been through it here.
@@ -848,6 +860,18 @@ def save_section(path: Path, header: str, values: dict) -> None:
         lines.extend(f"{key} = {value}" for key, value in wanted.items())
     path.parent.mkdir(parents=True, exist_ok=True)
     write_private(path, "\n".join(lines) + "\n")
+
+
+def save_window_mode(path: Path, mode: str) -> None:
+    """Remember whether pages open as an app window or a browser tab.
+
+    In event.toml rather than a browser's storage, because the thing that
+    acts on it is the launcher - it decides how to open the status page
+    before any browser is involved.
+    """
+    if mode not in ("app", "browser"):
+        raise ValueError(f"unknown window mode {mode!r}")
+    save_section(path, "[ui]", {"window_mode": mode})
 
 
 def save_setup_complete(path: Path, completed: bool = True) -> None:

@@ -174,3 +174,12 @@ host = "127.0.0.1"
 port = 1025
 screen = 0                  # zero-based audience screen in the current Look
 approved_hosts = []          # explicit RFC1918 IPs only when using another local Mac
+
+# How Campus Captions opens its own pages. "app" is a chromeless browser
+# window - no address bar, no tabs, its own taskbar or Dock entry - which is
+# what makes a web app feel like a program. "browser" is an ordinary tab.
+# Needs Chrome, Edge, Brave or Chromium; a machine with only Firefox or
+# Safari falls back to a tab whatever this says. Changed from the Settings
+# page under System.
+[ui]
+window_mode = "app"        # app | browser

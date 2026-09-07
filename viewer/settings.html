@@ -547,6 +547,29 @@
 
 <div class="tabpanel" id="tabpanel-system" role="tabpanel"
      aria-labelledby="tab-system" hidden>
+<section class="panel" id="panel-window">
+  <h2 class="panel-head">How Campus Captions opens
+    <span class="badge" id="window-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">
+      The status page, settings and the wall and phone views are web pages,
+      but this is a program &mdash; so by default they open in their own
+      window with no address bar and no tabs, and it gets its own entry in
+      the taskbar or Dock.
+    </div>
+    <label class="check" style="flex:1 1 100%">
+      <input type="radio" name="window-mode" value="app" id="window-app">
+      <span>Its own window &mdash; looks and behaves like an app</span>
+    </label>
+    <label class="check" style="flex:1 1 100%">
+      <input type="radio" name="window-mode" value="browser" id="window-browser">
+      <span>A normal browser tab</span>
+    </label>
+    <div class="disclosure-sub" id="window-sub">&mdash;</div>
+  </div>
+</section>
+
 <section class="panel" id="panel-network">
   <h2 class="panel-head">Network &mdash; relay port
     <span class="badge" id="network-badge">&mdash;</span>
@@ -1010,6 +1033,54 @@
     $('btn-profanity-disable').disabled = !source.connected || !masked;
   }
 
+  // ---- window mode --------------------------------------------------------
+  // An app window is Chrome/Edge/Brave's --app= flag: one window, no address
+  // bar, its own taskbar entry. Firefox and Safari have no equivalent, so a
+  // machine with only those falls back to a tab and this panel says so
+  // rather than offering a choice that does nothing.
+  var windowModeSaving = false;
+
+  function renderWindowMode(relay) {
+    if (windowModeSaving) return;          // do not fight a click mid-save
+    relay = relay || {};
+    var mode = relay.window_mode || 'app';
+    var caps = relay.app_window || {};
+    $('window-app').checked = mode === 'app';
+    $('window-browser').checked = mode === 'browser';
+    var badge = $('window-badge');
+    badge.textContent = mode === 'app' ? 'its own window' : 'browser tab';
+    badge.className = 'badge' + (mode === 'app' ? ' live' : '');
+
+    if (caps.available === false) {
+      $('window-app').disabled = true;
+      $('window-sub').textContent =
+        'This computer has no browser that can open an app window — that '
+        + 'needs Chrome, Edge, Brave or Chromium. Pages will open in a tab '
+        + 'whichever option is selected.';
+    } else {
+      $('window-app').disabled = false;
+      $('window-sub').textContent = (caps.browser ? 'Using ' + caps.browser + '. ' : '')
+        + 'Takes effect the next time Campus Captions starts, and on the next '
+        + 'Open from the tray or menu bar — the window you are reading this in '
+        + 'is not moved.';
+    }
+  }
+
+  function saveWindowMode(mode) {
+    windowModeSaving = true;
+    fetch('/api/ui', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ window_mode: mode })
+    }).then(jsonOrThrow).then(function (out) {
+      toast(out.window_mode === 'app'
+        ? 'Will open in its own window from now on'
+        : 'Will open in a browser tab from now on');
+    })['catch'](function () {
+      toast('Could not save that preference');
+    })['finally'](function () { windowModeSaving = false; });
+  }
+
   // ---- relay port ---------------------------------------------------------
 
   var relayPortDirty = false, portMoving = false;
@@ -1266,6 +1337,7 @@
   function render(s) {
     renderNetwork(s.relay);
     renderEventConfig(s.event);
+    renderWindowMode(s.relay || {});
     renderDeepgram(s.source || {});
     renderWhisper(s.source || {});
     renderTranslation(s);
@@ -1590,6 +1662,10 @@
       this.value = '';
     };
     $('btn-event-logo-remove').onclick = function () { removeEventImage('/api/event/logo', 'Logo'); };
+
+    ['window-app', 'window-browser'].forEach(function (id) {
+      $(id).onchange = function () { if (this.checked) saveWindowMode(this.value); };
+    });
 
     $('btn-tuning-save').onclick = saveTuning;
     $('btn-tuning-revert').onclick = function () { if (tuning) fillTuning(); };
