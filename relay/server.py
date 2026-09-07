@@ -69,6 +69,7 @@ from .youtube import YouTubeCaptionPusher, urls_from_env, valid_ingestion_url
 # importing any of them, so the relay stays clear of numpy, websockets and
 # PortAudio (see capture/backends/support.py, and ci.yml on why that matters).
 from capture.backends import support as backend_support
+from launcher import appwindow
 
 HEARTBEAT_SECONDS = 5.0
 STATUS_PUSH_SECONDS = 0.4
@@ -455,9 +456,15 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         "public_hostname": cfg.public_hostname,
         "event": event.public(),
         "health": hub.health(),
-        # Where this relay is, for the Settings page's port field. The full
+        # Where this relay is, for the Settings page's port field, plus how it
+        # opens its own pages, for the window-mode panel next to it. The full
         # block with token_required and the config path stays on /api/status.
-        "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip()},
+        # This is the payload the Settings page actually renders from - it
+        # reads the websocket, not /api/status - so anything that panel needs
+        # has to be here as well.
+        "relay": {"host": cfg.host, "port": cfg.port, "ip": local_ip(),
+                  "window_mode": cfg.window_mode,
+                  "app_window": appwindow.describe()},
         "propresenter": propresenter.status(),
         "slide_settings": slide_settings(),
         "overlay_keys": overlay_key_list(),
@@ -857,6 +864,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "token_required": cfg.token_required,
             "config": str(cfg.config_path) if cfg.config_path else None,
             "public_hostname": cfg.public_hostname,
+            "window_mode": cfg.window_mode,
+            "app_window": appwindow.describe(),
         }
         return JSONResponse(snap, headers=NO_STORE)
 
@@ -1286,6 +1295,34 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 "phone": f"{cfg.base_url(ip)}/phone",
             },
         }, headers=NO_STORE)
+
+    @app.post("/api/ui")
+    async def api_ui(request: Request) -> JSONResponse:
+        """{"window_mode": "app"|"browser"} - how this machine opens the
+        app's own pages from now on.
+
+        Takes effect on the next launch and on the next Open from the tray
+        or menu bar; the window already on screen is not moved, because
+        closing an operator's dashboard out from under them mid-event to
+        reopen it in a different frame would be worse than waiting.
+        """
+        require_operator(request)
+        body = await read_json(request)
+        mode = str((body or {}).get("window_mode", "")).strip().lower()
+        if mode not in appwindow.MODES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"window_mode must be one of {', '.join(appwindow.MODES)}")
+        try:
+            config_module.save_window_mode(config_target(), mode)
+        except OSError as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"could not write the config file: {exc}") from None
+        cfg.window_mode = mode
+        print(f"[relay] pages will open as a {mode}")
+        return JSONResponse({"ok": True, "window_mode": mode,
+                             "app_window": appwindow.describe()},
+                            headers=NO_STORE)
 
     @app.post("/api/setup")
     async def api_setup_save(request: Request) -> JSONResponse:

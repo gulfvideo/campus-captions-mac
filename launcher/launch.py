@@ -110,6 +110,40 @@ def status_json(port: int, token: str, timeout: float) -> dict:
         return json.load(response)
 
 
+def read_window_mode() -> str:
+    """"app" or "browser" - how [ui] window_mode says pages should open.
+    Read here the same way the port is, because this file runs before the
+    virtual environment exists and cannot import relay.config."""
+    cfg = ROOT / "config" / "event.toml"
+    if not cfg.exists():
+        cfg = ROOT / "config" / "event.example.toml"
+    try:
+        import tomllib
+        with cfg.open("rb") as fh:
+            mode = str((tomllib.load(fh).get("ui") or {}).get("window_mode", "app"))
+        return mode if mode in ("app", "browser") else "app"
+    except Exception:
+        return "app"
+
+
+def open_page(url: str) -> None:
+    """Open a page as an app window when asked for and possible, else a tab.
+
+    launcher/appwindow.py is pure standard library, so it imports fine here -
+    before the venv exists and before any dependency is installed.
+    """
+    try:
+        from launcher import appwindow
+        opened = appwindow.open_link(url, read_window_mode(), ROOT)
+        if read_window_mode() == "app" and opened != "app":
+            say("no browser that can open an app window; opened a tab instead")
+    except Exception:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+
 def read_port() -> int:
     port = os.environ.get("CAPTIONS_PORT")
     if port and port.isdigit():
@@ -277,7 +311,7 @@ def main() -> int:
             say("\nIf you want a fresh start, close the other Campus Captions")
             say("window first, then run this again.")
             try:
-                webbrowser.open(f"http://127.0.0.1:{port}/status?token={token}")
+                open_page(f"http://127.0.0.1:{port}/status?token={token}")
             except Exception:
                 pass
             input("\npress Enter to close this window ")
@@ -327,10 +361,7 @@ def main() -> int:
     say("  Closing this window stops everything.")
     say("=" * 68)
 
-    try:
-        webbrowser.open(status_link)
-    except Exception:
-        pass
+    open_page(status_link)
 
     try:
         while True:

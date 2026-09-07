@@ -379,6 +379,7 @@ a password:
 | `GET /api/setup` | what the first-run wizard needs: the backends this machine can run and how to describe them, plus the addresses to hand out (operator-only) |
 | `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |
 | `GET`/`POST /api/wordlist/{keyterms,blocklist}` | the two hand-maintained word lists as plain text; saving rewrites the file and reloads it into the capture client. The body is raw text, not JSON - a campus's worth of names runs past `MAX_JSON_BYTES` |
+| `POST /api/ui` | `{"window_mode": "app"\|"browser"}` - whether the app's own pages open in a chromeless window or a browser tab, saved to `[ui]` in `event.toml` |
 | `GET`/`POST /api/backend-options` | recognition tuning that used to be `event.toml`-only: Deepgram's `diarize`/`filler_words`/`inaudible_below`, Whisper's `compute_type`/`interim_interval`/`silence_commit`, and the Apple locale. Saved to disk *and* pushed to the running capture client, which rebuilds its backend |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
 | `POST /api/preflight` | run the preflight check now: a verdict plus findings with what to do about each, see below |
@@ -723,6 +724,26 @@ The wizard saves nothing of its own beyond that one flag: the microphone, the
 backend and the Deepgram key all go through `/api/control`, and the title and
 notice through `/api/event` — the endpoints the status and settings pages
 already use. One writer per setting, so the three pages cannot drift.
+
+## App window
+
+`launcher/appwindow.py`. Chromium-family browsers open a chromeless window
+with `--app=URL`: one window, no address bar, no tabs, its own taskbar or Dock
+entry. That is the whole mechanism - no Electron, nothing extra to download,
+which matters when the alternative is adding a hundred megabytes to an
+installer to get a window frame.
+
+Both packaged front ends, the source launcher and the tray/menu-bar Open items
+go through `open_link(url, mode, data_dir)`, which returns **what it actually
+did** rather than what it was asked for: Firefox and Safari have no equivalent
+flag, so a machine with only those gets a tab, and the caller says so instead
+of pretending. `[ui] window_mode` in `event.toml` holds the preference, and
+Settings > System changes it.
+
+The window gets its own browser profile under the app's data directory rather
+than the operator's default one. Sharing the default profile inherits their
+extensions and their restore-tabs prompt, and on some versions attaches to the
+already-running browser instead of opening a window at all.
 
 ## Settings page
 

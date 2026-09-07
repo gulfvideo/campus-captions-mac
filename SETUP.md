@@ -92,6 +92,22 @@ restarted automatically (up to five times, then it gives up and says so). The
 installed app does the same thing inside one process — see
 `launcher/embedded.py`.
 
+### Its own window, or a browser tab
+
+Campus Captions is a web app that behaves like a program: by default the
+status page opens in **its own window** with no address bar and no tabs, and
+gets its own entry in the taskbar or Dock. Switch it to an ordinary browser
+tab under **Settings > System > How Campus Captions opens**; the choice is
+remembered.
+
+This needs Chrome, Edge, Brave or Chromium somewhere on the machine — it is
+their `--app` mode, not an extra download. On a computer with only Firefox or
+Safari the pages open in a tab whichever option is selected, and the Settings
+page says so rather than offering a choice that does nothing.
+
+The app window keeps its own browser profile, so it does not inherit
+extensions, a restore-tabs prompt, or anything else from everyday browsing.
+
 ### Where your settings live
 
 Not inside the app. Settings, the API keys and the logs go in a per-user

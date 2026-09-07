@@ -18,7 +18,6 @@ import os
 import subprocess
 import sys
 import threading
-import webbrowser
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -50,7 +49,7 @@ if sys.stderr is None:
 import pystray                                                  # noqa: E402
 from PIL import Image                                           # noqa: E402
 
-from launcher import embedded                                   # noqa: E402
+from launcher import appwindow, embedded                                   # noqa: E402
 from launcher.version import VERSION                            # noqa: E402
 from relay import config as relay_config                        # noqa: E402
 
@@ -152,16 +151,16 @@ class CampusCaptionsTray:
     # -- menu ------------------------------------------------------------
 
     def open_status(self, *_):
-        webbrowser.open(self.supervisor.status_link())
+        self.supervisor.open("/status", signed_in=True)
 
     def open_settings(self, *_):
-        webbrowser.open(self.supervisor.settings_link())
+        self.supervisor.open("/settings", signed_in=True)
 
     def open_wall(self, *_):
-        webbrowser.open(self.supervisor.link("/wall"))
+        self.supervisor.open("/wall")
 
     def open_phone(self, *_):
-        webbrowser.open(self.supervisor.link("/phone"))
+        self.supervisor.open("/phone")
 
     def open_config_folder(self, *_):
         open_folder(relay_config.DATA_DIR)
@@ -196,7 +195,9 @@ def main() -> None:
 
     if embedded.port_in_use(port):
         if embedded.existing_session(port, rcfg.operator_token) is not None:
-            webbrowser.open(f"http://127.0.0.1:{port}/status?token={rcfg.operator_token}")
+            appwindow.open_link(
+                f"http://127.0.0.1:{port}/status?token={rcfg.operator_token}",
+                rcfg.window_mode, relay_config.DATA_DIR)
             alert("Campus Captions is already running - its status page has been "
                   "opened.\n\nQuit the other copy from the notification area "
                   "first if you want a fresh start.")
