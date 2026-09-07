@@ -50,6 +50,34 @@ except Exception as exc:                       # optional dependency
 
 WHISPER_RATE = 16000            # Whisper only ever wants 16 kHz mono
 SPEECH_FLOOR = 0.006            # smoothed RMS above this counts as speech
+
+# --- hallucination on silence ---------------------------------------------
+# Whisper does not know how to output nothing. Fed a stretch of room tone it
+# invents fluent, confident speech - "Okay. Thank you. Bye bye. Good bye." and
+# the YouTube-subtitle boilerplate its training data is full of. Reported from
+# a real room: two paragraphs of it during a quiet passage.
+#
+# The RMS gate above stops obvious silence, but a room is never silent: an air
+# handler, a projector fan and a congregation shifting in seats all clear a
+# level floor while carrying no speech at all. Three checks in front of it,
+# cheap and independent:
+#
+#   1. Silero VAD inside faster-whisper drops non-speech audio before the
+#      decoder ever sees it. This is the big one, and it is what the level
+#      gate cannot do - it knows what speech sounds like, not just how loud
+#      the room is.
+#   2. no_speech_prob: the model's own answer to "was that actually speech?".
+#      A hallucinated segment usually knows, and says so.
+#   3. avg_logprob: how confident the decoder was. Invented text scores well
+#      below anything really heard.
+#
+# Deliberately not a list of banned phrases. "Thank you" and "Okay" are things
+# people say from a lectern, and a filter that drops them drops real captions
+# on the one occasion someone says them quietly.
+VAD_MIN_SILENCE_MS = 700        # a pause shorter than this is speech, not a gap
+VAD_SPEECH_PAD_MS = 200         # keep this much either side, so words are whole
+NO_SPEECH_MAX = 0.6             # above this, the model doubts it was speech
+MIN_AVG_LOGPROB = -1.0          # below this, the decoder was guessing
 # Force a commit at this length so decoding cannot crawl. 12 s keeps the
 # final's decode near a second on a laptop CPU; 22 s used to push the last
 # line of a long sentence four to six seconds behind the speaker.
@@ -342,9 +370,35 @@ class LocalWhisperBackend(ASRBackend):
             condition_on_previous_text=False,   # stops runaway repetition when
                                                 # the same window is re-decoded
             initial_prompt=self._prompt,
-            vad_filter=False,          # the RMS gate below already does this
+            # Was False, on the grounds that the RMS gate already did this. It
+            # does not: a level floor cannot tell a fan from a voice, and the
+            # decoder handed room tone invents speech rather than returning
+            # nothing. See the constants above.
+            vad_filter=True,
+            vad_parameters={
+                "min_silence_duration_ms": VAD_MIN_SILENCE_MS,
+                "speech_pad_ms": VAD_SPEECH_PAD_MS,
+            },
+            no_speech_threshold=NO_SPEECH_MAX,
         )
-        return collapse_repeats(" ".join(seg.text.strip() for seg in segments).strip())
+        kept = []
+        for seg in segments:
+            text = seg.text.strip()
+            if not text:
+                continue
+            # faster-whisper applies no_speech_threshold per window, not per
+            # segment, so the check is repeated here where the segment's own
+            # scores are available. getattr because a future version that
+            # stops reporting one of these should not take captions down.
+            no_speech = getattr(seg, "no_speech_prob", 0.0) or 0.0
+            logprob = getattr(seg, "avg_logprob", 0.0) or 0.0
+            if no_speech > NO_SPEECH_MAX or logprob < MIN_AVG_LOGPROB:
+                print(f"[whisper] dropped a segment that reads as invented "
+                      f"(no_speech={no_speech:.2f} logprob={logprob:.2f}): "
+                      f"{text[:60]!r}")
+                continue
+            kept.append(text)
+        return collapse_repeats(" ".join(kept).strip())
 
     async def _decode(self, audio: np.ndarray) -> str:
         """Decode off the event loop - this is CPU-bound and blocking."""
