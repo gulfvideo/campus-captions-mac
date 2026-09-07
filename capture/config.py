@@ -22,13 +22,55 @@ from pathlib import Path
 from .backends import support as backend_support
 
 # Repo root when run from source; the PyInstaller bundle's resource directory
-# (where the .spec's `datas` land) when frozen into the macOS app.
+# (where the .spec's `datas` land) when frozen into the packaged app.
 FROZEN = bool(getattr(sys, "frozen", False))
 ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
-# Per-machine state lives outside the .app bundle - see relay/config.py for
-# why. The relay (same process in the packaged app) creates event.toml there
-# on first run; this side only ever reads config and writes .env.
-DATA_DIR = (Path.home() / "Library" / "Application Support" / "Campus Captions") if FROZEN else ROOT
+APP_NAME = "Campus Captions"
+
+
+def _data_dir() -> Path:
+    """Where per-machine state lives in the packaged app: event.toml, .env,
+    uploaded images, logs. Never inside the bundle - it is signed, shared as
+    a download, and replaced on every update, so a Deepgram key written into
+    it would break the signature and travel with the next copy someone
+    passes around.
+
+    Each platform's own conventional location, so the folder is where the
+    operator's OS (and its backup tool) already expects an app's settings to
+    be. Running from source it is simply the checkout.
+    """
+    if not FROZEN:
+        return ROOT
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        return Path(base or Path.home() / "AppData" / "Local") / APP_NAME
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    base = os.environ.get("XDG_DATA_HOME", "").strip()
+    return Path(base or Path.home() / ".local" / "share") / APP_NAME
+
+
+def _log_dir() -> Path:
+    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
+    temp directory that's gone by the next launch, so its logs go in a
+    standard per-user location instead - Console.app finds ~/Library/Logs/*
+    on its own, and the Windows tray app's "Show Logs" opens this folder.
+    Running from source, next to the code."""
+    if not FROZEN:
+        return ROOT / "logs"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Logs" / APP_NAME
+    # Windows and Linux have no equivalent per-user log convention that a
+    # tool would find on its own, so they go beside the config the tray
+    # app's menu already opens.
+    return _data_dir() / "logs"
+
+
+# Per-machine state lives outside the bundle - see relay/config.py for why,
+# and keep these two in step. The relay (same process in the packaged app)
+# creates event.toml there on first run; this side only ever reads config
+# and writes .env.
+DATA_DIR = _data_dir()
 DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
 EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
 ENV_FILE = DATA_DIR / ".env"
@@ -47,16 +89,6 @@ def resolve_path(value: str) -> str:
         if candidate.exists():
             return str(candidate)
     return str(DATA_DIR / p)
-
-
-def _log_dir() -> Path:
-    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
-    temp directory that's gone by the next launch, so its logs go in the
-    standard per-user macOS location instead - Console.app finds
-    ~/Library/Logs/* on its own. Running from source, next to the code."""
-    if getattr(sys, "frozen", False):
-        return Path.home() / "Library" / "Logs" / "Campus Captions"
-    return ROOT / "logs"
 
 
 class _Tee:

@@ -10,6 +10,12 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller injects SPECPATH
 
+# A .spec is exec'd, not imported, and ROOT is not on sys.path when it runs -
+# so read the one place the version lives rather than importing it.
+_version_ns: dict = {}
+exec((ROOT / "launcher" / "version.py").read_text(encoding="utf-8"), _version_ns)
+VERSION = _version_ns["VERSION"]
+
 # Only the *example* config ships in the bundle. The real event.toml, the
 # .env with the keys, and any uploaded images live in
 # ~/Library/Application Support/Campus Captions/ (see relay/config.py) - the
@@ -85,7 +91,7 @@ app = BUNDLE(  # noqa: F821
     info_plist={
         "CFBundleName": "Campus Captions",
         "CFBundleDisplayName": "Campus Captions",
-        "CFBundleShortVersionString": "0.2.5",
+        "CFBundleShortVersionString": VERSION,
         "LSUIElement": True,
         "NSMicrophoneUsageDescription":
             "Campus Captions needs the microphone to generate live captions.",

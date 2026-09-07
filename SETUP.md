@@ -8,9 +8,68 @@ Section 9 is the checklist to run before doors open.
 
 ## 1. First-time install
 
-On the machine that will run the captions (the "relay host" — usually the same
-booth machine that runs the capture, and it may be the ProPresenter machine or
-a separate one):
+This goes on the machine that will run the captions (the "relay host" — usually
+the same booth machine that runs the capture, and it may be the ProPresenter
+machine or a separate one).
+
+**You do not need Python, a terminal, or a copy of the source code.** Go to
+[Releases](https://github.com/koakley3/campus-captions/releases) and take the
+download for your operating system.
+
+### Windows
+
+1. Download **`CampusCaptions-Setup-<version>.exe`**.
+2. Double-click it.
+3. Windows shows a blue **"Windows protected your PC"** box. Click
+   **More info**, then **Run anyway**.
+4. Click through the installer. It offers a desktop shortcut, and optionally
+   starting Campus Captions when you sign in.
+5. It starts on its own when the installer finishes.
+
+Step 3 happens because the installer is not code-signed — a signing
+certificate costs money per year and this project does not have one. It is
+**once per computer**, not once per launch, and it is the same prompt every
+unsigned installer produces.
+
+Nothing appears on screen when Campus Captions is running: it lives as a
+graduation-cap icon in the **notification area**, bottom-right, sometimes
+hidden behind the `^` arrow. Right-click it for the pages and for Quit.
+
+### macOS
+
+1. Download **`CampusCaptions.zip`** and double-click it to unzip.
+2. Drag **Campus Captions** into your Applications folder.
+3. **Control-click** it and choose **Open**, then confirm. (Double-clicking
+   the first time gives an "unidentified developer" refusal with no way past
+   it — same reason as the Windows prompt above, and also once per Mac.)
+4. macOS asks for microphone access, and for speech recognition if you use the
+   on-device backend. Allow both, or there is nothing to caption.
+
+It runs as a graduation-cap icon in the **menu bar** at the top of the screen.
+
+### The setup wizard
+
+The first time it runs, Campus Captions opens a **setup wizard** in your
+browser. Four steps, about two minutes:
+
+1. **Microphone** — pick the input carrying the room, and watch the level
+   meter move while someone talks. This is the step that catches "we
+   captioned the laptop's built-in mic all night".
+2. **Captions** — pick how speech is turned into text. Only the options this
+   computer can actually run are listed, and each says whether it costs money.
+   See sections 3, 3a and 3d for what to pick and why.
+3. **Event** — the title and accessibility notice the audience sees on their
+   phones before the program starts. Both optional.
+4. **Done** — the wall, phone and status addresses to hand out.
+
+Everything it sets can be changed afterwards on the **Settings** page, and
+**Run setup again** in that page's top-right corner reopens the wizard.
+
+After the first run, Campus Captions goes straight to the status page instead.
+
+### Running from source instead
+
+For development, or on a machine where an installer cannot be run:
 
 1. Install **Python 3.11 or newer** from python.org. On Windows, tick
    **"Add Python to PATH"** during setup. Tested on 3.14.6.
@@ -18,30 +77,47 @@ a separate one):
 3. Double-click **`Start Captions.bat`** on Windows or
    **`Start Captions.command`** on macOS.
 
-On first launch, macOS may ask for microphone access. Allow it for Terminal so
-the capture client can hear the selected input. If macOS blocks the launcher
-because it was downloaded, Control-click it, choose **Open**, then confirm.
-
 The first run creates a virtual environment and installs dependencies — about a
-minute, once. Every later run starts in a couple of seconds.
+minute, once. Every later run starts in a couple of seconds. If the window
+shows `--- ready ---` and a list of URLs, it worked. To stop everything, close
+that window.
 
-You never need to activate anything, type a command, or check a port. If the
-window shows `--- ready ---` and a list of URLs, it worked.
-
-To stop everything: close that window.
+The setup wizard runs here too, on the same first-run rule.
 
 ### What the launcher does
 
 Starts the relay, waits for it to answer, starts the capture client, opens the
 status page in your browser, and watches both. If either process dies it is
-restarted automatically (up to five times, then it gives up and says so).
+restarted automatically (up to five times, then it gives up and says so). The
+installed app does the same thing inside one process — see
+`launcher/embedded.py`.
+
+### Where your settings live
+
+Not inside the app. Settings, the API keys and the logs go in a per-user
+folder, so an upgrade keeps them and nothing secret travels with a copy of the
+installer:
+
+| | |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Campus Captions` |
+| macOS | `~/Library/Application Support/Campus Captions` (logs in `~/Library/Logs/Campus Captions`) |
+| From source | the checkout itself |
+
+The tray or menu bar menu opens both folders for you.
 
 ---
 
 ## 2. Configuration file
 
-Copy `config/event.example.toml` to **`config/event.toml`** and edit that. The
-real file is gitignored so machine-specific settings never travel with the code.
+**Most people never open this.** The setup wizard and the Settings page write
+everything here for you. This section is for reference, and for the handful of
+settings with no page of their own.
+
+The installed app creates its `event.toml` on first run in the folder listed
+under "Where your settings live" above. Running from source, copy
+`config/event.example.toml` to **`config/event.toml`** and edit that — the real
+file is gitignored so machine-specific settings never travel with the code.
 
 ```toml
 [relay]
@@ -50,7 +126,7 @@ port = 8000
 source_token = ""     # leave empty: one is generated into .env on first start
 
 [capture]
-backend = "mock"                        # mock | deepgram | apple_speech
+backend = "auto"          # auto | mock | deepgram | apple_speech | whisper
 device = ""                                        # index or part of a name
 relay_url = "ws://127.0.0.1:8000/ws/source"
 start_open = false                                 # leave false: see section 6
@@ -63,11 +139,26 @@ endpointing = 300
 
 [apple_speech]
 locale = "en-US"
+
+[setup]
+completed = true      # written by the setup wizard; false sends you back to it
 ```
 
-`backend = "mock"` is the safe default — it plays a scripted transcript and
-costs nothing. Switch to `"deepgram"` for cloud captions with keyterm boosting,
-or `"apple_speech"` to run entirely on-device — see section 3a.
+`backend = "auto"` is what ships, and it means *whichever backend this
+computer can actually run*: the Apple on-device backend on a Mac new enough
+for it, and practice mode (`mock`, a scripted transcript that costs nothing)
+everywhere else. The wizard replaces it with a real choice.
+
+Naming a backend a machine cannot run is not fatal — it is substituted, and
+the capture client says so — but the status page's picker only ever offers
+what will work, so it is hard to end up there by accident.
+
+| | |
+|---|---|
+| `deepgram` | cloud, most accurate, learns your keyterms — section 3 |
+| `apple_speech` | on-device, free, macOS 26+ only — section 3a |
+| `whisper` | on-device, free, any OS, needs an extra install — section 3d |
+| `mock` | a scripted transcript, for rehearsal |
 
 ---
 
@@ -109,9 +200,10 @@ per-minute cost, and after the first run, no network at all.
 
 Requirements:
 
-- **macOS 26 or newer.** On an older Mac, the capture client logs why and the
-  ASR stream refuses to open — it does not silently fall back to another
-  backend.
+- **macOS 26 or newer.** Anywhere else — Windows, Linux, an older Mac — this
+  backend is not offered at all: it is absent from the setup wizard and from
+  the status page's picker, and `backend = "apple_speech"` in a config file is
+  substituted for one that works, with a line in the log saying so.
 - **Xcode command line tools**, so `swiftc` and `codesign` exist. If they're
   missing, run `xcode-select --install` once.
 
@@ -224,8 +316,9 @@ enabled - press Disable first.
 
 `backend = "whisper"` runs recognition entirely on-device via faster-whisper -
 no API key, no per-minute cost, works on Windows/Linux too (not just macOS
-26+ like `apple_speech`). Already bundled and ready to pick from the status
-page in the packaged macOS app. Running from source, install its extras once:
+26+ like `apple_speech`). Already bundled and ready to pick from the setup
+wizard or the status page in the installed app, on both platforms. Running
+from source, install its extras once:
 
 ```bash
 .venv/bin/python -m pip install -r requirements-whisper.txt
@@ -457,8 +550,8 @@ next time — the interface stayed at the last venue — the app falls back to t
 system default and says so on the status page rather than starting deaf.
 
 The same status page has a **Transcription backend** dropdown, next to the
-device picker, for swapping between the local Apple backend and cloud Deepgram
-without restarting anything. Switching pauses an open stream and reopens it on
+device picker, for swapping backends without restarting anything. It lists
+only what this computer can run, so `apple_speech` is simply absent on a PC. Switching pauses an open stream and reopens it on
 the new backend, the same way changing the audio device does. Deepgram only
 appears usable if `DEEPGRAM_API_KEY` is set — picking it without a key is
 refused and the running backend is left untouched. This runtime choice also
@@ -868,7 +961,8 @@ Roughly 30 minutes before doors.
 - [ ] Relay host is on, on the network, at its expected IP address
 - [ ] `Start Captions.bat` run — window shows `--- ready ---`
 - [ ] Status page open in the booth, via the launcher's link (`/status?token=…`)
-- [ ] `config/event.toml` has `backend = "deepgram"` for a real event
+- [ ] the status page shows the backend you intend for a real event — usually
+      `deepgram`, never `mock`
 - [ ] `.env` has the Deepgram key — the capture client says
       `DEEPGRAM_API_KEY found` at startup
 
