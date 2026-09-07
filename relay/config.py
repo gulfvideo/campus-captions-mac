@@ -82,6 +82,30 @@ ENV_FILE = DATA_DIR / ".env"
 # keyterms & blocklist" would re-read the shipped one every time.
 SEEDED_CONFIG_FILES = ("keyterms.txt", "blocklist.txt")
 
+# The two hand-maintained word lists, by the short name the Settings page and
+# /api/wordlist use. Editing them used to mean finding the file in a text
+# editor - the one thing on that page that still sent an operator outside the
+# app - so the relay now reads and writes them itself, and this is the only
+# mapping from a name in a URL to a path on disk. Nothing else may name a file.
+WORDLISTS = {
+    "keyterms": "keyterms.txt",
+    "blocklist": "blocklist.txt",
+}
+# A term or short phrase per line. Generous enough for a large campus's worth
+# of names, small enough that nothing can fill a disk through this route.
+MAX_WORDLIST_BYTES = 256 * 1024
+
+
+def wordlist_path(name: str) -> Path:
+    """Where `name`'s list lives - always inside DATA_DIR, never anywhere the
+    caller chose. The capture client's resolve_path() looks in DATA_DIR before
+    the bundle, so a file written here is the one it reads."""
+    try:
+        filename = WORDLISTS[name]
+    except KeyError:
+        raise ValueError(f"unknown word list {name!r}") from None
+    return DATA_DIR / "config" / filename
+
 
 def ensure_data_dir() -> None:
     """First run of the packaged app: give it real files to edit, copied from
@@ -749,11 +773,23 @@ def save_relay_port(path: Path, port: int) -> None:
 
 
 def _toml_literal(value) -> str:
-    """A Python value as the TOML literal save_section writes."""
+    """A Python value as the TOML literal save_section writes.
+
+    bool before int, because bool *is* an int in Python and `True` would
+    otherwise be written as `1`. float has its own branch for the same class
+    of reason: without it a float fell through to the string case and
+    `inaudible_below = 0.45` was written as `"0.45"`, which reads back as a
+    string and breaks the first comparison the backend makes against it.
+    `repr` rather than `str` so the value round-trips exactly.
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError(f"refusing to write a non-finite number: {value!r}")
+        return repr(value)
     if isinstance(value, (list, tuple)):
         return _quote_list([str(x) for x in value])
     return _quote(str(value))

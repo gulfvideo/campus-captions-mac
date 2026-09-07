@@ -316,9 +316,19 @@ enabled - press Disable first.
 
 `backend = "whisper"` runs recognition entirely on-device via faster-whisper -
 no API key, no per-minute cost, works on Windows/Linux too (not just macOS
-26+ like `apple_speech`). Already bundled and ready to pick from the setup
-wizard or the status page in the installed app, on both platforms. Running
-from source, install its extras once:
+26+ like `apple_speech`).
+
+**Whisper needs its speech model downloaded once**, a few hundred megabytes.
+The installed app ships the Whisper software but not the model, so there is a
+**Download the model** button on the setup wizard's captions step and under
+**Settings > Captions > Whisper speech model**. Press it once, on a machine
+with internet; after that Whisper runs with no internet at all. It is never
+downloaded automatically - a few hundred megabytes starting by itself the
+first time someone opens the stream, minutes before a service, is exactly the
+surprise this avoids. The model lands in the app's own data folder (see
+"Where your settings live"), so it survives updates.
+
+Running from source, install its extras once as well:
 
 ```bash
 .venv/bin/python -m pip install -r requirements-whisper.txt

@@ -49,6 +49,36 @@ class SaveSectionTests(unittest.TestCase):
                          {"host": "10.0.0.9", "port": 2000, "surface": "message"})
         self.assertEqual(data["youtube"]["url"], "")
 
+    def test_numbers_stay_numbers(self):
+        """A float used to fall through _toml_literal's string branch and be
+        written quoted, so `inaudible_below = 0.45` came back as the string
+        "0.45" and broke the first comparison the backend made against it.
+        bool is checked here too, since bool is an int in Python and would
+        otherwise be written as 1."""
+        config.save_section(self.path, "[deepgram]", {
+            "inaudible_below": 0.45,
+            "interim_interval": 1.0,
+            "lines": 2,
+            "diarize": False,
+            "filler_words": True,
+            "model": "nova-3",
+        })
+        got = self.read()["deepgram"]
+        self.assertIsInstance(got["inaudible_below"], float)
+        self.assertEqual(got["inaudible_below"], 0.45)
+        self.assertIsInstance(got["interim_interval"], float)
+        self.assertIsInstance(got["lines"], int)
+        self.assertIs(got["diarize"], False)
+        self.assertIs(got["filler_words"], True)
+        self.assertEqual(got["model"], "nova-3")
+
+    def test_non_finite_numbers_are_refused(self):
+        # inf and nan are not TOML, and writing one would produce a config
+        # file the relay could no longer parse at all.
+        for bad in (float("inf"), float("-inf"), float("nan")):
+            with self.assertRaises(ValueError):
+                config._toml_literal(bad)
+
     def test_lists_and_quoting(self):
         config.save_section(self.path, "[overlay]", {"keys": ["obs:ab\"c", "lobby:xyz"]})
         self.assertEqual(self.read()["overlay"]["keys"], ["obs:ab\"c", "lobby:xyz"])

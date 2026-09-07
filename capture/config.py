@@ -301,6 +301,14 @@ def load(path: Path | None = None) -> CaptureConfig:
         f"whisper_{key}": value
         for key, value in (data.get("whisper", {}) or {}).items()
     })
+    # Where the Whisper model lives, unless event.toml names somewhere else.
+    # An explicit directory under the app's own data folder rather than
+    # faster-whisper's hidden ~/.cache default: the status page offers a
+    # one-click download of this model, which means something has to be able
+    # to check for it, and an operator has to be able to find it.
+    if not backend_config.get("whisper_model_dir"):
+        backend_config["whisper_model_dir"] = str(
+            backend_support.whisper_model_dir(DATA_DIR))
     # Backend-agnostic, unlike keyterms: blocking happens on already-
     # transcribed text (see ASRBackend._filter_words), so every backend gets
     # it for free rather than needing its own support for it.

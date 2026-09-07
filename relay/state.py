@@ -67,6 +67,11 @@ class RelayState:
     source_peer: str | None = None
     backend: str | None = None
     available_backends: list[str] = field(default_factory=list)
+    # The capture client's Whisper model state - is faster-whisper importable,
+    # has the model been downloaded, is a download running. Passed straight
+    # through: the relay makes no judgement about it, it only carries it to
+    # the setup wizard and the settings page, which offer the download.
+    whisper: dict = field(default_factory=dict)
     has_deepgram_key: bool = False
     mask_profanity: bool = False
     blocked_word_count: int = 0
@@ -127,6 +132,18 @@ class RelayState:
             val = msg.get(key)
             if isinstance(val, str):
                 setattr(self, key, val[:128])
+        whisper = msg.get("whisper")
+        if isinstance(whisper, dict):
+            self.whisper = {
+                "installed": bool(whisper.get("installed")),
+                "packaged": bool(whisper.get("packaged")),
+                "present": bool(whisper.get("present")),
+                "state": str(whisper.get("state", ""))[:32],
+                "message": str(whisper.get("message", ""))[:200],
+                "model": str(whisper.get("model", ""))[:64],
+                "path": str(whisper.get("path", ""))[:512],
+            }
+
         backends = msg.get("available_backends")
         if isinstance(backends, list):
             self.available_backends = [str(b)[:32] for b in backends[:16] if isinstance(b, str)]
@@ -258,6 +275,7 @@ class RelayState:
                 "peer": self.source_peer,
                 "backend": self.backend,
                 "available_backends": self.available_backends,
+                "whisper": self.whisper,
                 "has_deepgram_key": self.has_deepgram_key,
                 "mask_profanity": self.mask_profanity,
                 "blocked_word_count": self.blocked_word_count,

@@ -38,6 +38,7 @@ from pathlib import Path
 import numpy as np
 
 from .base import ASRBackend
+from .support import WHISPER_DEFAULT_MODEL
 
 try:
     from faster_whisper import WhisperModel
@@ -82,6 +83,35 @@ MISSING_DEPS = (
     "whisper backend needs faster-whisper: run "
     "'python -m pip install -r requirements-whisper.txt'"
 )
+
+
+def fetch_model(size: str, model_dir, on_progress=None) -> str:
+    """Download a Whisper model into `model_dir` and return its path.
+
+    Called from the operator's "Download" button (see capture/__main__.py's
+    download_whisper_model), never implicitly: the download is a few hundred
+    megabytes over whatever the venue's wifi is, and a backend that started
+    one on its own the first time someone opened the stream is exactly the
+    surprise this exists to remove.
+
+    Runs on a worker thread - it is entirely blocking - so it takes no event
+    loop and reports through `on_progress(message)` instead of logging into a
+    console nobody is watching.
+    """
+    if not WHISPER_AVAILABLE:
+        raise RuntimeError(f"{MISSING_DEPS} ({WHISPER_IMPORT_ERROR})")
+    from faster_whisper import download_model
+
+    Path(model_dir).mkdir(parents=True, exist_ok=True)
+    if on_progress:
+        on_progress(f"downloading the {size} model")
+    # huggingface_hub resumes a partial download and no-ops a complete one,
+    # so pressing the button twice is safe and a dropped wifi connection
+    # costs only the bytes not yet fetched.
+    path = download_model(size, output_dir=str(model_dir))
+    if on_progress:
+        on_progress("")
+    return str(path)
 
 
 # Whisper's temperature *ladder*, not a single value. faster-whisper decodes at
@@ -163,7 +193,7 @@ class LocalWhisperBackend(ASRBackend):
     def __init__(self, config: dict | None = None):
         super().__init__(config)
         cfg = self.config
-        self.model_size = str(cfg.get("whisper_model", "base.en"))
+        self.model_size = str(cfg.get("whisper_model", WHISPER_DEFAULT_MODEL))
         self.compute_type = str(cfg.get("whisper_compute_type", "int8"))
         # "cpu", not "auto". CTranslate2's auto-detect claims a GPU it cannot
         # actually use and then dies loading CUDA libraries that are not there.

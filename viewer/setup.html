@@ -211,6 +211,12 @@ page.</p>
 
   <div id="backends"></div>
 
+  <div class="field" id="whisper-field" hidden>
+    <label>Whisper speech model</label>
+    <p class="sub" id="whisper-status" style="margin:0 0 10px">Checking&hellip;</p>
+    <button id="whisper-download">Download the model</button>
+  </div>
+
   <div class="field" id="key-field" hidden>
     <label for="dg-key">Deepgram API key</label>
     <input id="dg-key" type="password" autocomplete="off" spellcheck="false"
@@ -285,6 +291,7 @@ page.</p>
   var latest = null;         // most recent /api/status-shaped snapshot
   var deviceTouched = false; // don't fight the operator's own selection
   var deviceSignature = null;
+  var whisperAsked = false;   // has the operator pressed Download this visit?
   var liveSeen = false;      // has this input ever carried real audio?
 
   function $(id) { return document.getElementById(id); }
@@ -456,10 +463,72 @@ page.</p>
       if (b.name === chosenBackend && b.needs_key) wantsKey = true;
     });
     $('key-field').hidden = !wantsKey;
+    renderWhisper(latest && latest.source);
     if (wantsKey && (setup.has_deepgram_key || keySaved)) {
       $('key-hint').textContent =
         'A key is already saved on this computer. Leave this blank to keep it, '
         + 'or paste a new one to replace it.';
+    }
+  }
+
+  // Whisper ships inside the packaged app, but its speech model does not -
+  // it is a few hundred megabytes, so it is fetched on request rather than
+  // bundled into every download. Without this row, picking Whisper looked
+  // like it worked and then stalled on a silent download the first time
+  // someone opened the stream, which is the worst possible moment for it.
+  function renderWhisper(source) {
+    var field = $('whisper-field');
+    if (chosenBackend !== 'whisper') { field.hidden = true; return; }
+    field.hidden = false;
+
+    var w = (source && source.whisper) || {};
+    var status = $('whisper-status');
+    var button = $('whisper-download');
+    var model = w.model || 'base.en';
+
+    if (!source || !source.connected) {
+      status.textContent = 'Waiting for the capture client…';
+      button.disabled = true;
+      return;
+    }
+    if (w.installed === false) {
+      status.textContent = w.packaged
+        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
+        : 'Whisper is not installed in this copy. Running from source, '
+          + 'install it once with: '
+          + 'python -m pip install -r requirements-whisper.txt';
+      button.disabled = true;
+      return;
+    }
+    if (w.state === 'downloading') {
+      status.textContent = 'Downloading the ' + model + ' model'
+        + (w.message ? ' — ' + w.message : '')
+        + '. This takes a few minutes; you can carry on and come back.';
+      button.disabled = true;
+      button.textContent = 'Downloading…';
+      return;
+    }
+    if (w.state === 'error') {
+      status.className = 'sub';
+      status.style.color = '#d95c5c';
+      status.textContent = 'The download failed: ' + (w.message || 'unknown error')
+        + '. Check the internet connection and try again.';
+      button.disabled = false;
+      button.textContent = 'Try again';
+      return;
+    }
+    status.style.color = '';
+    if (w.present) {
+      status.textContent = 'The ' + model + ' model is downloaded. '
+        + 'Whisper works offline from here on.';
+      button.disabled = true;
+      button.textContent = 'Downloaded';
+    } else {
+      status.textContent = 'Whisper needs a one-time model download '
+        + '(a few hundred megabytes) before it can caption anything. '
+        + 'You only need internet for this step.';
+      button.disabled = false;
+      button.textContent = 'Download the model';
     }
   }
 
@@ -548,6 +617,7 @@ page.</p>
     var source = (snapshot && snapshot.source) || {};
     renderDevices(source);
     renderMeter(snapshot || {});
+    if (step === 2) renderWhisper(source);
     // The wizard's Deepgram hint should stop saying "paste a key" the moment
     // one is saved, whether it was saved here or on the settings page.
     if (source.has_deepgram_key) {
@@ -595,6 +665,20 @@ page.</p>
 
   // ---- wiring ----------------------------------------------------------
 
+  $('whisper-download').onclick = function () {
+    whisperAsked = true;
+    $('whisper-download').disabled = true;
+    $('whisper-download').textContent = 'Starting…';
+    postJSON('/api/control', { action: 'download_whisper_model' })
+      .then(function (out) {
+        if (!out.delivered_to) toast('No capture client connected.');
+      })['catch'](function () {
+        toast('Could not start the download.');
+        $('whisper-download').disabled = false;
+        $('whisper-download').textContent = 'Download the model';
+      });
+  };
+
   $('device').addEventListener('change', function () {
     deviceTouched = true;
     liveSeen = false;                // judge the new input on its own audio
@@ -604,7 +688,20 @@ page.</p>
   $('back-1').onclick = function () { show(0); };
   $('go-1').onclick = function () { saveDevice().then(function () { show(2); }); };
   $('back-2').onclick = function () { show(1); };
-  $('go-2').onclick = function () { saveBackend().then(function () { show(3); }); };
+  $('go-2').onclick = function () {
+    // Leaving on Whisper with no model is allowed - the download can be
+    // started later from Settings, and blocking the wizard on a slow
+    // download would be worse - but it should be a choice, not a surprise
+    // discovered when the stream will not open at an event.
+    var w = (latest && latest.source && latest.source.whisper) || {};
+    if (chosenBackend === 'whisper' && w.installed !== false
+        && !w.present && w.state !== 'downloading' && !whisperAsked) {
+      whisperAsked = true;   // only nag once
+      toast('Whisper has no model yet — download it here, or later from Settings.');
+      return;
+    }
+    saveBackend().then(function () { show(3); });
+  };
   $('back-3').onclick = function () { show(2); };
   $('go-3').onclick = function () { saveEvent().then(function () { show(4); }); };
   $('back-4').onclick = function () { show(3); };

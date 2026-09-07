@@ -48,52 +48,90 @@
   button.stop { background: #7a2f2f; border-color: #9a3d3d; }
   button.stop:hover:not(:disabled) { background: #8d3737; }
 
-  /* Same disclosure-panel pattern as the status page, so a setting learned
-     there transfers here without relearning anything. */
-  .disclosure-panel {
+  /* ---- tabs ----------------------------------------------------------
+     Settings grew to eleven panels, all collapsed by default, which made
+     finding one a matter of opening lids until the right thing appeared.
+     Grouped into five tabs instead, and the panels inside a tab are always
+     open: within a group there are few enough that a lid saves nothing and
+     costs a click. */
+  nav.tabs {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--edge); margin-bottom: 20px;
+  }
+  .tab {
+    font: inherit; font-size: 15px; font-weight: 600;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; color: var(--dim); cursor: pointer;
+    padding: 11px 16px; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); background: #1c1f25; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: #7fb2f0; }
+  .tab:focus-visible { outline: 2px solid #7fb2f0; outline-offset: -2px; }
+  .tabpanel[hidden] { display: none; }
+
+  /* ---- panels --------------------------------------------------------- */
+  .panel {
     background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+    border-radius: 12px; margin-bottom: 14px; padding: 16px 18px 18px;
   }
-  button.disclosure-header {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    background: none; border: none; border-radius: 0; color: var(--text);
-    font: inherit; text-align: left; padding: 14px 16px; cursor: pointer;
-  }
-  button.disclosure-header:hover { background: #262b33; }
-  .disclosure-header .chevron {
-    display: inline-block; transition: transform 160ms ease;
-    color: var(--dim); font-size: 12px; width: 1em; flex: none;
-  }
-  .disclosure-header[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
-  .disclosure-header .title {
+  .panel-head {
+    display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px;
     color: var(--dim); font-size: 11.5px; font-weight: 700;
-    letter-spacing: .13em; text-transform: uppercase; flex: 1;
+    letter-spacing: .13em; text-transform: uppercase;
   }
-  .disclosure-header .badge { font-size: 13.5px; color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; }
-  .disclosure-header .badge.live { color: var(--ok); }
-  .disclosure-body-wrap {
-    display: grid; grid-template-rows: 1fr;
-    transition: grid-template-rows 200ms ease;
+  .panel-head .badge {
+    font-size: 13.5px; color: var(--dim); font-weight: 400;
+    letter-spacing: 0; text-transform: none; margin-left: auto;
   }
-  .disclosure-header[aria-expanded="false"] + .disclosure-body-wrap { grid-template-rows: 0fr; }
-  .disclosure-body-wrap > div { overflow: hidden; min-height: 0; }
-  .disclosure-body {
+  .panel-head .badge.live { color: var(--ok); }
+  .panel-body {
     display: flex; gap: 11px; flex-wrap: wrap; align-items: end;
-    padding: 0 16px 16px;
   }
-  .disclosure-body .row { display: flex; gap: 11px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; }
-  .disclosure-body input[type=text], .disclosure-body input[type=password] {
+  .panel-body .row {
+    display: flex; gap: 11px; flex-wrap: wrap; align-items: center;
+    flex: 1 1 100%;
+  }
+  .panel-body input[type=text], .panel-body input[type=password],
+  .panel-body input[type=number] {
     flex: 1 1 340px; min-height: 48px; font: inherit; color: var(--text);
     background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
     padding: 10px 12px;
   }
+  .panel-body input[type=number] { flex: 0 0 140px; }
   .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
-  .disclosure-body select.inline { width: auto; min-width: 200px; flex: 0 1 260px; min-height: 48px;
-    font: inherit; color: var(--text); background: #262b33; border: 1px solid var(--edge);
-    border-radius: 9px; padding: 10px 38px 10px 12px; }
-  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 14px;
-    min-height: 48px; white-space: nowrap; }
+  .panel-body select.inline {
+    width: auto; min-width: 200px; flex: 0 1 260px; min-height: 48px;
+    font: inherit; color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px;
+    padding: 10px 38px 10px 12px;
+  }
+  .check {
+    display: inline-flex; align-items: center; gap: 8px; color: var(--dim);
+    font-size: 14px; min-height: 48px; white-space: nowrap;
+  }
   .check input { width: 18px; height: 18px; accent-color: #5aa2f0; }
+
+  /* ---- labelled field ------------------------------------------------
+     A bare row of placeholder-only boxes reads fine to whoever built it and
+     as a guessing game to everyone else, so anything that is not obvious
+     from its own button gets a real label above it. */
+  .field { flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; }
+  .field.wide { flex: 1 1 100%; }
+  .field > label {
+    font-size: 12.5px; font-weight: 600; color: var(--dim);
+    letter-spacing: .04em;
+  }
+  .field > .hint { font-size: 13px; color: var(--dim); }
+  .field input, .field select { width: 100%; }
+
+  /* ---- word list editor ---------------------------------------------- */
+  textarea.wordlist {
+    flex: 1 1 100%; min-height: 190px; resize: vertical;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px;
+    line-height: 1.5; color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px; padding: 11px 12px;
+  }
+
   /* Output key rows */
   .key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0;
     border-top: 1px solid var(--edge); }
@@ -132,13 +170,25 @@
   <a href="/status">&larr; Back to status</a>
 </header>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="event-toggle" aria-expanded="true" aria-controls="event-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Event &amp; welcome screen</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="event-body">
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" class="tab" id="tab-event" data-tab="event"
+          aria-controls="tabpanel-event" aria-selected="false">Event</button>
+  <button role="tab" class="tab" id="tab-captions" data-tab="captions"
+          aria-controls="tabpanel-captions" aria-selected="false">Captions</button>
+  <button role="tab" class="tab" id="tab-audience" data-tab="audience"
+          aria-controls="tabpanel-audience" aria-selected="false">Audience</button>
+  <button role="tab" class="tab" id="tab-outputs" data-tab="outputs"
+          aria-controls="tabpanel-outputs" aria-selected="false">Outputs</button>
+  <button role="tab" class="tab" id="tab-system" data-tab="system"
+          aria-controls="tabpanel-system" aria-selected="false">System</button>
+</nav>
+
+<div class="tabpanel" id="tabpanel-event" role="tabpanel"
+     aria-labelledby="tab-event" hidden>
+<section class="panel" id="panel-event">
+  <h2 class="panel-head">Event &amp; welcome screen
+  </h2>
+  <div class="panel-body" id="event-body">
       <div class="row">
         <input id="event-title" type="text" autocomplete="off" spellcheck="false"
                placeholder="Event title, e.g. Fall Convocation" aria-label="Event title">
@@ -187,42 +237,16 @@
         wording, but not just because you saved the field again.
       </div>
     </div>
-  </div></div>
+</section>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="network-toggle" aria-expanded="false" aria-controls="network-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Network &mdash; relay port</span>
-    <span class="badge" id="network-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="network-body">
-      <div class="row">
-        <input id="relay-port" type="text" inputmode="numeric" autocomplete="off"
-               placeholder="Port, e.g. 8000" style="flex:0 1 180px">
-        <button id="btn-port-save" type="button">Save and restart on it</button>
-      </div>
-      <div class="disclosure-sub" id="network-sub">&mdash;</div>
-      <div class="disclosure-sub">
-        If another program already has the configured port when Campus Captions starts, it starts on
-        the next free one for that session and tells you. Saving a port here makes it permanent: the
-        relay restarts on it straight away, the capture client follows, and this page moves with it.
-        The wall and phone URLs and the printed QR code carry the port, so a ProPresenter prop, an OBS
-        scene, or a poster made for the old port needs updating once.
-      </div>
-    </div>
-  </div></div>
-</div>
-
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="deepgram-toggle" aria-expanded="true" aria-controls="deepgram-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Deepgram API key</span>
+<div class="tabpanel" id="tabpanel-captions" role="tabpanel"
+     aria-labelledby="tab-captions" hidden>
+<section class="panel" id="panel-deepgram">
+  <h2 class="panel-head">Deepgram API key
     <span class="badge" id="deepgram-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="deepgram-body">
+  </h2>
+  <div class="panel-body" id="deepgram-body">
       <div class="row">
         <input id="deepgram-key" type="password" autocomplete="off" spellcheck="false"
                placeholder="Paste your Deepgram API key">
@@ -231,17 +255,147 @@
       </div>
       <div class="disclosure-sub" id="deepgram-sub">&mdash;</div>
     </div>
-  </div></div>
+</section>
+
+<section class="panel" id="panel-whisper">
+  <h2 class="panel-head">Whisper speech model
+    <span class="badge" id="whisper-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="whisper-body">
+      <div class="row">
+        <button id="btn-whisper-download" type="button">Download the model</button>
+      </div>
+      <div class="disclosure-sub" id="whisper-sub">&mdash;</div>
+    </div>
+</section>
+
+<section class="panel" id="panel-tuning">
+  <h2 class="panel-head">Recognition tuning
+    <span class="badge" id="tuning-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">
+      Defaults are good for a lecture or a service. Changes apply straight
+      away &mdash; an open caption stream is closed and reopened to pick them
+      up. Each setting only affects the backend it belongs to.
+    </div>
+
+    <div class="field">
+      <label for="dg-inaudible">Deepgram &mdash; mark as [inaudible] below</label>
+      <input id="dg-inaudible" type="number" min="0" max="1" step="0.05">
+      <span class="hint">A committed word the model doubts this much is shown
+        as [inaudible] rather than a confident wrong guess. 0 turns it off.</span>
+    </div>
+    <div class="field">
+      <label>Deepgram &mdash; transcript style</label>
+      <label class="check"><input id="dg-diarize" type="checkbox">
+        Mark speaker changes with &gt;&gt;</label>
+      <label class="check"><input id="dg-filler" type="checkbox">
+        Keep filler words (um, uh)</label>
+    </div>
+
+    <div class="field">
+      <label for="wh-compute">Whisper &mdash; compute type</label>
+      <select id="wh-compute" class="inline"></select>
+      <span class="hint">int8 is fastest on a CPU; the float types need a GPU.</span>
+    </div>
+    <div class="field">
+      <label for="wh-interim">Whisper &mdash; interim every (seconds)</label>
+      <input id="wh-interim" type="number" min="0.2" max="5" step="0.1">
+      <span class="hint">How often the in-progress line is rewritten.</span>
+    </div>
+    <div class="field">
+      <label for="wh-silence">Whisper &mdash; commit after silence (seconds)</label>
+      <input id="wh-silence" type="number" min="0.2" max="5" step="0.1">
+      <span class="hint">How long a pause ends a sentence.</span>
+    </div>
+
+    <div class="field">
+      <label for="apple-locale">Apple on-device &mdash; locale</label>
+      <input id="apple-locale" type="text" spellcheck="false" placeholder="en-US">
+      <span class="hint">The language macOS recognises. Each one downloads a
+        model the first time it is used.</span>
+    </div>
+
+    <div class="row">
+      <button id="btn-tuning-save" class="go" type="button">Save &amp; apply</button>
+      <button id="btn-tuning-revert" type="button">Revert</button>
+      <span class="disclosure-sub" id="tuning-sub" style="flex:1 1 auto">&mdash;</span>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="panel-keyterms">
+  <h2 class="panel-head">Names &amp; terms to get right
+    <span class="badge" id="keyterms-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">
+      Speakers, buildings, hymns, anything the recognizer would otherwise
+      guess at. One name or short phrase per line; lines starting with
+      <code>#</code> are notes to yourself. Deepgram is told this list
+      directly; the others ignore it.
+    </div>
+    <textarea class="wordlist" id="keyterms-text" spellcheck="false"
+              aria-label="Names and terms to get right"
+              placeholder="Faulkner University&#10;Chapel of the Advocate&#10;Dr. Mitchell"></textarea>
+    <div class="row">
+      <button id="btn-keyterms-save" class="go" type="button">Save &amp; apply</button>
+      <button id="btn-keyterms-revert" type="button">Revert</button>
+      <span class="disclosure-sub" id="keyterms-sub" style="flex:1 1 auto">&mdash;</span>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="panel-blocklist">
+  <h2 class="panel-head">Words to keep off the screen
+    <span class="badge" id="blocklist-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body">
+    <div class="disclosure-sub">
+      Anything here is stripped from every caption, on every backend, after
+      it is transcribed. One term or short phrase per line. For ordinary
+      strong language you do not need a list at all &mdash; use the profanity
+      filter below.
+    </div>
+    <textarea class="wordlist" id="blocklist-text" spellcheck="false"
+              aria-label="Words to keep off the screen"
+              placeholder="# one term per line"></textarea>
+    <div class="row">
+      <button id="btn-blocklist-save" class="go" type="button">Save &amp; apply</button>
+      <button id="btn-blocklist-revert" type="button">Revert</button>
+      <span class="disclosure-sub" id="blocklist-sub" style="flex:1 1 auto">&mdash;</span>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="panel-keywords">
+  <h2 class="panel-head">Profanity filter
+    <span class="badge" id="keywords-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="keywords-body">
+      <div class="disclosure-sub">
+        Bleeps common strong language with no list to maintain. Words that are
+        ordinary in a sermon &mdash; <code>hell</code>, <code>damn</code>, and
+        <code>ass</code> as in the animal &mdash; are deliberately not filtered.
+      </div>
+      <div class="row">
+        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
+        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
+        <button id="btn-keyterms" type="button">Reload both lists</button>
+      </div>
+      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
+    </div>
+</section>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="azure-toggle" aria-expanded="false" aria-controls="azure-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Translation (Azure)</span>
+<div class="tabpanel" id="tabpanel-audience" role="tabpanel"
+     aria-labelledby="tab-audience" hidden>
+<section class="panel" id="panel-azure">
+  <h2 class="panel-head">Translation (Azure)
     <span class="badge" id="azure-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="azure-body">
+  </h2>
+  <div class="panel-body" id="azure-body">
       <div class="disclosure-sub" id="translation-sub">&mdash;</div>
       <div class="row">
         <input id="azure-key" type="password" autocomplete="off" spellcheck="false"
@@ -262,71 +416,13 @@
         list the languages to translate into, then Save &mdash; no restart needed.
       </div>
     </div>
-  </div></div>
-</div>
+</section>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="youtube-toggle" aria-expanded="false" aria-controls="youtube-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">YouTube Live captions</span>
-    <span class="badge" id="youtube-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="youtube-body">
-      <div class="row">
-        <input id="youtube-url" type="password" autocomplete="off" spellcheck="false"
-               placeholder="Paste the Captions ingestion URL from YouTube Studio">
-        <button id="btn-youtube-show" type="button">Show</button>
-        <button id="btn-youtube-save" type="button">Save</button>
-        <button id="btn-youtube-enable" class="go">Enable</button>
-        <button id="btn-youtube-disable" class="stop">Disable</button>
-      </div>
-      <div class="disclosure-sub" id="youtube-sub">&mdash;</div>
-    </div>
-  </div></div>
-</div>
-
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="tunnel-toggle" aria-expanded="false" aria-controls="tunnel-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Public tunnel (Cloudflare)</span>
-    <span class="badge" id="tunnel-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="tunnel-body">
-      <div class="row">
-        <input id="tunnel-hostname" type="text" autocomplete="off" spellcheck="false"
-               placeholder="captions.yourdomain.com">
-      </div>
-      <div class="row">
-        <input id="tunnel-token" type="password" autocomplete="off" spellcheck="false"
-               placeholder="Tunnel token from the Cloudflare dashboard">
-        <button id="btn-tunnel-show" type="button">Show</button>
-        <button id="btn-tunnel-save" type="button">Save</button>
-        <button id="btn-tunnel-enable" class="go">Enable</button>
-        <button id="btn-tunnel-disable" class="stop">Disable</button>
-      </div>
-      <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
-      <div class="disclosure-sub" id="tunnel-hint">
-        One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
-        Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
-        this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
-        the install command. Paste the hostname and token above, then Enable &mdash; no restart
-        needed. Needs the domain on Cloudflare's DNS and <code>cloudflared</code> installed
-        (<code>brew install cloudflared</code>) &mdash; see SETUP.md 3c.
-      </div>
-    </div>
-  </div></div>
-</div>
-
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="slides-toggle" aria-expanded="false" aria-controls="slides-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Slides + Captions</span>
+<section class="panel" id="panel-slides">
+  <h2 class="panel-head">Slides + Captions
     <span class="badge" id="slides-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="slides-body">
+  </h2>
+  <div class="panel-body" id="slides-body">
       <label class="check"><input id="slides-enabled" type="checkbox">Share ProPresenter slides with attendees</label>
       <div class="row">
         <label for="slides-host">ProPresenter IP address</label>
@@ -351,17 +447,16 @@
         Saving applies immediately and is remembered after restarting Campus Captions.
       </div>
     </div>
-  </div></div>
+</section>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="pp-toggle" aria-expanded="false" aria-controls="pp-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">ProPresenter (direct)</span>
+<div class="tabpanel" id="tabpanel-outputs" role="tabpanel"
+     aria-labelledby="tab-outputs" hidden>
+<section class="panel" id="panel-pp">
+  <h2 class="panel-head">ProPresenter (direct)
     <span class="badge" id="pp-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="pp-body">
+  </h2>
+  <div class="panel-body" id="pp-body">
       <div class="row">
         <input id="pp-host" type="text" autocomplete="off" spellcheck="false"
                placeholder="ProPresenter address, e.g. 127.0.0.1" style="flex:1 1 220px">
@@ -410,17 +505,13 @@
         See SETUP.md 7a.
       </div>
     </div>
-  </div></div>
-</div>
+</section>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="keys-toggle" aria-expanded="false" aria-controls="keys-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Wall output keys &mdash; OBS, vMix, Web Fill</span>
+<section class="panel" id="panel-keys">
+  <h2 class="panel-head">Wall output keys &mdash; OBS, vMix, Web Fill
     <span class="badge" id="keys-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="keys-body">
+  </h2>
+  <div class="panel-body" id="keys-body">
       <div class="disclosure-sub">
         One key per output. While any key exists, a wall URL without a valid <code>?key=</code> is
         refused, so revoking a key switches that output off without editing every scene and prop.
@@ -434,32 +525,77 @@
         <button id="btn-key-create" type="button">Create key</button>
       </div>
     </div>
-  </div></div>
+</section>
+
+<section class="panel" id="panel-youtube">
+  <h2 class="panel-head">YouTube Live captions
+    <span class="badge" id="youtube-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="youtube-body">
+      <div class="row">
+        <input id="youtube-url" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Paste the Captions ingestion URL from YouTube Studio">
+        <button id="btn-youtube-show" type="button">Show</button>
+        <button id="btn-youtube-save" type="button">Save</button>
+        <button id="btn-youtube-enable" class="go">Enable</button>
+        <button id="btn-youtube-disable" class="stop">Disable</button>
+      </div>
+      <div class="disclosure-sub" id="youtube-sub">&mdash;</div>
+    </div>
+</section>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="keywords-toggle" aria-expanded="false" aria-controls="keywords-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Keywords &amp; profanity filter</span>
-    <span class="badge" id="keywords-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="keywords-body">
+<div class="tabpanel" id="tabpanel-system" role="tabpanel"
+     aria-labelledby="tab-system" hidden>
+<section class="panel" id="panel-network">
+  <h2 class="panel-head">Network &mdash; relay port
+    <span class="badge" id="network-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="network-body">
+      <div class="row">
+        <input id="relay-port" type="text" inputmode="numeric" autocomplete="off"
+               placeholder="Port, e.g. 8000" style="flex:0 1 180px">
+        <button id="btn-port-save" type="button">Save and restart on it</button>
+      </div>
+      <div class="disclosure-sub" id="network-sub">&mdash;</div>
       <div class="disclosure-sub">
-        Boosted vocabulary (<code>config/keyterms.txt</code>) and words to strip out of
-        every caption (<code>config/blocklist.txt</code>) are both plain text files, one
-        term or short phrase per line &mdash; edit either by hand, then press Reload.
-        Blocking works the same way on every backend; the profanity filter below
-        catches common strong language with no list to maintain.
+        If another program already has the configured port when Campus Captions starts, it starts on
+        the next free one for that session and tells you. Saving a port here makes it permanent: the
+        relay restarts on it straight away, the capture client follows, and this page moves with it.
+        The wall and phone URLs and the printed QR code carry the port, so a ProPresenter prop, an OBS
+        scene, or a poster made for the old port needs updating once.
+      </div>
+    </div>
+</section>
+
+<section class="panel" id="panel-tunnel">
+  <h2 class="panel-head">Public tunnel (Cloudflare)
+    <span class="badge" id="tunnel-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="tunnel-body">
+      <div class="row">
+        <input id="tunnel-hostname" type="text" autocomplete="off" spellcheck="false"
+               placeholder="captions.yourdomain.com">
       </div>
       <div class="row">
-        <button id="btn-keyterms" type="button">Reload keyterms &amp; blocklist</button>
-        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
-        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
+        <input id="tunnel-token" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Tunnel token from the Cloudflare dashboard">
+        <button id="btn-tunnel-show" type="button">Show</button>
+        <button id="btn-tunnel-save" type="button">Save</button>
+        <button id="btn-tunnel-enable" class="go">Enable</button>
+        <button id="btn-tunnel-disable" class="stop">Disable</button>
       </div>
-      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
+      <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
+      <div class="disclosure-sub" id="tunnel-hint">
+        One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
+        Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
+        this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
+        the install command. Paste the hostname and token above, then Enable &mdash; no restart
+        needed. Needs the domain on Cloudflare's DNS and <code>cloudflared</code> installed
+        (<code>brew install cloudflared</code>) &mdash; see SETUP.md 3c.
+      </div>
     </div>
-  </div></div>
+</section>
 </div>
 
 <div id="toast"></div>
@@ -523,6 +659,221 @@
     $('event-logo-status').textContent = ev.logo
       ? 'Logo set — shown above the captions while live.' + (ev.logo_alt ? '' : ' Add a description for screen readers.')
       : 'No logo.';
+  }
+
+  // ---- recognition tuning ----------------------------------------------
+  // Settings that lived only in event.toml until now. Loaded once so Revert
+  // has something to go back to, and so an empty box means "not set" rather
+  // than "zero".
+  var tuning = null;
+  var TUNING_FIELDS = [
+    ['deepgram', 'inaudible_below', 'dg-inaudible', 'number'],
+    ['deepgram', 'diarize', 'dg-diarize', 'bool'],
+    ['deepgram', 'filler_words', 'dg-filler', 'bool'],
+    ['whisper', 'compute_type', 'wh-compute', 'text'],
+    ['whisper', 'interim_interval', 'wh-interim', 'number'],
+    ['whisper', 'silence_commit', 'wh-silence', 'number'],
+    ['apple_speech', 'locale', 'apple-locale', 'text']
+  ];
+
+  function fillTuning() {
+    TUNING_FIELDS.forEach(function (f) {
+      var section = f[0], key = f[1], id = f[2], kind = f[3];
+      var value = (tuning[section] || {})[key];
+      var el = $(id);
+      if (kind === 'bool') el.checked = !!value;
+      else el.value = (value === null || value === undefined) ? '' : String(value);
+    });
+  }
+
+  function collectTuning() {
+    var body = {};
+    TUNING_FIELDS.forEach(function (f) {
+      var section = f[0], key = f[1], id = f[2], kind = f[3];
+      var el = $(id);
+      var value;
+      if (kind === 'bool') value = el.checked;
+      else if (kind === 'number') {
+        if (el.value.trim() === '') return;   // left blank = leave as it was
+        value = Number(el.value);
+        if (isNaN(value)) return;
+      } else {
+        if (el.value.trim() === '') return;
+        value = el.value.trim();
+      }
+      body[section] = body[section] || {};
+      body[section][key] = value;
+    });
+    return body;
+  }
+
+  function loadTuning() {
+    return fetch('/api/backend-options').then(jsonOrThrow).then(function (out) {
+      tuning = out;
+      var select = $('wh-compute');
+      select.textContent = '';
+      (out.whisper_compute_choices || []).forEach(function (name) {
+        var option = document.createElement('option');
+        option.value = option.textContent = name;
+        select.appendChild(option);
+      });
+      fillTuning();
+      $('tuning-badge').textContent = 'defaults';
+      $('tuning-sub').textContent = 'Loaded from this machine\'s configuration.';
+    })['catch'](function () {
+      $('tuning-sub').textContent = 'Could not read the current settings.';
+    });
+  }
+
+  function saveTuning() {
+    var button = $('btn-tuning-save');
+    button.disabled = true;
+    fetch('/api/backend-options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectTuning())
+    }).then(jsonOrThrow).then(function (out) {
+      toast(out.delivered_to
+        ? 'Recognition settings applied'
+        : 'Recognition settings saved — they load on the next start');
+      $('tuning-badge').textContent = 'saved';
+      $('tuning-sub').textContent = 'Saved and applied.';
+      return loadTuning();
+    })['catch'](function (err) {
+      toast('Could not save: ' + (err && err.message ? err.message : 'relay unreachable'));
+    })['finally'](function () { button.disabled = false; });
+  }
+
+  // ---- word lists ------------------------------------------------------
+  // keyterms.txt and blocklist.txt used to be edited in a text editor, which
+  // meant finding a file inside an installed app to add a speaker's name.
+  // Loaded once on boot and kept here so Revert has something to go back to.
+  var wordlists = { keyterms: null, blocklist: null };
+
+  function countTerms(text) {
+    return text.split('\n').filter(function (line) {
+      var t = line.trim();
+      return t && t.charAt(0) !== '#';
+    }).length;
+  }
+
+  function renderWordlist(name) {
+    var saved = wordlists[name];
+    var box = $(name + '-text');
+    var badge = $(name + '-badge');
+    var sub = $(name + '-sub');
+    if (saved === null) {
+      badge.textContent = '—';
+      sub.textContent = 'Loading…';
+      return;
+    }
+    var dirty = box.value !== saved;
+    var terms = countTerms(box.value);
+    badge.textContent = terms + (terms === 1 ? ' term' : ' terms')
+      + (dirty ? ' · unsaved' : '');
+    badge.className = 'badge' + (dirty ? '' : (terms ? ' live' : ''));
+    sub.textContent = dirty
+      ? 'Not saved yet.'
+      : (terms ? 'Saved and in use.' : 'Empty — nothing to apply.');
+  }
+
+  function loadWordlist(name) {
+    return fetch('/api/wordlist/' + name).then(jsonOrThrow).then(function (out) {
+      wordlists[name] = out.text || '';
+      var box = $(name + '-text');
+      // Never clobber something half-typed: if the operator has already
+      // started editing, keep their text and just record what is on disk.
+      if (box.value === '' || box.value === box.defaultValue) box.value = wordlists[name];
+      renderWordlist(name);
+    })['catch'](function () {
+      $(name + '-sub').textContent = 'Could not read the list from the relay.';
+    });
+  }
+
+  function saveWordlist(name) {
+    var box = $(name + '-text');
+    var button = $('btn-' + name + '-save');
+    button.disabled = true;
+    // Raw text, not JSON: a campus's worth of names runs past the relay's
+    // 16 KiB JSON cap, and this endpoint takes the body as-is.
+    fetch('/api/wordlist/' + name, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: box.value
+    }).then(jsonOrThrow).then(function (out) {
+      wordlists[name] = box.value;
+      renderWordlist(name);
+      toast(out.delivered_to
+        ? 'Saved — ' + out.terms + ' term' + (out.terms === 1 ? '' : 's') + ' now in use'
+        : 'Saved — no capture client connected, it will load on the next start');
+    })['catch'](function (err) {
+      toast('Could not save: ' + (err && err.message ? err.message : 'relay unreachable'));
+    })['finally'](function () { button.disabled = false; });
+  }
+
+  function renderWhisper(source) {
+    // Same row as the setup wizard's, for the operator who skipped it there
+    // or is setting up a second machine. The model is a few hundred
+    // megabytes, so it is never fetched without someone asking.
+    var w = (source && source.whisper) || {};
+    var badge = $('whisper-badge');
+    var sub = $('whisper-sub');
+    var button = $('btn-whisper-download');
+    var model = w.model || 'base.en';
+
+    if (!source || !source.connected) {
+      badge.textContent = '—';
+      badge.className = 'badge';
+      sub.textContent = 'Waiting for the capture client…';
+      button.disabled = true;
+      return;
+    }
+    if (w.installed === false) {
+      badge.textContent = 'not installed';
+      badge.className = 'badge';
+      sub.textContent = w.packaged
+        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
+        : 'Whisper is not installed in this copy. Running from source, '
+          + 'install it once with: '
+          + 'python -m pip install -r requirements-whisper.txt';
+      button.disabled = true;
+      return;
+    }
+    if (w.state === 'downloading') {
+      badge.textContent = 'downloading';
+      badge.className = 'badge';
+      sub.textContent = 'Downloading the ' + model + ' model'
+        + (w.message ? ' — ' + w.message : '')
+        + '. This takes a few minutes and does not interrupt captions.';
+      button.disabled = true;
+      button.textContent = 'Downloading…';
+      return;
+    }
+    if (w.state === 'error') {
+      badge.textContent = 'failed';
+      badge.className = 'badge';
+      sub.textContent = 'The download failed: ' + (w.message || 'unknown error');
+      button.disabled = false;
+      button.textContent = 'Try again';
+      return;
+    }
+    if (w.present) {
+      badge.textContent = 'ready';
+      badge.className = 'badge live';
+      sub.textContent = 'The ' + model + ' model is downloaded'
+        + (w.path ? ' (' + w.path + ')' : '')
+        + '. Whisper runs entirely on this computer, with no internet.';
+      button.disabled = true;
+      button.textContent = 'Downloaded';
+    } else {
+      badge.textContent = 'not downloaded';
+      badge.className = 'badge';
+      sub.textContent = 'Whisper needs a one-time model download (a few '
+        + 'hundred megabytes) before it can caption anything. Only this step '
+        + 'needs internet.';
+      button.disabled = false;
+      button.textContent = 'Download the model';
+    }
   }
 
   function renderDeepgram(source) {
@@ -640,11 +991,20 @@
     var parts = [];
     parts.push(count ? count + ' blocked term' + (count === 1 ? '' : 's') : 'no blocked terms');
     parts.push(masked ? 'profanity filter on' : 'profanity filter off');
-    badge.textContent = parts.join(' · ');
+    badge.textContent = masked ? 'on' : 'off';
     badge.className = 'badge' + (masked ? ' live' : '');
-    $('keywords-sub').textContent = count
-      ? count + ' term' + (count === 1 ? '' : 's') + ' loaded from config/blocklist.txt.'
-      : 'config/blocklist.txt is empty or not found — nothing to block yet.';
+    // Names the panel above rather than a file path: the list is edited
+    // there now, so pointing at config/blocklist.txt would send someone
+    // looking for a file they never have to open.
+    $('keywords-sub').textContent = masked
+      ? 'Strong language is bleeped.' + (count
+          ? ' Your own ' + count + ' blocked term' + (count === 1 ? '' : 's')
+            + ' apply as well.'
+          : '')
+      : 'Strong language is passed through verbatim.' + (count
+          ? ' Your own ' + count + ' blocked term' + (count === 1 ? '' : 's')
+            + ' still apply.'
+          : '');
     $('btn-keyterms').disabled = !source.connected;
     $('btn-profanity-enable').disabled = !source.connected || masked;
     $('btn-profanity-disable').disabled = !source.connected || !masked;
@@ -907,6 +1267,7 @@
     renderNetwork(s.relay);
     renderEventConfig(s.event);
     renderDeepgram(s.source || {});
+    renderWhisper(s.source || {});
     renderTranslation(s);
     renderYoutube(s.youtube);
     renderTunnel(s.public_hostname, s.tunnel);
@@ -1130,38 +1491,67 @@
   }
 
   // A disclosure remembers its own open/closed state across reloads.
-  function setupDisclosure(headerId, storageKey) {
-    var header = $(headerId);
-    var key = 'campus-captions:' + storageKey;
-    var expanded = header.getAttribute('aria-expanded') === 'true';
-    try {
-      var saved = localStorage.getItem(key);
-      if (saved !== null) expanded = saved === '1';
-    } catch (e) {}
-    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    header.onclick = function () {
-      var next = header.getAttribute('aria-expanded') !== 'true';
-      header.setAttribute('aria-expanded', next ? 'true' : 'false');
-      try { localStorage.setItem(key, next ? '1' : '0'); } catch (e) {}
+  // Which tab is showing. Remembered per browser, and reflected in the URL
+  // hash so a link can point at one - "Settings > Captions" in a note to a
+  // volunteer then lands where it says it will.
+  var TAB_KEY = 'campus-captions:settings-tab';
+
+  function showTab(name) {
+    var tabs = document.querySelectorAll('.tab');
+    var found = false;
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].dataset.tab === name) { found = true; break; }
+    }
+    if (!found) name = 'event';
+    for (var j = 0; j < tabs.length; j++) {
+      var on = tabs[j].dataset.tab === name;
+      tabs[j].setAttribute('aria-selected', on ? 'true' : 'false');
+      tabs[j].tabIndex = on ? 0 : -1;
+      var panel = $('tabpanel-' + tabs[j].dataset.tab);
+      if (panel) panel.hidden = !on;
+    }
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) {}
+    if (location.hash.slice(1) !== name) {
+      history.replaceState(null, '', '#' + name);
+    }
+  }
+
+  function setupTabs() {
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].onclick = function () { showTab(this.dataset.tab); };
+    }
+    // Left/right arrows move between tabs, which is what a screen reader
+    // user and a keyboard user both expect of a tablist.
+    $('tabs').onkeydown = function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var list = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+      var at = list.findIndex(function (t) {
+        return t.getAttribute('aria-selected') === 'true';
+      });
+      var next = list[(at + (e.key === 'ArrowRight' ? 1 : -1) + list.length) % list.length];
+      showTab(next.dataset.tab);
+      next.focus();
+      e.preventDefault();
     };
+
+    var start = location.hash.slice(1);
+    if (!start) {
+      try { start = localStorage.getItem(TAB_KEY) || ''; } catch (e) {}
+    }
+    showTab(start || 'event');
+    window.addEventListener('hashchange', function () {
+      showTab(location.hash.slice(1) || 'event');
+    });
   }
 
   function boot() {
-    setupDisclosure('network-toggle', 'settings-network-expanded');
+    setupTabs();
     $('btn-port-save').onclick = savePort;
     $('relay-port').oninput = function () { relayPortDirty = true; };
     $('relay-port').onkeydown = function (e) { if (e.key === 'Enter') savePort(); };
-    setupDisclosure('event-toggle', 'settings-event-expanded');
-    setupDisclosure('deepgram-toggle', 'settings-deepgram-expanded');
-    setupDisclosure('azure-toggle', 'settings-azure-expanded');
-    setupDisclosure('youtube-toggle', 'settings-youtube-expanded');
-    setupDisclosure('tunnel-toggle', 'settings-tunnel-expanded');
-    setupDisclosure('keywords-toggle', 'settings-keywords-expanded');
-    setupDisclosure('slides-toggle', 'settings-slides-expanded');
     $('btn-slides-save').onclick = saveSlides;
     slideInputs.forEach(function (id) { $(id).oninput = function () { slidesDirty = true; }; });
-    setupDisclosure('pp-toggle', 'settings-pp-expanded');
-    setupDisclosure('keys-toggle', 'settings-keys-expanded');
     $('btn-pp-save').onclick = savePP;
     $('btn-pp-probe').onclick = function () { ppRequest({ probe: true }, 'ProPresenter — checked'); };
     $('btn-pp-enable').onclick = function () { ppRequest({ enabled: true }, 'ProPresenter output — enabled'); };
@@ -1200,6 +1590,40 @@
       this.value = '';
     };
     $('btn-event-logo-remove').onclick = function () { removeEventImage('/api/event/logo', 'Logo'); };
+
+    $('btn-tuning-save').onclick = saveTuning;
+    $('btn-tuning-revert').onclick = function () { if (tuning) fillTuning(); };
+    loadTuning();
+
+    ['keyterms', 'blocklist'].forEach(function (name) {
+      $('btn-' + name + '-save').onclick = function () { saveWordlist(name); };
+      $('btn-' + name + '-revert').onclick = function () {
+        if (wordlists[name] === null) return;
+        $(name + '-text').value = wordlists[name];
+        renderWordlist(name);
+      };
+      $(name + '-text').oninput = function () { renderWordlist(name); };
+      loadWordlist(name);
+    });
+
+    $('btn-whisper-download').onclick = function () {
+      var button = $('btn-whisper-download');
+      button.disabled = true;
+      button.textContent = 'Starting…';
+      fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'download_whisper_model' })
+      }).then(jsonOrThrow).then(function (out) {
+        toast(out.delivered_to
+          ? 'Whisper model — download started'
+          : 'Whisper model — no capture client connected');
+      })['catch'](function () {
+        toast('Whisper model — could not start the download');
+        button.disabled = false;
+        button.textContent = 'Download the model';
+      });
+    };
 
     $('btn-deepgram-save').onclick = saveDeepgramKey;
     $('btn-deepgram-show').onclick = function () {
