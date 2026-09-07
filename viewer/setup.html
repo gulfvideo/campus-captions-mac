@@ -492,9 +492,11 @@ page.</p>
       return;
     }
     if (w.installed === false) {
-      status.textContent =
-        'Whisper is not installed in this copy. Running from source, install '
-        + 'it once with: python -m pip install -r requirements-whisper.txt';
+      status.textContent = w.packaged
+        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
+        : 'Whisper is not installed in this copy. Running from source, '
+          + 'install it once with: '
+          + 'python -m pip install -r requirements-whisper.txt';
       button.disabled = true;
       return;
     }

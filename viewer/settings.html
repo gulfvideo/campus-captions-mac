@@ -831,9 +831,11 @@
     if (w.installed === false) {
       badge.textContent = 'not installed';
       badge.className = 'badge';
-      sub.textContent = 'Whisper is not installed in this copy. Running from '
-        + 'source, install it once with: '
-        + 'python -m pip install -r requirements-whisper.txt';
+      sub.textContent = w.packaged
+        ? 'Whisper is not included in this build of Campus Captions. Use Deepgram or, on a Mac new enough for it, Apple on-device speech.'
+        : 'Whisper is not installed in this copy. Running from source, '
+          + 'install it once with: '
+          + 'python -m pip install -r requirements-whisper.txt';
       button.disabled = true;
       return;
     }

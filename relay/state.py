@@ -136,6 +136,7 @@ class RelayState:
         if isinstance(whisper, dict):
             self.whisper = {
                 "installed": bool(whisper.get("installed")),
+                "packaged": bool(whisper.get("packaged")),
                 "present": bool(whisper.get("present")),
                 "state": str(whisper.get("state", ""))[:32],
                 "message": str(whisper.get("message", ""))[:200],

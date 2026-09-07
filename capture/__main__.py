@@ -210,6 +210,14 @@ class CaptureApp:
         present = backend_support.whisper_model_present(self.whisper_model_dir())
         return {
             "installed": backend_support.whisper_installed(),
+            # Whether this is a frozen app or a source checkout. It decides
+            # what the UI says when Whisper is missing: "pip install" is the
+            # answer in a checkout and useless advice inside an installed
+            # app, where the only honest answer is that this build does not
+            # have it. The Intel macOS build is exactly that case -
+            # onnxruntime, which faster-whisper needs, ships no macOS x86_64
+            # wheel for this Python.
+            "packaged": config_mod.FROZEN,
             "present": present,
             "state": "ready" if present and self.whisper_state == "idle"
                      else self.whisper_state,
