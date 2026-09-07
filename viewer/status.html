@@ -428,11 +428,15 @@
     audio_stalled: 'audio has stopped arriving from the capture client',
     stream_closed: 'the ASR stream is closed'
   };
+  // Shorter than the setup wizard's descriptions (which come from
+  // capture/backends/support.py), because this is a dropdown mid-event, not a
+  // choice being made for the first time - but the same names, so the option
+  // an operator picked in the wizard is recognisable here.
   var BACKEND_LABELS = {
-    apple_speech: 'Apple on-device (local, free)',
-    deepgram: 'Deepgram (cloud, paid)',
-    whisper: 'Whisper (local, offline, any OS)',
-    mock: 'Mock (scripted test transcript)'
+    apple_speech: 'Apple on-device speech (free)',
+    deepgram: 'Deepgram cloud (costs money)',
+    whisper: 'Whisper on this computer (free)',
+    mock: 'Practice mode (fake captions)'
   };
 
   function renderBackends(source) {

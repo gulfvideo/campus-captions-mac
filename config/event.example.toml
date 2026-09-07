@@ -88,7 +88,12 @@ keys = []                   # e.g. ["obs:abc123", "propresenter:def456"]
 # --- stage 3, not read by the relay ---------------------------------------
 
 [capture]
-backend = "apple_speech"        # mock | deepgram | apple_speech | whisper
+# "auto" picks a backend this machine can actually run - apple_speech on a
+# Mac new enough for it, practice mode (mock) everywhere else - so this one
+# shipped file is right on Windows and macOS both. The setup wizard (opened
+# on first run, or /setup any time after) is where a real choice gets made
+# and written back here; the status page's picker changes it live.
+backend = "auto"      # auto | mock | deepgram | apple_speech | whisper
 device = ""                                        # index or name substring
 relay_url = "ws://127.0.0.1:8000/ws/source"
 mock_script = "config/mock_script.txt"

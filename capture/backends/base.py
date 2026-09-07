@@ -126,6 +126,19 @@ class ASRBackend(ABC):
 
     name: str = "base"
 
+    @classmethod
+    def unsupported_reason(cls) -> str | None:
+        """Why this backend can never run on this machine, or None if it can.
+
+        "Never" is the point: a missing optional pip install is not a reason
+        (it can be installed without changing computers), but an OS-only API
+        is. Backends that answer with a string are hidden from the status
+        page's picker and are never chosen as the automatic default, so an
+        operator is not offered a choice their machine cannot honour - see
+        registry.supported() and config.resolve_backend().
+        """
+        return None
+
     def __init__(self, config: dict | None = None):
         self.config = config or {}
         self._queue: asyncio.Queue[TranscriptEvent] = asyncio.Queue(maxsize=512)

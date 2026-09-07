@@ -190,7 +190,7 @@ relay assigns those on the way out. Plus:
 ```json
 {"type":"status","t":1756590001.0,"audio_level":0.34,"audio_peak":0.71,
  "clipping":false,"stream_open":true,
- "backend":"deepgram","available_backends":["apple_speech","deepgram","mock"],
+ "backend":"deepgram","available_backends":["deepgram","whisper","mock"],
  "has_deepgram_key":true,
  "device":"Scarlett 2i2 (in 1)","device_index":3,
  "audio_devices":[{"index":3,"name":"Scarlett 2i2","hostapi":"Core Audio",
@@ -216,8 +216,11 @@ reported whether or not the ASR stream is open, so the booth can confirm the
 microphone before any billable connection exists. `error` is a short human
 string for the status page only — it never reaches a viewer.
 `audio_devices` is the capture machine's current input list; `device_index`
-identifies the active one. `available_backends` is `capture/backends/registry.py`'s
-name list. `has_deepgram_key` is whether `DEEPGRAM_API_KEY` is currently set in
+identifies the active one. `available_backends` is only the backends this
+machine can actually run (`capture/backends/support.py`'s `supported()`), not
+every name in the registry - so `apple_speech` is absent on Windows and Linux,
+and the status page cannot offer a choice that could only ever report an
+error. `has_deepgram_key` is whether `DEEPGRAM_API_KEY` is currently set in
 the environment - never the key itself. They let the status page change
 inputs, backends, and the Deepgram key at runtime.
 
@@ -237,7 +240,7 @@ inputs, backends, and the Deepgram key at runtime.
 | `reload_keyterms` | re-read `config/keyterms.txt` (reopens the stream with the new list) and `config/blocklist.txt` (no reopen needed - see below) |
 | `select_audio_device` | switch to the integer `device` index; reopen ASR automatically if needed |
 | `refresh_audio_devices` | query the capture machine's current input list again |
-| `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, or is `deepgram` with no API key set |
+| `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, if this machine cannot run it (`apple_speech` off macOS), or if it is `deepgram` with no API key set |
 | `set_deepgram_key` | set `DEEPGRAM_API_KEY` (the `key` field) in the environment and save it into `.env` on disk; takes effect on the next `open_stream`, no restart needed |
 | `set_profanity_filter` | set the boolean `enabled` field on the backend's built-in profanity filter (bleeps common strong language); takes effect on the next line, no reopen |
 | `relay_moving` | sent by the relay itself, never on an operator's request (`/api/control` refuses it): the relay is about to restart on the integer `port`. A capture client whose relay is on this machine rewrites its relay URL and reconnects there instead of retrying the old port |
@@ -298,7 +301,7 @@ object once, plus a `relay` block.
     "connected": true,
     "peer": "127.0.0.1:51544",
     "backend": "deepgram",
-    "available_backends": ["apple_speech", "deepgram", "mock"],
+    "available_backends": ["apple_speech", "deepgram", "whisper", "mock"],
     "has_deepgram_key": true,
     "device": "Scarlett 2i2 (in 1)",
     "device_index": 3,

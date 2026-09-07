@@ -16,6 +16,11 @@ from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+# Not `from .backends import ...`: that package's registry imports every
+# backend module, and websockets/numpy/PortAudio behind them. This one is
+# deliberately dependency-free - see its docstring.
+from .backends import support as backend_support
+
 # Repo root when run from source; the PyInstaller bundle's resource directory
 # (where the .spec's `datas` land) when frozen into the macOS app.
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -182,7 +187,7 @@ def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
 
 @dataclass
 class CaptureConfig:
-    backend: str = "mock"
+    backend: str = "auto"
     device: str = ""
     relay_url: str = "ws://127.0.0.1:8000/ws/source"
     source_token: str = ""
@@ -283,6 +288,16 @@ def load(path: Path | None = None) -> CaptureConfig:
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)
     cfg.device = os.environ.get("CAPTIONS_DEVICE", cfg.device)
+    # Last, so it sees the final answer from every source above. "auto" (the
+    # shipped default) becomes whichever backend this machine can actually
+    # run, and a named backend this machine cannot run - apple_speech on
+    # Windows, which is what a fresh clone used to give everyone - is
+    # substituted rather than left to fail at the first Open ASR stream.
+    requested = cfg.backend
+    cfg.backend = backend_support.resolve(requested)
+    if cfg.backend != requested and requested != "auto":
+        print(f"[capture] {requested} cannot run on this machine "
+              f"({backend_support.unsupported_reason(requested)}); using {cfg.backend}")
     # CAPTIONS_PORT is the relay's own override; a local relay_url follows it
     # the same way it follows [relay] port. An explicit CAPTIONS_RELAY_URL
     # still wins outright.
