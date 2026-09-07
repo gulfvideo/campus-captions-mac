@@ -378,6 +378,8 @@ a password:
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
 | `GET /api/setup` | what the first-run wizard needs: the backends this machine can run and how to describe them, plus the addresses to hand out (operator-only) |
 | `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |
+| `GET`/`POST /api/wordlist/{keyterms,blocklist}` | the two hand-maintained word lists as plain text; saving rewrites the file and reloads it into the capture client. The body is raw text, not JSON - a campus's worth of names runs past `MAX_JSON_BYTES` |
+| `GET`/`POST /api/backend-options` | recognition tuning that used to be `event.toml`-only: Deepgram's `diarize`/`filler_words`/`inaudible_below`, Whisper's `compute_type`/`interim_interval`/`silence_commit`, and the Apple locale. Saved to disk *and* pushed to the running capture client, which rebuilds its backend |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
 | `POST /api/preflight` | run the preflight check now: a verdict plus findings with what to do about each, see below |
 | `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
@@ -721,6 +723,31 @@ The wizard saves nothing of its own beyond that one flag: the microphone, the
 backend and the Deepgram key all go through `/api/control`, and the title and
 notice through `/api/event` — the endpoints the status and settings pages
 already use. One writer per setting, so the three pages cannot drift.
+
+## Settings page
+
+`viewer/settings.html`, at `/settings`. Five tabs - Event, Captions, Audience,
+Outputs, System - with the panels inside a tab always open. It was eleven
+collapsed panels in one column, which made finding a setting a matter of
+opening lids until the right thing appeared; within a group there are few
+enough that a lid saves nothing and costs a click. The selected tab is
+remembered per browser and carried in the URL hash, so "Settings > Captions"
+in a note to a volunteer lands where it says it will.
+
+**Nothing on this page requires a text editor.** The keyterms and blocklist
+files are edited in place (`/api/wordlist`), and the recognition settings that
+were `event.toml`-only - diarization, filler words, the inaudible threshold,
+Whisper's compute type and commit timings, the Apple locale - have real inputs
+that save to disk and apply to the running capture client without a restart
+(`/api/backend-options`). A backend reads its options when it opens a
+connection rather than per frame, so applying them rebuilds the backend the
+same way switching one does.
+
+Whisper's speech model is a few hundred megabytes and is **never fetched
+implicitly** - there is a Download button here and on the setup wizard, and
+`capture/backends/support.py` reports whether one is present with a directory
+check rather than an import, so the relay can render that row without pulling
+faster-whisper and numpy into its process.
 
 ## Status page
 

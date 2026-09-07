@@ -38,6 +38,7 @@ CONTROL_ACTIONS = {
     "open_stream", "close_stream", "clear", "reload_keyterms",
     "select_audio_device", "refresh_audio_devices", "select_backend",
     "set_deepgram_key", "set_profanity_filter", "relay_moving",
+    "download_whisper_model", "set_backend_options",
 }
 # Sent by the relay on its own initiative, never on an operator's request:
 # /api/control refuses them. `relay_moving` tells a capture client the relay

@@ -19,9 +19,11 @@ ahead of time.
 
 from __future__ import annotations
 
+import importlib.util
 import platform
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 # The macOS version that first shipped SpeechAnalyzer/SpeechTranscriber, the
 # API capture/backends/apple_speech.py's helper is built on.
@@ -45,6 +47,49 @@ def apple_speech_unsupported() -> str | None:
         return (f"apple_speech needs macOS {APPLE_SPEECH_MIN_MACOS} or newer "
                 f"(this Mac has {platform.mac_ver()[0]})")
     return None
+
+
+# Where the Whisper speech model is kept, under whichever per-machine data
+# directory the caller has (relay/config.py and capture/config.py compute the
+# same one). An explicit location rather than faster-whisper's default
+# ~/.cache/huggingface: the app offers a one-click download of this model, so
+# it needs somewhere it can check for, write to, and describe to an operator -
+# and "in the folder the tray menu opens" beats "in a hidden cache".
+WHISPER_MODEL_SUBDIR = ("models", "whisper")
+# The default model. Small enough to download over a venue's wifi, good
+# enough to caption a lecture. Mirrors [whisper] model in the example config.
+WHISPER_DEFAULT_MODEL = "base.en"
+
+
+def whisper_model_dir(data_dir) -> Path:
+    return Path(data_dir).joinpath(*WHISPER_MODEL_SUBDIR)
+
+
+def whisper_model_present(model_dir) -> bool:
+    """Has a Whisper model actually been downloaded into `model_dir`?
+
+    Takes the model directory itself, not the data directory, so an
+    event.toml that points `whisper_model_dir` somewhere else is checked
+    where it actually is.
+
+    A directory check, not an import: the relay calls this too, and it must
+    not pull faster-whisper (and numpy behind it) into its process just to
+    decide whether to offer a download button. CTranslate2 models always
+    carry a model.bin, so its presence anywhere beneath the directory is the
+    signal; a half-finished download leaves the .incomplete files
+    huggingface_hub writes and no model.bin, which correctly reads as absent.
+    """
+    try:
+        return any(Path(model_dir).rglob("model.bin"))
+    except OSError:
+        return False
+
+
+def whisper_installed() -> bool:
+    """Is faster-whisper importable? Answered without importing it - the
+    relay asks this too, and importing it here would drag numpy and
+    ctranslate2 into a process that has no use for either."""
+    return importlib.util.find_spec("faster_whisper") is not None
 
 
 @dataclass(frozen=True)
@@ -77,8 +122,8 @@ CATALOGUE: tuple[BackendInfo, ...] = (
         needs_key=True, billed=True, recommended=True),
     BackendInfo(
         "whisper", "Whisper (on this computer)",
-        "Free, private, and works with no internet at all. Slower than the "
-        "others and needs a one-time extra install.",
+        "Free, private, and once its model is downloaded it works with no "
+        "internet at all. Slower and less accurate than Deepgram.",
         recommended=True),
     BackendInfo(
         "mock", "Practice mode (fake captions)",

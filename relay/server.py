@@ -42,6 +42,7 @@ import os
 import re
 import secrets
 import socket
+import tomllib
 import time
 import urllib.parse
 from pathlib import Path
@@ -1063,6 +1064,198 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             print(f"[relay] YouTube captions {'enabled' if enabled else 'disabled'}")
 
         return JSONResponse({"ok": True, **hub.youtube.status()}, headers=NO_STORE)
+
+    # Recognition settings that had no UI at all until now: changing how the
+    # recognizer behaves meant a text editor and a restart. Declared as data
+    # so the validator, the file writer and the control message cannot
+    # disagree about which keys exist or what shape they are.
+    #   toml section -> {field: (kind, low, high)}
+    # `kind` is "bool", "number" or one of the string tuples below.
+    WHISPER_COMPUTE = ("int8", "int8_float16", "float16", "float32")
+    BACKEND_OPTIONS = {
+        "deepgram": {
+            "diarize": ("bool", None, None),
+            "filler_words": ("bool", None, None),
+            "inaudible_below": ("number", 0.0, 1.0),
+        },
+        "whisper": {
+            "compute_type": (WHISPER_COMPUTE, None, None),
+            "interim_interval": ("number", 0.2, 5.0),
+            "silence_commit": ("number", 0.2, 5.0),
+        },
+        "apple_speech": {
+            # A BCP-47 locale, e.g. en-US. Checked by shape, not against a
+            # list: macOS gains locales, and refusing one this file has not
+            # heard of would be worse than passing it to the helper, which
+            # reports an unusable one itself.
+            "locale": ("locale", None, None),
+        },
+    }
+    LOCALE_RE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+
+    def clean_backend_options(body: dict) -> tuple[dict, dict]:
+        """(per-section values for event.toml, flat values for the capture
+        client). Raises HTTPException on anything that does not fit."""
+        sections: dict[str, dict] = {}
+        flat: dict = {}
+        for section, fields in BACKEND_OPTIONS.items():
+            given = body.get(section)
+            if given is None:
+                continue
+            if not isinstance(given, dict):
+                raise HTTPException(status_code=400,
+                                    detail=f"{section} must be an object")
+            for field, (kind, low, high) in fields.items():
+                if field not in given:
+                    continue
+                value = given[field]
+                if kind == "bool":
+                    if not isinstance(value, bool):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{section}.{field} must be true or false")
+                elif kind == "number":
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{section}.{field} must be a number")
+                    if not (low <= float(value) <= high):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{section}.{field} must be between {low} and {high}")
+                    value = float(value)
+                elif kind == "locale":
+                    value = str(value).strip()
+                    if not LOCALE_RE.match(value):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{section}.{field} must look like en-US")
+                else:                       # a tuple of allowed strings
+                    if value not in kind:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"{section}.{field} must be one of {', '.join(kind)}")
+                sections.setdefault(section, {})[field] = value
+                # capture/config.py flattens every backend section into one
+                # dict, prefixing only [whisper] - mirror that exactly, or the
+                # backend reads a key nobody wrote.
+                flat[f"whisper_{field}" if section == "whisper" else field] = value
+        return sections, flat
+
+    @app.get("/api/backend-options")
+    async def api_backend_options(request: Request) -> JSONResponse:
+        """What the Settings page renders as the recognition-tuning panel.
+        Read from the config file rather than remembered, so it survives a
+        relay restart and reflects a hand-edited file too."""
+        require_operator(request)
+        data: dict = {}
+        path = config_target()
+        if path.exists():
+            try:
+                with path.open("rb") as fh:
+                    data = tomllib.load(fh)
+            except (OSError, ValueError) as exc:
+                print(f"[relay] could not read {path}: {exc}")
+        out = {}
+        for section, fields in BACKEND_OPTIONS.items():
+            have = data.get(section) or {}
+            out[section] = {f: have.get(f) for f in fields}
+        out["whisper_compute_choices"] = list(WHISPER_COMPUTE)
+        return JSONResponse(out, headers=NO_STORE)
+
+    @app.post("/api/backend-options")
+    async def api_backend_options_save(request: Request) -> JSONResponse:
+        """Save recognition settings and apply them to the running capture
+        client. Written to event.toml so they survive a restart, and pushed
+        over the control channel so they take effect now."""
+        require_operator(request)
+        body = await read_json(request)
+        sections, flat = clean_backend_options(body or {})
+        if not sections:
+            raise HTTPException(status_code=400,
+                                detail="send at least one of "
+                                       f"{', '.join(BACKEND_OPTIONS)}")
+        try:
+            for section, values in sections.items():
+                config_module.save_section(config_target(), f"[{section}]", values)
+        except OSError as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"could not write the config file: {exc}") from None
+        delivered = hub.send_control("set_backend_options", {"options": flat})
+        print(f"[relay] recognition options saved ({', '.join(sorted(flat))}); "
+              f"applied on {delivered} capture client(s)")
+        return JSONResponse({"ok": True, "delivered_to": delivered, **sections},
+                            headers=NO_STORE)
+
+    @app.get("/api/wordlist/{name}")
+    async def api_wordlist(name: str, request: Request) -> JSONResponse:
+        """A hand-maintained word list, as text, for the Settings page to
+        edit. Only the two names in config.WORDLISTS resolve to anything."""
+        require_operator(request)
+        try:
+            path = config_module.wordlist_path(name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="unknown word list") from None
+        try:
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
+        except (OSError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"could not read {path.name}: {exc}") from None
+        return JSONResponse({"name": name, "path": str(path), "text": text},
+                            headers=NO_STORE)
+
+    @app.post("/api/wordlist/{name}")
+    async def api_wordlist_save(name: str, request: Request) -> JSONResponse:
+        """Replace a word list and reload it into the running capture client.
+
+        The body is the raw text, not JSON: a campus's worth of names runs
+        past MAX_JSON_BYTES, and wrapping plain text in JSON to get it through
+        a 16 KiB cap would be solving the wrong problem. Same shape as the
+        welcome-screen image upload, which takes its bytes the same way.
+
+        Saving reloads: an operator who has just typed a name in expects the
+        next sentence to use it, and "now press Reload as well" is a step that
+        exists only because the file used to be edited outside the app.
+        """
+        require_operator(request)
+        try:
+            path = config_module.wordlist_path(name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="unknown word list") from None
+
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > config_module.MAX_WORDLIST_BYTES:
+            raise HTTPException(status_code=413, detail="word list too large")
+        raw = await request.body()
+        if len(raw) > config_module.MAX_WORDLIST_BYTES:
+            raise HTTPException(status_code=413, detail="word list too large")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="word list must be UTF-8") from None
+        # Normalise line endings and drop other control characters: these
+        # files are read a line at a time, and a stray CR or NUL would become
+        # a term nothing ever matches.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = "".join(ch for ch in text if ch == "\n" or ch >= " ")
+        lines = [line.strip() for line in text.split("\n")]
+        cleaned = "\n".join(lines).strip() + "\n" if any(lines) else ""
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(cleaned, encoding="utf-8", newline="\n")
+        except OSError as exc:
+            raise HTTPException(status_code=500,
+                                detail=f"could not write {path.name}: {exc}") from None
+
+        delivered = hub.send_control("reload_keyterms", {})
+        terms = sum(1 for line in cleaned.split("\n")
+                    if line and not line.startswith("#"))
+        print(f"[relay] {name} saved ({terms} terms); "
+              f"reloaded on {delivered} capture client(s)")
+        return JSONResponse(
+            {"ok": True, "name": name, "terms": terms, "delivered_to": delivered},
+            headers=NO_STORE)
 
     @app.get("/api/setup")
     async def api_setup(request: Request) -> JSONResponse:

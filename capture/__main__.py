@@ -45,6 +45,12 @@ class CaptureApp:
         self.host = host_mod.HostMonitor()
         self.audio_devices: list[dict] = []
         self._pending: list[tuple[str, dict]] = []  # handled in the main loop
+        # The Whisper model download, driven from the setup wizard and the
+        # settings page. "idle" until someone presses the button; the model
+        # is never fetched on its own - see whisper.fetch_model.
+        self.whisper_state = "idle"        # idle | downloading | ready | error
+        self.whisper_message = ""
+        self._whisper_task: asyncio.Task | None = None
 
     # -- control ---------------------------------------------------------
 
@@ -160,6 +166,93 @@ class CaptureApp:
             else:
                 print(f"[capture] {name} stream reopened after backend switch")
 
+    async def apply_backend_options(self, options: dict) -> None:
+        """Take new recognition settings and make them live.
+
+        These used to be event.toml-only - diarization, filler words, the
+        Whisper commit timings, the Apple locale - which meant a text editor
+        and a restart to change how the recognizer behaves. The relay has
+        already written them to disk; this is the half that makes the running
+        backend use them without waiting for the next launch.
+
+        A backend reads its options when it opens a connection, not on every
+        frame, so the object is rebuilt rather than mutated - the same
+        close/create/reopen switch_backend does, which is the path that is
+        known to preserve the operator's open intent.
+        """
+        if not options:
+            return
+        self.cfg.backend_config.update(options)
+        was_open = self.backend.wants_open
+        if was_open:
+            await self.backend.close()
+        self.backend = create_backend(self.cfg.backend, self.cfg.backend_config)
+        print(f"[capture] recognition options applied: {', '.join(sorted(options))}")
+        if was_open:
+            await self.backend.open(self.sample_rate)
+            if self.backend.error:
+                print(f"[capture] reopen failed: {self.backend.error}")
+            else:
+                print(f"[capture] {self.cfg.backend} stream reopened with the new options")
+
+    # -- the Whisper model ------------------------------------------------
+
+    def whisper_model_dir(self) -> Path:
+        return Path(self.cfg.backend_config.get(
+            "whisper_model_dir",
+            backend_support.whisper_model_dir(config_mod.DATA_DIR)))
+
+    def whisper_snapshot(self) -> dict:
+        """What the setup wizard and the settings page render as the
+        "Download the Whisper model" row. `present` is a directory check, so
+        it stays true across restarts without anyone having to remember that
+        a download happened."""
+        present = backend_support.whisper_model_present(self.whisper_model_dir())
+        return {
+            "installed": backend_support.whisper_installed(),
+            "present": present,
+            "state": "ready" if present and self.whisper_state == "idle"
+                     else self.whisper_state,
+            "message": self.whisper_message,
+            "model": self.cfg.backend_config.get(
+                "whisper_model", backend_support.WHISPER_DEFAULT_MODEL),
+            "path": str(self.whisper_model_dir()),
+        }
+
+    def start_whisper_download(self) -> None:
+        """Fetch the model on a worker thread, leaving the audio pipeline
+        running. A few hundred megabytes over venue wifi takes minutes, and
+        blocking the event loop for that would stop the level meter, the
+        heartbeat and any captions already flowing."""
+        if self._whisper_task is not None and not self._whisper_task.done():
+            print("[capture] whisper model download already running")
+            return
+        self.whisper_state = "downloading"
+        self.whisper_message = "starting"
+
+        def progress(message: str) -> None:
+            self.whisper_message = message
+
+        async def run() -> None:
+            from .backends import whisper as whisper_mod
+            size = self.cfg.backend_config.get(
+                "whisper_model", backend_support.WHISPER_DEFAULT_MODEL)
+            target = self.whisper_model_dir()
+            print(f"[capture] downloading whisper model {size} into {target}")
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, whisper_mod.fetch_model, size, target, progress)
+            except Exception as exc:
+                self.whisper_state = "error"
+                self.whisper_message = f"{exc.__class__.__name__}: {exc}"
+                print(f"[capture] whisper model download failed: {exc}")
+                return
+            self.whisper_state = "ready"
+            self.whisper_message = ""
+            print(f"[capture] whisper model {size} ready")
+
+        self._whisper_task = asyncio.create_task(run())
+
     async def _apply_control(self) -> None:
         while self._pending:
             action, payload = self._pending.pop(0)
@@ -191,6 +284,12 @@ class CaptureApp:
                     print("[capture] audio device list refreshed")
                 elif action == "select_backend":
                     await self.switch_backend(payload.get("backend", ""))
+                elif action == "download_whisper_model":
+                    self.start_whisper_download()
+                elif action == "set_backend_options":
+                    options = payload.get("options")
+                    await self.apply_backend_options(
+                        options if isinstance(options, dict) else {})
                 elif action == "relay_moving":
                     port = payload.get("port")
                     if isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535:
@@ -281,6 +380,7 @@ class CaptureApp:
                 "device": str(self.input.device),
                 "device_index": self.input.device.index,
                 "audio_devices": self.audio_devices,
+                "whisper": self.whisper_snapshot(),
                 "mask_profanity": self.backend.mask_profanity,
                 "blocked_word_count": self.backend.blocked_word_count,
                 "device_busy": self.device_busy,
