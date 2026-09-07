@@ -103,9 +103,39 @@ jobs:
 
   # ------------------------------------------------------------------ macOS
   macos:
-    name: macOS app
-    runs-on: macos-latest
+    name: macOS app (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
+
+    strategy:
+      # One architecture failing must not cancel the other: an Apple Silicon
+      # build is worth shipping on its own, and the Intel runner is the one
+      # on borrowed time (see below).
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            label: AppleSilicon
+            whisper: true
+          # macos-13 was retired in December 2025; macos-15-intel replaces it
+          # and is GitHub's last x86_64 image, available until August 2027.
+          # Worth carrying until then: PyInstaller freezes for the host
+          # architecture, so an arm64 build does not launch at all on an Intel
+          # Mac - Rosetta translates Intel to ARM, not the reverse. macOS 26
+          # itself still runs on four Intel models (2019 16" MacBook Pro, 2020
+          # 13" 4-port MacBook Pro, 2020 27" iMac, 2019 Mac Pro), so
+          # apple_speech is reachable there too and the helper is still worth
+          # building.
+          - runner: macos-15-intel
+            label: Intel
+            # onnxruntime, which faster-whisper needs, ships no macOS x86_64
+            # wheel for Python 3.14 - "from versions: none" - so this build
+            # cannot carry Whisper at all and installing it fails the job
+            # outright. Deepgram, Apple on-device speech and practice mode all
+            # work; the app says Whisper is not included in this build rather
+            # than offering it and failing, and rather than telling someone to
+            # pip install into a frozen app.
+            whisper: false
 
     steps:
       - uses: actions/checkout@v5
@@ -119,9 +149,12 @@ jobs:
         # capture/backends/native/speech_helper.swift is built against
         # SpeechAnalyzer, which is macOS 26 and Xcode 26. If the helper step
         # below fails, this is the step that says why in one glance rather
-        # than leaving a swiftc error to be interpreted.
+        # than leaving a swiftc error to be interpreted. The architecture is
+        # printed for the same reason: it is what decides which Macs the
+        # resulting app can launch on at all.
         run: |
           sw_vers
+          echo "arch: $(uname -m)"
           xcodebuild -version || true
           echo "--- macOS SDKs ---"
           xcodebuild -showsdks 2>/dev/null | grep -i macosx || true
@@ -131,7 +164,12 @@ jobs:
           python3 -m venv .venv
           .venv/bin/python3 -m pip install --upgrade pip
           .venv/bin/python3 -m pip install -r requirements.txt \
-            -r macapp/requirements-build.txt -r requirements-whisper.txt
+            -r macapp/requirements-build.txt
+          if [ "${{ matrix.whisper }}" = "true" ]; then
+            .venv/bin/python3 -m pip install -r requirements-whisper.txt
+          else
+            echo "skipping requirements-whisper.txt on ${{ matrix.label }}"
+          fi
 
       - name: Byte-compile every module
         run: .venv/bin/python3 -m compileall -q relay capture launcher macapp tools
@@ -180,29 +218,44 @@ jobs:
             echo "the bundle is not validly signed"; exit 1; }
           .venv/bin/python3 tools/macos_build_check.py
 
-      - name: Zip the app
-        # ditto, not `zip`: it is what preserves the bundle's symlinks,
-        # resource forks and signature. A zip made any other way arrives on
-        # someone else's Mac with a broken signature and no way past
-        # Gatekeeper. --keepParent so unzipping yields the .app rather than
-        # its contents loose in the Downloads folder.
+      - name: Build the disk image
+        # A .dmg rather than the .zip this project used to ship: opening it
+        # and dragging one icon onto Applications is the gesture Mac users
+        # already know, and it lands the app somewhere permanent. A zip
+        # leaves the app loose in Downloads and makes "extract this first" a
+        # step - the same step the Windows installer exists to remove.
         run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            "macapp/dist/Campus Captions.app" macapp/dist/CampusCaptions.zip
-          ls -lh macapp/dist/CampusCaptions.zip
+          version=$(.venv/bin/python3 -c "from launcher.version import VERSION; print(VERSION)")
+          macapp/make_dmg.sh "macapp/dist/CampusCaptions-$version-${{ matrix.label }}.dmg"
+          ls -lh macapp/dist/*.dmg
+
+      - name: Check the disk image mounts and holds the app
+        # hdiutil can produce an image that is valid but empty, and a release
+        # asset nobody opened before publishing is how that gets discovered
+        # by the person it was made for.
+        run: |
+          mnt=$(mktemp -d)
+          hdiutil attach macapp/dist/*.dmg -nobrowse -readonly -mountpoint "$mnt"
+          ls -l "$mnt"
+          test -d "$mnt/Campus Captions.app" || { echo "no app in the image"; exit 1; }
+          test -L "$mnt/Applications" || { echo "no Applications shortcut"; exit 1; }
+          codesign --verify --strict "$mnt/Campus Captions.app" || {
+            echo "the signature did not survive the copy into the image"; exit 1; }
+          hdiutil detach "$mnt" -quiet
+          echo "disk image is good"
 
       - name: Upload the app as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CampusCaptions-macOS
-          path: macapp/dist/CampusCaptions.zip
+          name: CampusCaptions-macOS-${{ matrix.label }}
+          path: macapp/dist/*.dmg
           if-no-files-found: error
 
       - name: Attach the app to the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: macapp/dist/CampusCaptions.zip
+          files: macapp/dist/*.dmg
           draft: false
           prerelease: true
           fail_on_unmatched_files: true
