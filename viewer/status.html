@@ -20,7 +20,7 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
-    padding: 22px;
+    padding: 22px 26px 40px; max-width: 1600px; margin: 0 auto;
   }
   h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
   header {
@@ -28,10 +28,36 @@
     margin-bottom: 20px;
   }
   header .meta { color: var(--dim); font-size: 13px; }
-  header a.settings-link {
-    color: #7fb2f0; font-size: 14px; text-decoration: none; margin-left: auto;
+  /* Header links are buttons, not bare text. They sit next to each other in
+     the corner and get pressed as often as anything on the page, so they
+     should look pressable rather than like prose that happens to be blue. */
+  header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  header .nav a {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px;
+    padding: 8px 14px; white-space: nowrap;
   }
-  header a.settings-link:hover { text-decoration: underline; }
+  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+
+  /* ---- two columns ----------------------------------------------------
+     Every block used to run the full width of the window, so a desktop
+     showed four tiles and then a column of half-empty rows, and the things
+     an operator actually watches during an event were below the fold.
+     Left is what gets looked at and pressed while the service runs; right
+     is what gets set once before it. Below 1100px it stacks, which is what
+     a booth laptop in portrait or a narrow window gets. */
+  .columns {
+    display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 18px; align-items: start;
+  }
+  @media (max-width: 1100px) { .columns { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  /* The blocks inside a column already carry their own margins from when
+     they were stacked full-width; the gap does that job now. */
+  .col > * { margin: 0 !important; }
 
   /* The capture client's own error, if any - e.g. a backend whose optional
      dependency isn't installed. This used to be a clause tacked onto the
@@ -49,9 +75,13 @@
   }
 
   .grid {
-    display: grid; gap: 14px; margin-bottom: 18px;
-    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+    /* Two by two, not auto-fit. Inside the left column auto-fit put three
+       tiles on one row and left the fourth alone beside a hole; a fixed
+       pair keeps the four reading as one block whatever the window does. */
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
   .card {
     background: var(--panel); border: 1px solid var(--edge);
     border-radius: 12px; padding: 17px 19px 19px;
@@ -60,7 +90,13 @@
     font-size: 11.5px; font-weight: 700; letter-spacing: .13em;
     text-transform: uppercase; color: var(--dim); margin: 0 0 12px;
   }
-  .big { font-size: 30px; font-weight: 650; line-height: 1.15; }
+  .big {
+    font-size: 27px; font-weight: 650; line-height: 1.15;
+    /* Long states ("Stream closed", "Capture stalled") used to wrap and make
+       one tile taller than its neighbour. */
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  @media (max-width: 1400px) { .big { font-size: 24px; } }
   .sub { color: var(--dim); font-size: 13.5px; margin-top: 7px; min-height: 1.4em; }
 
   .dot {
@@ -229,10 +265,16 @@
 <header>
   <h1>Campus Captions</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
-  <a class="settings-link" href="/settings">Settings &rarr;</a>
+  <nav class="nav">
+    <a href="/tune">Tune the wall</a>
+    <a href="/settings">Settings &rarr;</a>
+  </nav>
 </header>
 
 <div id="error-banner"><span class="dot"></span><span id="error-banner-text"></span></div>
+
+<div class="columns">
+<div class="col" id="col-main">
 
 <div class="grid">
   <div class="card" id="c-audio">
@@ -262,6 +304,29 @@
   </div>
 </div>
 
+<div class="controls">
+  <button id="btn-open" class="go">Open ASR stream</button>
+  <button id="btn-close" class="stop">Close ASR stream</button>
+  <button id="btn-clear">Clear captions</button>
+</div>
+
+<div class="device-control">
+  <label style="flex:1 1 100%;margin-bottom:-4px">
+    <span>Event <span class="badge" id="event-state-label">&mdash;</span></span>
+  </label>
+  <button id="btn-event-start" class="go" type="button">Start event</button>
+  <button id="btn-event-pause" type="button">Pause</button>
+  <button id="btn-event-resume" class="go" type="button">Resume</button>
+  <button id="btn-event-end" class="stop" type="button">End event</button>
+  <span class="sub" id="event-sub" style="flex:1 1 100%;margin:2px 0 0">&mdash;</span>
+</div>
+
+<div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
+
+</div>
+
+<div class="col" id="col-side">
+
 <div class="device-control">
   <label for="backend-select">
     <span>Transcription backend</span>
@@ -281,21 +346,28 @@
   <button id="btn-refresh-devices">Refresh devices</button>
 </div>
 
-<div class="controls">
-  <button id="btn-open" class="go">Open ASR stream</button>
-  <button id="btn-close" class="stop">Close ASR stream</button>
-  <button id="btn-clear">Clear captions</button>
-</div>
-
-<div class="device-control">
-  <label style="flex:1 1 100%;margin-bottom:-4px">
-    <span>Event <span class="badge" id="event-state-label">&mdash;</span></span>
-  </label>
-  <button id="btn-event-start" class="go" type="button">Start event</button>
-  <button id="btn-event-pause" type="button">Pause</button>
-  <button id="btn-event-resume" class="go" type="button">Resume</button>
-  <button id="btn-event-end" class="stop" type="button">End event</button>
-  <span class="sub" id="event-sub" style="flex:1 1 100%;margin:2px 0 0">&mdash;</span>
+<div class="disclosure-panel">
+  <button class="disclosure-header" id="caption-toggle" aria-expanded="false" aria-controls="caption-row">
+    <span class="chevron">&#9662;</span>
+    <span class="title">Send a caption by hand</span>
+  </button>
+  <div class="disclosure-body-wrap"><div>
+    <div class="disclosure-body" id="caption-row">
+      <div class="disclosure-sub" style="margin-bottom:2px">Sounds, speaker names, corrections — for anything the recognizer can't hear.</div>
+      <div class="row">
+        <button type="button" data-caption="[Applause]">[Applause]</button>
+        <button type="button" data-caption="[Laughter]">[Laughter]</button>
+        <button type="button" data-caption="[Music]">[Music]</button>
+        <button type="button" data-caption="[Inaudible]">[Inaudible]</button>
+      </div>
+      <div class="row">
+        <input id="note-text" type="text" autocomplete="off" placeholder="Text, or a speaker&rsquo;s name"
+               aria-label="Caption text or speaker name">
+        <button id="btn-note-send" type="button">Send as note</button>
+        <button id="btn-speaker-send" type="button">Speaker change</button>
+      </div>
+    </div>
+  </div></div>
 </div>
 
 <div class="disclosure-panel">
@@ -339,37 +411,14 @@
   </div></div>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="caption-toggle" aria-expanded="false" aria-controls="caption-row">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Send a caption by hand</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="caption-row">
-      <div class="disclosure-sub" style="margin-bottom:2px">Sounds, speaker names, corrections — for anything the recognizer can't hear.</div>
-      <div class="row">
-        <button type="button" data-caption="[Applause]">[Applause]</button>
-        <button type="button" data-caption="[Laughter]">[Laughter]</button>
-        <button type="button" data-caption="[Music]">[Music]</button>
-        <button type="button" data-caption="[Inaudible]">[Inaudible]</button>
-      </div>
-      <div class="row">
-        <input id="note-text" type="text" autocomplete="off" placeholder="Text, or a speaker&rsquo;s name"
-               aria-label="Caption text or speaker name">
-        <button id="btn-note-send" type="button">Send as note</button>
-        <button id="btn-speaker-send" type="button">Speaker change</button>
-      </div>
-    </div>
-  </div></div>
-</div>
-
-<div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
-
 <div class="links" style="margin-top:18px">
   <div class="link"><span>Wall view &mdash; ProPresenter</span><code id="url-wall">&mdash;</code></div>
   <div class="link"><span>Phone view &mdash; audience</span><code id="url-phone">&mdash;</code></div>
   <div class="link"><span>Tune the wall view</span><a id="url-tune" href="/tune"
      style="color:#7fb2f0;font-size:17px;text-decoration:none">open the tuner &rarr;</a></div>
+</div>
+
+</div>
 </div>
 
 <div id="toast"></div>

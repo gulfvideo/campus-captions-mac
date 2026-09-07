@@ -19,7 +19,11 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
-    padding: 22px; max-width: 900px;
+    /* Was 900px, which left most of a desktop window empty to the right of
+       the panels while their own contents wrapped. Wide enough for two
+       fields side by side, capped so a very wide monitor does not stretch a
+       line of help text across a foot of glass. */
+    padding: 22px 26px 60px; max-width: 1400px; margin: 0 auto;
   }
   h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
   header {
@@ -27,14 +31,19 @@
     margin-bottom: 20px;
   }
   header .meta { color: var(--dim); font-size: 13px; }
-  header a {
-    color: #7fb2f0; font-size: 14px; text-decoration: none;
+  /* Header links are buttons, not bare text. They sit next to each other in
+     the corner and get pressed as often as anything on the page, so they
+     should look pressable rather than like prose that happens to be blue. */
+  header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  header .nav a {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 9px;
+    padding: 8px 14px; white-space: nowrap;
   }
-  /* Only the first of the trailing links takes the free space, so the pair
-     stays together at the right rather than spreading across the header. */
-  header a:not(:last-child) { margin-left: auto; }
-  header a + a { margin-left: 16px; }
-  header a:hover { text-decoration: underline; }
+  header .nav a:hover { background: #2f353f; border-color: #3a424e; }
+  header .nav a:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
 
   button {
     font: inherit; font-weight: 600; font-size: 15px;
@@ -111,6 +120,21 @@
   }
   .check input { width: 18px; height: 18px; accent-color: #5aa2f0; }
 
+  /* ---- help toggle ----------------------------------------------------
+     Several panels carry a paragraph explaining what they are for. Useful
+     the first time and clutter every time after, and ProPresenter's ran to
+     six lines above the controls it described. A "?" in the panel heading
+     shows and hides it, remembered per panel per browser. */
+  .help-toggle {
+    font: inherit; font-size: 12px; font-weight: 700; line-height: 1;
+    width: 20px; height: 20px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--edge); background: #262b33; color: var(--dim);
+    cursor: pointer; flex: none;
+  }
+  .help-toggle:hover { background: #2f353f; color: var(--text); }
+  .help-toggle.on { background: #2c3a4e; border-color: #3d5a80; color: #cfe0f5; }
+  .help-toggle:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+
   /* ---- labelled field ------------------------------------------------
      A bare row of placeholder-only boxes reads fine to whoever built it and
      as a guessing game to everyone else, so anything that is not obvious
@@ -122,7 +146,39 @@
     letter-spacing: .04em;
   }
   .field > .hint { font-size: 13px; color: var(--dim); }
-  .field input, .field select { width: 100%; }
+  /* .panel-body sets `flex: 1 1 340px` on inputs, which is a width in a row
+     flexbox and a HEIGHT in a column one - and .field is a column. Without
+     resetting it here every labelled box became a 340px slab. Matching that
+     rule's specificity exactly and coming later in the sheet is what makes
+     this win. */
+  .field input[type=text], .field input[type=password],
+  .field input[type=number], .field select {
+    width: 100%; flex: 0 0 auto;
+  }
+  .field > .row { gap: 8px; }
+
+  /* A panel with more than three or four inputs reads as a wall of boxes if
+     they are just flexed into rows, especially when the only clue to what
+     each one is was its placeholder - which the browser truncates. Real
+     labels, two across where there is room. */
+  .fieldgrid {
+    display: grid; gap: 14px 18px; flex: 1 1 100%;
+    /* Two explicit columns, not auto-fit: on a wide window auto-fit made
+       four, and a row holding two fields left half the panel empty. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Without this each cell stretches to the tallest in its row, and
+       because .field is a column flexbox the input inside stretches with it
+       - which turned every text box into a several-hundred-pixel slab. */
+    align-items: start;
+  }
+  .fieldgrid .field.wide { grid-column: 1 / -1; }
+  @media (max-width: 760px) { .fieldgrid { grid-template-columns: 1fr; } }
+  .subhead {
+    flex: 1 1 100%; margin: 6px 0 -4px;
+    font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #7f8899;
+  }
+  .subhead:first-child { margin-top: 0; }
 
   /* ---- word list editor ---------------------------------------------- */
   textarea.wordlist {
@@ -166,8 +222,10 @@
 <header>
   <h1>Settings</h1>
   <div class="meta" id="meta">connecting to relay&hellip;</div>
-  <a href="/setup">Run setup again</a>
-  <a href="/status">&larr; Back to status</a>
+  <nav class="nav">
+    <a href="/setup">Run setup again</a>
+    <a href="/status">&larr; Back to status</a>
+  </nav>
 </header>
 
 <nav class="tabs" id="tabs" role="tablist">
@@ -189,52 +247,82 @@
   <h2 class="panel-head">Event &amp; welcome screen
   </h2>
   <div class="panel-body" id="event-body">
-      <div class="row">
-        <input id="event-title" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Event title, e.g. Fall Convocation" aria-label="Event title">
-        <input id="event-message" type="text" autocomplete="off"
-               placeholder="Welcome message (default: Live captions will begin when the program starts.)"
-               aria-label="Welcome message">
-      </div>
-      <div class="row">
-        <input id="event-notice" type="text" autocomplete="off"
-               placeholder="Notice, e.g. Captions are automatic. Accommodations: Disability Services, 334-555-0100"
-               aria-label="Notice shown under the welcome message">
-        <input id="event-pause-message" type="text" autocomplete="off" style="flex:0 1 300px"
-               placeholder="Message while paused, e.g. Intermission" aria-label="Message shown while paused">
-      </div>
-      <div class="row">
-        <input id="event-disclaimer" type="text" autocomplete="off"
-               placeholder="Caption accuracy disclaimer, shown once per device on the phone view. Blank disables it."
-               aria-label="Caption accuracy disclaimer, shown once per device">
-        <button id="btn-event-save" type="button">Save</button>
-      </div>
-      <div class="row">
-        <label class="file-label">Choose background image
-          <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
-        </label>
-        <button id="btn-event-image-remove" type="button">Remove image</button>
-        <span class="disclosure-sub" id="event-image-status" style="flex:1 1 200px">&mdash;</span>
-      </div>
-      <div class="row">
-        <label class="file-label">Choose logo
-          <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
-        </label>
-        <button id="btn-event-logo-remove" type="button">Remove logo</button>
-        <input id="event-logo-alt" type="text" autocomplete="off" style="flex:1 1 220px"
-               placeholder="Logo description for screen readers, e.g. Faulkner University"
-               aria-label="Logo description for screen readers">
-        <span class="disclosure-sub" id="event-logo-status" style="flex:1 1 200px">&mdash;</span>
-      </div>
       <div class="disclosure-sub">
         Attendees who open the phone view see the welcome screen until you press <b>Start event</b>
         on the status page, and again after <b>End event</b>. The words sit on a dark panel over
-        the image, so any photo keeps them readable. JPEG, PNG, or WebP, up to 5 MB. The logo sits
-        in a slim row above the captions while they are live &mdash; a transparent PNG works best,
-        since readers choose their own background colour. Give it a description so screen readers
-        announce the name, not the file. The disclaimer appears once per device the first time
-        someone opens the phone view, with a dismiss button &mdash; it reappears if you change the
-        wording, but not just because you saved the field again.
+        the image, so any photo keeps them readable. The logo sits in a slim row above the captions
+        while they are live. The disclaimer appears once per device the first time someone opens
+        the phone view, with a dismiss button &mdash; it reappears if you change the wording, but
+        not just because you saved the field again.
+      </div>
+
+      <div class="subhead">What the audience reads</div>
+      <div class="fieldgrid">
+        <div class="field">
+          <label for="event-title">Event title</label>
+          <input id="event-title" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Fall Convocation">
+        </div>
+        <div class="field">
+          <label for="event-message">Welcome message</label>
+          <input id="event-message" type="text" autocomplete="off"
+                 placeholder="Live captions will begin when the program starts.">
+          <span class="hint">Shown before the event starts. Blank uses that wording.</span>
+        </div>
+        <div class="field wide">
+          <label for="event-notice">Accessibility notice</label>
+          <input id="event-notice" type="text" autocomplete="off"
+                 placeholder="Captions are automatic. Accommodations: Disability Services, 334-555-0100">
+        </div>
+        <div class="field">
+          <label for="event-pause-message">Message while paused</label>
+          <input id="event-pause-message" type="text" autocomplete="off"
+                 placeholder="Intermission">
+          <span class="hint">Blank shows &ldquo;Captions paused&rdquo;.</span>
+        </div>
+        <div class="field">
+          <label for="event-disclaimer">Caption accuracy disclaimer</label>
+          <input id="event-disclaimer" type="text" autocomplete="off"
+                 placeholder="Captions are auto-generated and may not be 100% accurate.">
+          <span class="hint">Once per device, with a dismiss button. Blank disables it.</span>
+        </div>
+      </div>
+
+      <div class="subhead">Pictures</div>
+      <div class="fieldgrid">
+        <div class="field">
+          <label>Background image</label>
+          <div class="row">
+            <label class="file-label">Choose background image
+              <input id="event-image" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+            </label>
+            <button id="btn-event-image-remove" type="button">Remove</button>
+          </div>
+          <span class="hint" id="event-image-status">&mdash;</span>
+          <span class="hint">JPEG, PNG or WebP, up to 5 MB.</span>
+        </div>
+        <div class="field">
+          <label>Logo</label>
+          <div class="row">
+            <label class="file-label">Choose logo
+              <input id="event-logo" type="file" accept="image/jpeg,image/png,image/webp" class="visually-hidden">
+            </label>
+            <button id="btn-event-logo-remove" type="button">Remove</button>
+          </div>
+          <span class="hint" id="event-logo-status">&mdash;</span>
+          <span class="hint">A transparent PNG works best &mdash; readers pick their own
+            background colour.</span>
+        </div>
+        <div class="field wide">
+          <label for="event-logo-alt">Logo description for screen readers</label>
+          <input id="event-logo-alt" type="text" autocomplete="off"
+                 placeholder="Faulkner University">
+          <span class="hint">So a screen reader announces the name, not the file.</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btn-event-save" class="go" type="button">Save welcome screen</button>
       </div>
     </div>
 </section>
@@ -409,7 +497,7 @@
                placeholder="Target languages, e.g. es, fr, zh-Hans">
         <button id="btn-azure-save" type="button">Save</button>
       </div>
-      <div class="disclosure-sub" id="azure-hint">
+      <div class="disclosure-sub help" id="azure-hint">
         Get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
         &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
         <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
@@ -437,7 +525,7 @@
       <label class="check"><input id="slides-allow-lan" type="checkbox">Allow connection to this Mac on the local network</label>
       <div class="row"><button id="btn-slides-save" type="button">Save and apply</button></div>
       <div class="disclosure-sub" id="slides-status" role="status" aria-live="polite">&mdash;</div>
-      <div class="disclosure-sub" id="slides-help">
+      <div class="disclosure-sub help" id="slides-help">
         Enable Network/API access in ProPresenter and enter its displayed port.
         Use 127.0.0.1 when both apps run on this Mac. For another Mac, enter its private
         IP address and check the local network box. Screen 1 is the first screen in the current Look.
@@ -491,7 +579,7 @@
         <button id="btn-pp-clear" type="button">Clear surface</button>
       </div>
       <div class="disclosure-sub" id="pp-sub">&mdash;</div>
-      <div class="disclosure-sub" id="pp-hint">
+      <div class="disclosure-sub help" id="pp-hint">
         In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note the port.
         <b>Stage message</b> needs a stage layout with a Stage Message element on the screen that
         should show captions. <b>Message</b> needs a Message with the name above and one text token
@@ -609,7 +697,7 @@
         <button id="btn-tunnel-disable" class="stop">Disable</button>
       </div>
       <div class="disclosure-sub" id="tunnel-sub">&mdash;</div>
-      <div class="disclosure-sub" id="tunnel-hint">
+      <div class="disclosure-sub help" id="tunnel-hint">
         One-time setup: at <b>one.dash.cloudflare.com</b> &rarr; Networks &rarr; Tunnels &rarr;
         Create a tunnel &rarr; Cloudflared &rarr; name it &rarr; add a Public Hostname pointing
         this event's subdomain at <b>HTTP &nbsp;localhost:8000</b> &rarr; copy the token shown in
@@ -1590,6 +1678,47 @@
     }
   }
 
+  // A "?" in each panel heading that shows and hides that panel's
+  // explanation. Only static prose is targeted: a .disclosure-sub carrying
+  // the `help` class, or one with no id at all. Everything else with an id
+  // is a live status line ("A key is saved on this machine", "3 terms"),
+  // which must never be hidden behind a toggle.
+  function setupHelpToggles() {
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      (function (panel) {
+        var help = panel.querySelector(
+          '.panel-body > .disclosure-sub.help, .panel-body > .disclosure-sub:not([id])');
+        var head = panel.querySelector('.panel-head');
+        if (!help || !head) return;
+        var key = 'campus-captions:help:' + panel.id;
+        var open = false;
+        try { open = localStorage.getItem(key) === '1'; } catch (e) {}
+
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'help-toggle';
+        button.textContent = '?';
+        button.title = 'What this is for';
+        button.setAttribute('aria-label', 'What this is for');
+
+        function apply() {
+          help.hidden = !open;
+          button.setAttribute('aria-expanded', open ? 'true' : 'false');
+          button.className = 'help-toggle' + (open ? ' on' : '');
+        }
+        button.onclick = function () {
+          open = !open;
+          try { localStorage.setItem(key, open ? '1' : '0'); } catch (e) {}
+          apply();
+        };
+        apply();
+        var badge = head.querySelector('.badge');
+        if (badge) head.insertBefore(button, badge); else head.appendChild(button);
+      })(panels[i]);
+    }
+  }
+
   function setupTabs() {
     var tabs = document.querySelectorAll('.tab');
     for (var i = 0; i < tabs.length; i++) {
@@ -1621,6 +1750,7 @@
 
   function boot() {
     setupTabs();
+    setupHelpToggles();
     $('btn-port-save').onclick = savePort;
     $('relay-port').oninput = function () { relayPortDirty = true; };
     $('relay-port').onkeydown = function (e) { if (e.key === 'Enter') savePort(); };

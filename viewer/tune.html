@@ -87,6 +87,44 @@
   button.primary { background: #1f5a99; border-color: #2c74c0; }
   button.primary:hover { background: #24699f; }
 
+  /* The sample is a paragraph, not a phrase: a single short line told you
+     nothing about how two-line wrapping, long names or a full sentence sit
+     in the bar, which is the thing being tuned. */
+  #sample {
+    flex: 1 1 340px; min-width: 240px; resize: vertical;
+    font: inherit; font-size: 14px; line-height: 1.45;
+    color: var(--text); background: #262b33;
+    border: 1px solid var(--edge); border-radius: 8px; padding: 9px 11px;
+  }
+
+  /* The copy button is the point of this page - everything else is in
+     service of producing that URL - so it is the loudest thing here, and it
+     says out loud when the URL has moved out from under a copy you already
+     took. */
+  button.primary#copy {
+    font-size: 16px; padding: 14px 26px;
+    background: #1f6b3d; border-color: #2b8a51;
+  }
+  button.primary#copy:hover { background: #248049; }
+  button.primary#copy.stale {
+    background: #8a5a12; border-color: #c08a2c; color: #fff;
+    animation: nudge 1.1s ease-in-out infinite;
+  }
+  button.primary#copy.stale:hover { background: #9c661a; }
+  @keyframes nudge {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(192, 138, 44, .55); }
+    50%      { box-shadow: 0 0 0 7px rgba(192, 138, 44, 0); }
+  }
+  /* Someone who has asked their system not to animate gets the colour
+     change and no pulse - the colour is what carries the meaning. */
+  @media (prefers-reduced-motion: reduce) {
+    button.primary#copy.stale { animation: none; }
+  }
+  #copy-hint {
+    font-size: 13.5px; color: var(--dim); margin-top: 8px; min-height: 1.3em;
+  }
+  #copy-hint.stale { color: #e6bf68; }
+
   #warn {
     display: none; margin-top: 11px; padding: 9px 12px; border-radius: 8px;
     background: #4a2222; border: 1px solid #7a3535; font-size: 13.5px;
@@ -140,8 +178,9 @@
           <option value="">None</option>
         </select>
         <label for="sample">Sample text</label>
-        <input type="text" id="sample" style="flex:1;min-width:220px"
-               value="Our next speaker is Doctor Amara Vasquez">
+        <textarea id="sample" rows="3" spellcheck="false"
+                  title="What the wall shows while you tune. Edit it to try your own wording."
+        >Our next speaker is Doctor Amara Vasquez, professor of environmental engineering and director of the Watershed Research Institute. She joins us this morning to talk about what the last decade of drought has taught us.</textarea>
         <button id="ruler" title="Fill with the widest character to check the line length">Width ruler</button>
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="soak"> Preview live motion</label>
       </div>
@@ -158,6 +197,7 @@
         <button id="open">Open in a tab</button>
         <button id="reset">Reset to defaults</button>
       </div>
+      <div id="copy-hint" role="status" aria-live="polite"></div>
       <p class="note">Only settings you changed appear in the URL — everything else
         uses its default. Paste this into the Prop's web fill and save the Prop;
         that is what stores your settings.</p>
@@ -370,8 +410,35 @@
     return relayBase + '/wall' + (q ? '?' + q : '');
   }
 
+  // What the operator last put on the clipboard. The whole point of this
+  // page is producing that URL and pasting it into a Prop, and it is easy to
+  // copy it, keep dragging sliders, and paste a URL that no longer matches
+  // what is on screen. null = nothing copied yet.
+  var copiedUrl = null;
+
+  function markCopyState() {
+    var button = $('copy');
+    var hint = $('copy-hint');
+    if (!button || !hint) return;
+    if (copiedUrl === null) {
+      button.className = 'primary';
+      hint.className = '';
+      hint.textContent = '';
+    } else if (copiedUrl !== urlBox.value) {
+      button.className = 'primary stale';
+      hint.className = 'stale';
+      hint.textContent = 'You have changed settings since copying — copy again '
+        + 'and paste the new URL into the Prop.';
+    } else {
+      button.className = 'primary';
+      hint.className = '';
+      hint.textContent = 'Copied. Paste it into the Prop\u2019s web fill and save the Prop.';
+    }
+  }
+
   function rebuild() {
     urlBox.value = finalUrl();
+    markCopyState();
     var soak = $('soak') && $('soak').checked;
     // Soak mode drives the real interim/final/fade code with synthetic
     // speech, so the operator sees the live row move and the idle fade
@@ -541,19 +608,22 @@
 
     $('copy').addEventListener('click', function () {
       var text = urlBox.value;
+      function copied() {
+        copiedUrl = text;
+        markCopyState();
+        toast('URL copied');
+      }
       function fallback() {
         urlBox.removeAttribute('readonly');
         urlBox.select();
-        try { document.execCommand('copy'); toast('URL copied'); }
+        try { document.execCommand('copy'); copied(); }
         catch (e) { toast('Select the URL and copy it manually'); }
         urlBox.setAttribute('readonly', 'readonly');
       }
       // navigator.clipboard needs a secure context; on a plain LAN address
       // over http it does not exist, which is exactly where this page runs.
       if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(function () {
-          toast('URL copied');
-        })['catch'](fallback);
+        navigator.clipboard.writeText(text).then(copied)['catch'](fallback);
       } else {
         fallback();
       }
