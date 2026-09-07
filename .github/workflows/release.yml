@@ -156,6 +156,8 @@ jobs:
           sw_vers
           echo "arch: $(uname -m)"
           xcodebuild -version || true
+          echo "--- Xcodes installed ---"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "(none beyond the selected one)"
           echo "--- macOS SDKs ---"
           xcodebuild -showsdks 2>/dev/null | grep -i macosx || true
 
@@ -173,6 +175,23 @@ jobs:
 
       - name: Byte-compile every module
         run: .venv/bin/python3 -m compileall -q relay capture launcher macapp tools
+
+      - name: Select the newest Xcode
+        # The image usually carries several and defaults to one of the older
+        # ones. speech_helper.swift needs the macOS 26 SDK, so take the
+        # highest version present rather than whatever xcode-select points at
+        # - on the Intel runner the default had no SpeechAnalyzer at all and
+        # the helper would not compile.
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$newest" ]; then
+            echo "selecting $newest"
+            sudo xcode-select -s "$newest/Contents/Developer"
+          else
+            echo "only one Xcode on this runner; leaving the selection alone"
+          fi
+          xcodebuild -version
+          xcodebuild -showsdks 2>/dev/null | grep -i macosx || true
 
       - name: Build the on-device speech helper
         # Built here rather than inside macapp/build.sh (which is told to
