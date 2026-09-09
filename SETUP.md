@@ -37,11 +37,26 @@ hidden behind the `^` arrow. Right-click it for the pages and for Quit.
 
 ### macOS
 
-1. Download **`CampusCaptions.zip`** and double-click it to unzip.
-2. Drag **Campus Captions** into your Applications folder.
-3. **Control-click** it and choose **Open**, then confirm. (Double-clicking
-   the first time gives an "unidentified developer" refusal with no way past
-   it — same reason as the Windows prompt above, and also once per Mac.)
+Two downloads — take the one matching your Mac. Apple menu → About This Mac
+says which: "Apple M1/M2/M3/M4" means Apple Silicon, "Intel" means Intel.
+
+- **`CampusCaptions-<version>-AppleSilicon.dmg`** — M1 and later
+- **`CampusCaptions-<version>-Intel.dmg`** — Intel Macs
+
+The wrong one will not open at all, so if nothing happens, try the other.
+
+The Intel build has no Whisper backend: `onnxruntime`, which Whisper needs,
+no longer ships a macOS Intel version. Deepgram, Apple on-device speech and
+practice mode all work there; the app says so rather than offering an option
+that cannot run.
+
+1. Double-click the `.dmg`. A window opens with the app and a shortcut to
+   Applications.
+2. Drag **Campus Captions** onto **Applications**.
+3. **Control-click** it in Applications and choose **Open**, then confirm.
+   (Double-clicking the first time gives an "unidentified developer" refusal
+   with no way past it — same reason as the Windows prompt above, and also
+   once per Mac.)
 4. macOS asks for microphone access, and for speech recognition if you use the
    on-device backend. Allow both, or there is nothing to caption.
 

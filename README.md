@@ -255,6 +255,27 @@ menu bar instead. `macapp/menubar.py` is the entry point.
 The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
 `apple_speech` works with no Xcode on the machine it's installed on.
 
+`macapp/make_dmg.sh` wraps the built app in a disk image, which is what
+releases ship: opening a `.dmg` and dragging one icon onto Applications is the
+gesture Mac users know, and it puts the app somewhere permanent. A zip left it
+loose in Downloads and made "extract this first" a step — the same step the
+Windows installer exists to remove. `hdiutil` only, so it needs no Homebrew.
+
+The Intel build ships without Whisper: `onnxruntime`, a faster-whisper
+dependency, publishes no macOS x86_64 wheel for Python 3.14, and installing it
+fails the job outright. The other three backends work there, and the app
+reports Whisper as not included in that build rather than offering it.
+
+**Two Mac builds, one per architecture.** PyInstaller freezes for the host
+architecture, so an arm64 app does not launch on an Intel Mac at all — Rosetta
+translates Intel to ARM, not the reverse. CI builds both. The Intel runner
+(`macos-15-intel`) is GitHub's last x86_64 image and goes away in August 2027;
+macOS 26 itself still runs on four Intel models, so `apple_speech` is
+reachable there and the Swift helper is still worth building.
+
+The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
+`apple_speech` works with no Xcode on the machine it's installed on.
+
 ### What ships, and what doesn't
 
 Only `config/event.example.toml` goes into either bundle. The real
