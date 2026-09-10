@@ -58,6 +58,15 @@ ERROR_TTL = 6.0
 # then a missing permission. So describe the symptom and list the causes.
 DIGITAL_SILENCE_AFTER = 5.0
 
+# PortAudio's `active` flag is not proof of life. A driver can leave a stream
+# marked active while it has stopped calling us back at all - reported on
+# Windows, and the same shape of failure as a USB interface that is unplugged
+# and replugged mid-event. Nothing downstream notices: the level meter simply
+# holds its last value and the ASR backend keeps decoding a buffer nobody is
+# refilling. Counting callbacks is the reliable signal, because a working
+# device delivers one every BLOCK_MS whether or not anyone is talking.
+CALLBACK_STALL_AFTER = 3.0
+
 # Clipping: samples pinned at (or within a hair of) full scale. A single
 # sample can be a click; a run of them in one 100 ms block is a level that is
 # too hot for the interface, which ASR handles badly. The flag stays raised a
@@ -253,12 +262,17 @@ class AudioInput:
         self._error: str | None = None
         self._error_at = 0.0
         self._started_at: float | None = None
+        self._last_callback_at = 0.0
 
     def _note_error(self, message: str) -> None:
         self._error = message
         self._error_at = time.monotonic()
 
     def _callback(self, indata, frames, time_info, status) -> None:
+        # First, before anything that can fail: the driver called us, and that
+        # is the fact the watchdog needs. A callback that arrives carrying an
+        # error status is still a live stream.
+        self._last_callback_at = time.monotonic()
         if status:
             # PortAudio glitches are usually a single dropped buffer at startup
             # or when another app grabs the device. Count them, report them, but
@@ -291,6 +305,7 @@ class AudioInput:
 
     def start(self) -> None:
         self._started_at = time.monotonic()
+        self._last_callback_at = self._started_at
         self._stream = sd.InputStream(
             device=self.device.index,
             channels=1,
@@ -337,6 +352,19 @@ class AudioInput:
             return self._queue.get(timeout=0.5)
         except queue.Empty:
             return None
+
+    @property
+    def callbacks_stalled(self) -> bool:
+        """The device stopped calling us back while the stream is still open.
+
+        Distinct from digital silence, which is a stream that is running and
+        handing over zeroes. This is a stream that has stopped running without
+        saying so, and unlike silence it never fixes itself - the fix is to
+        open the device again.
+        """
+        if not self._running or not self._last_callback_at:
+            return False
+        return (time.monotonic() - self._last_callback_at) > CALLBACK_STALL_AFTER
 
     def receiving_digital_silence(self) -> bool:
         """Every sample exactly zero since the stream opened.
@@ -385,7 +413,8 @@ class SilentInput:
         self.blocks_dropped = 0
         self.blocks_read = 0
         self.error = None
-        self._running = True
+        self.callbacks_stalled = False   # nothing to stall; keeps the watchdog
+        self._running = True             # duck-typed against both inputs
 
     def start(self) -> None:
         self._running = True
