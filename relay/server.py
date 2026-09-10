@@ -60,6 +60,7 @@ from .slides import SlideClient, SlidePreview
 from . import transcript as transcript_module
 from . import translate as translate_module
 from . import tunnel as tunnel_module
+from . import updater as updater_module
 from .hub import CONTROL_ACTIONS, INTERNAL_CONTROL_ACTIONS, RELAY_ACTIONS, Client, Hub
 from .youtube import ALLOWED_HOSTS as YOUTUBE_HOSTS
 from .youtube import YouTubeCaptionPusher, urls_from_env, valid_ingestion_url
@@ -287,6 +288,12 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         return [{"name": name, "key": key, "url": f"{base}/wall?key={key}"}
                 for name, key in cfg.overlay_keys.items()]
     tunnel = tunnel_module.CloudflareTunnel(token=os.environ.get("CLOUDFLARE_TUNNEL_TOKEN", "").strip())
+    # `is_live` is read at the moment an install is attempted rather than
+    # captured at startup: the whole point of the guard is what the event is
+    # doing right now, not what it was doing when the relay came up.
+    updater = updater_module.Updater(
+        manifest_url=os.environ.get("CAPTIONS_UPDATE_URL", ""),
+        is_live=lambda: event.state == "live")
 
     def is_public(headers) -> bool:
         """True when this request arrived addressed to `public_hostname`
@@ -1495,6 +1502,47 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         asyncio.get_running_loop().call_later(0.4, request_exit)
         return JSONResponse({"ok": True, "port": port, "changed": True, "previous": previous,
                              "capture_clients_told": told}, headers=NO_STORE)
+
+    @app.get("/api/update")
+    async def api_update_status(request: Request) -> JSONResponse:
+        """What the operator is running and whether anything newer exists."""
+        require_operator(request)
+        return JSONResponse(updater.status(), headers=NO_STORE)
+
+    @app.post("/api/update")
+    async def api_update(request: Request) -> JSONResponse:
+        """{"action": "check"|"download"|"install"}
+
+        Relay-local and operator-driven throughout - nothing here happens on a
+        timer. The source repository is private, so its release assets need a
+        token no distributed app can safely hold; the manifest and the builds
+        live on storage the project owns instead. See relay/updater.py.
+        """
+        require_operator(request)
+        body = await read_json(request) or {}
+        action = text_field(body, "action", 32)
+        if action == "check":
+            return JSONResponse(await updater.check(), headers=NO_STORE)
+        if action == "download":
+            return JSONResponse(await updater.fetch(), headers=NO_STORE)
+        if action == "code":
+            # Same handling as the Deepgram key and the tunnel token: straight
+            # into .env, into the environment for this process, and never read
+            # back out to the browser - /api/update reports has_access_code.
+            code = text_field(body, "code", 512, allow_empty=True)
+            config_module.save_env_var(updater_module.ACCESS_TOKEN_ENV, code)
+            os.environ[updater_module.ACCESS_TOKEN_ENV] = code
+            print("[update] access code "
+                  + ("saved" if code else "cleared"))   # never the code itself
+            return JSONResponse(updater.status(), headers=NO_STORE)
+        if action == "install":
+            # Not a 4xx when the event is live: the operator asked a reasonable
+            # question and the answer is "not now", which belongs in the status
+            # the page already renders rather than as a failed request.
+            return JSONResponse(updater.install(), headers=NO_STORE)
+        raise HTTPException(
+            status_code=400,
+            detail="action must be check, download, install or code")
 
     @app.post("/api/tunnel")
     async def api_tunnel(request: Request) -> JSONResponse:

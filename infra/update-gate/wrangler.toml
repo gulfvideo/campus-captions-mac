@@ -1,0 +1,25 @@
+# Deploy:  cd infra/update-gate && npx wrangler deploy
+#
+# Create the two bindings once, before the first deploy:
+#   npx wrangler kv namespace create CODES
+#   (paste the id it prints into kv_namespaces below)
+#
+# The bucket must NOT have a public r2.dev URL or a public custom domain
+# attached. This Worker is the only way in; a public binding would leave a
+# second door open with no code on it.
+
+name = "campus-captions-update-gate"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+routes = [
+  { pattern = "updates.gulfvideo.io/*", custom_domain = true },
+]
+
+[[r2_buckets]]
+binding = "BUILDS"
+bucket_name = "campus-captions-updates"
+
+[[kv_namespaces]]
+binding = "CODES"
+id = "PASTE_THE_ID_FROM_wrangler_kv_namespace_create"
