@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -250,13 +251,33 @@ class FetchTargetTests(unittest.TestCase):
                 with self.assertRaises(up.UpdateError):
                     up._fetch(bad, 1024)
 
-    def test_this_machine_gets_a_build_key(self):
-        self.assertIn(up.platform_key(),
-                      ("macos-arm64", "macos-x86_64", "windows-x86_64"))
+    def test_each_platform_maps_to_the_build_it_can_run(self):
+        """PyInstaller freezes for the host architecture, so an arm64 build
+        does not launch on an Intel Mac at all - handing someone the wrong one
+        looks exactly like a corrupt download."""
+        cases = {
+            ("darwin", "arm64"): "macos-arm64",
+            ("darwin", "aarch64"): "macos-arm64",
+            ("darwin", "x86_64"): "macos-x86_64",
+            ("win32", "AMD64"): "windows-x86_64",
+        }
+        for (system, machine), expected in cases.items():
+            with self.subTest(system=system, machine=machine):
+                with mock.patch.object(up.sys, "platform", system), \
+                     mock.patch.object(up.platform, "machine", lambda: machine):
+                    self.assertEqual(expected, up.platform_key())
 
-    def test_a_manifest_without_a_build_for_us_offers_nothing(self):
-        m = up.parse_manifest(manifest(builds={}))
-        self.assertIsNone(m.for_this_machine())
+    def test_a_platform_we_do_not_ship_for_is_offered_nothing(self):
+        """A Linux checkout - which is what CI is - gets a key no manifest
+        entry uses, so it is told there is no build rather than handed one
+        that cannot run."""
+        with mock.patch.object(up.sys, "platform", "linux"), \
+             mock.patch.object(up.platform, "machine", lambda: "x86_64"):
+            self.assertEqual("linux-x86_64", up.platform_key())
+            self.assertIsNone(up.parse_manifest(manifest()).for_this_machine())
+
+    def test_a_manifest_with_no_builds_at_all_offers_nothing(self):
+        self.assertIsNone(up.parse_manifest(manifest(builds={})).for_this_machine())
 
 
 if __name__ == "__main__":
