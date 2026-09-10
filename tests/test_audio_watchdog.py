@@ -16,18 +16,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capture import audio as audio_mod  # noqa: E402
 
 
-class FakeStream:
-    def __init__(self, *a, **kw):
-        pass
+class FakeInput:
+    """Stands in for AudioInput so these tests need no PortAudio - CI has
+    none. `fails` makes start() raise the way a device in use does."""
+
+    fails = False
+
+    def __init__(self, device):
+        self.device = device
+        self.started = False
 
     def start(self):
-        pass
+        if FakeInput.fails:
+            raise OSError("Device unavailable")
+        self.started = True
 
     def stop(self):
-        pass
-
-    def close(self):
-        pass
+        self.started = False
 
 
 class StallDetectionTests(unittest.TestCase):
@@ -40,7 +45,6 @@ class StallDetectionTests(unittest.TestCase):
 
     def test_a_freshly_started_stream_is_not_stalled(self):
         audio = self.make_input()
-        audio._stream = FakeStream()
         audio._running = True
         audio._last_callback_at = time.monotonic()
         self.assertFalse(audio.callbacks_stalled)
@@ -104,6 +108,10 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         from capture.__main__ import CaptureApp
 
+        self.real_input = audio_mod.AudioInput
+        audio_mod.AudioInput = FakeInput
+        FakeInput.fails = False
+
         self.app = CaptureApp.__new__(CaptureApp)          # no relay, no config
         self.app.backend = FakeBackend()
         self.app.input = audio_mod.SilentInput()
@@ -115,8 +123,11 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
         self.app.cfg = type("Cfg", (), {"backend": "whisper"})()
         self.device = audio_mod.DeviceChoice(3, "WING", "Core Audio", 48000, 1)
 
+    def tearDown(self):
+        audio_mod.AudioInput = self.real_input
+        FakeInput.fails = False
+
     async def test_successful_restart_installs_the_new_input(self):
-        audio_mod.sd.InputStream = FakeStream
         ok = await self.app.restart_input(self.device)
         self.assertTrue(ok)
         self.assertEqual(48000, self.app.sample_rate)
@@ -128,14 +139,12 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
     async def test_an_open_stream_is_closed_and_reopened_at_the_new_rate(self):
         """A backend connection is bound to the sample rate, so it cannot ride
         through the swap - but the operator's open intent must survive it."""
-        audio_mod.sd.InputStream = FakeStream
         self.app.backend = FakeBackend(wants_open=True)
         await self.app.restart_input(self.device)
         self.assertEqual(1, self.app.backend.closed)
         self.assertEqual(48000, self.app.backend.opened_at_rate)
 
     async def test_a_closed_stream_is_left_closed(self):
-        audio_mod.sd.InputStream = FakeStream
         await self.app.restart_input(self.device)
         self.assertIsNone(self.app.backend.opened_at_rate)
 
@@ -143,10 +152,7 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
         """Leaving a stopped AudioInput in place would spin pump_audio on an
         iterator that ends immediately, so the fallback has to be SilentInput -
         and the device has to stay remembered or nothing ever retries it."""
-        def explode(*a, **kw):
-            raise OSError("Device unavailable")
-
-        audio_mod.sd.InputStream = explode
+        FakeInput.fails = True
         ok = await self.app.restart_input(self.device)
         self.assertFalse(ok)
         self.assertIsInstance(self.app.input, audio_mod.SilentInput)
@@ -155,12 +161,9 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("WING", self.app.audio_error)
 
     async def test_a_later_attempt_recovers_the_device(self):
-        def explode(*a, **kw):
-            raise OSError("Device unavailable")
-
-        audio_mod.sd.InputStream = explode
+        FakeInput.fails = True
         await self.app.restart_input(self.device)
-        audio_mod.sd.InputStream = FakeStream
+        FakeInput.fails = False
         self.assertTrue(await self.app.restart_input(self.app._input_lost))
         self.assertIsNone(self.app._input_lost)
 
