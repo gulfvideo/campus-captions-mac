@@ -518,41 +518,8 @@ def save_youtube_url(path: Path, url: str, lang: str) -> None:
     """Write url/lang into [youtube] in `path`, in place.
 
     So pasting a link on the status page never requires opening a text editor.
-    Hand-rolled rather than pulling in a TOML-writing dependency for two
-    lines: finds the [youtube] section (creating it if missing) and replaces
-    or inserts just the `url` and `lang` keys, leaving every comment and every
-    other section exactly as it was.
     """
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-    header = "[youtube]"
-
-    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
-    end = len(lines)
-    if start is not None:
-        end = next(
-            (i for i in range(start + 1, len(lines))
-             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-            len(lines),
-        )
-
-    wanted = {"url": _quote(url), "lang": _quote(lang)}
-    if start is not None:
-        for i in range(start + 1, end):
-            key = lines[i].split("=", 1)[0].strip()
-            if key in wanted:
-                lines[i] = f"{key} = {wanted.pop(key)}"
-        if wanted:
-            insertion = [f"{key} = {value}" for key, value in wanted.items()]
-            lines[start + 1:start + 1] = insertion
-    else:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(header)
-        lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    save_section(path, "[youtube]", {"url": url, "lang": lang})
 
 
 def _inline_comment(line: str) -> str:
@@ -602,130 +569,38 @@ def save_audio_device(path: Path, device: str) -> None:
     input is the one failure this app must not have. resolve_device()
     already accepts a name substring, so the name round-trips.
 
+    [capture], not [audio] - and scoped to that section on purpose, since
+    [whisper] carries its own unrelated `device` (cpu/gpu) that must not be
+    rewritten with the name of a microphone.
+
     This only ever writes the per-machine event.toml (the checkout's when
     running from source, _data_dir()'s when packaged). The shipped example
     keeps `device = ""`, meaning the system default, so a fresh install on
     someone else's computer still comes up on their own default rather than
     on whatever hardware this one happened to have.
     """
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-    # [capture], not [audio] - and scoped to that section on purpose, since
-    # [whisper] carries its own unrelated `device` (cpu/gpu) that must not be
-    # rewritten with the name of a microphone.
-    header = "[capture]"
-
-    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
-    end = len(lines)
-    if start is not None:
-        end = next(
-            (i for i in range(start + 1, len(lines))
-             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-            len(lines),
-        )
-
-    wanted = {"device": _quote(device)}
-    if start is not None:
-        for i in range(start + 1, end):
-            key = lines[i].split("=", 1)[0].strip()
-            if key in wanted:
-                comment = _inline_comment(lines[i])
-                rewritten = f"{key} = {wanted.pop(key)}"
-                if comment:
-                    # Put the comment back in the column it was in, so a file
-                    # whose comments line up still does after a device with a
-                    # long name is saved into it.
-                    column = len(lines[i]) - len(comment.lstrip())
-                    rewritten += " " * max(column - len(rewritten), 2) + comment.lstrip()
-                lines[i] = rewritten
-        if wanted:
-            insertion = [f"{key} = {value}" for key, value in wanted.items()]
-            lines[start + 1:start + 1] = insertion
-    else:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(header)
-        lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    save_section(path, "[capture]", {"device": device})
 
 
 def save_translate_settings(path: Path, provider: str, offer_languages: list[str]) -> None:
     """Write provider into [translate] and the target list into [languages],
-    in place - mirrors save_youtube_url above. The Azure key itself never
-    comes near this file; it lives in .env, via save_env_var, same as the
-    Deepgram key. This only saves *which* languages to translate into, so a
-    relay restart picks up what the status page's translation panel set.
+    in place. The Azure key itself never comes near this file; it lives in
+    .env, via save_env_var, same as the Deepgram key. This only saves *which*
+    languages to translate into, so a relay restart picks up what the status
+    page's translation panel set.
     """
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-
-    def upsert(header: str, wanted: dict[str, str]) -> None:
-        start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
-        end = len(lines)
-        if start is not None:
-            end = next(
-                (i for i in range(start + 1, len(lines))
-                 if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-                len(lines),
-            )
-            for i in range(start + 1, end):
-                key = lines[i].split("=", 1)[0].strip()
-                if key in wanted:
-                    lines[i] = f"{key} = {wanted.pop(key)}"
-            if wanted:
-                insertion = [f"{key} = {value}" for key, value in wanted.items()]
-                lines[start + 1:start + 1] = insertion
-        else:
-            if lines and lines[-1].strip():
-                lines.append("")
-            lines.append(header)
-            lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
-    upsert("[translate]", {"provider": _quote(provider)})
-    upsert("[languages]", {"offer": _quote_list(offer_languages)})
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    save_section(path, "[translate]", {"provider": provider})
+    save_section(path, "[languages]", {"offer": list(offer_languages)})
 
 
 def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None:
-    """Write hostname into [relay] public_hostname and the operator's
-    on/off intent into [tunnel] start_enabled, in place - mirrors
-    save_youtube_url above. The tunnel token itself never comes near this
-    file; it lives in .env via save_env_var, same as the Deepgram key.
+    """Write hostname into [relay] public_hostname and the operator's on/off
+    intent into [tunnel] start_enabled, in place. The tunnel token itself
+    never comes near this file; it lives in .env via save_env_var, same as
+    the Deepgram key.
     """
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-
-    def upsert(header: str, wanted: dict[str, str]) -> None:
-        start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
-        end = len(lines)
-        if start is not None:
-            end = next(
-                (i for i in range(start + 1, len(lines))
-                 if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-                len(lines),
-            )
-            for i in range(start + 1, end):
-                key = lines[i].split("=", 1)[0].strip()
-                if key in wanted:
-                    lines[i] = f"{key} = {wanted.pop(key)}"
-            if wanted:
-                insertion = [f"{key} = {value}" for key, value in wanted.items()]
-                lines[start + 1:start + 1] = insertion
-        else:
-            if lines and lines[-1].strip():
-                lines.append("")
-            lines.append(header)
-            lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
-    upsert("[relay]", {"public_hostname": _quote(hostname)})
-    upsert("[tunnel]", {"start_enabled": "true" if start_enabled else "false"})
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    save_section(path, "[relay]", {"public_hostname": hostname})
+    save_section(path, "[tunnel]", {"start_enabled": bool(start_enabled)})
 
 
 # How many ports above the configured one to try when it is taken. Twenty
@@ -784,28 +659,8 @@ def choose_port(host: str, preferred: int, tries: int = PORT_FALLBACK_TRIES) -> 
 
 def save_relay_port(path: Path, port: int) -> None:
     """Write `port` into [relay], in place, keeping the line's own comment
-    (see _inline_comment) and every other line as it was."""
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "[relay]"), None)
-    if start is None:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.extend(["[relay]", f"port = {int(port)}"])
-    else:
-        end = next(
-            (i for i in range(start + 1, len(lines))
-             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-            len(lines),
-        )
-        for i in range(start + 1, end):
-            if lines[i].split("=", 1)[0].strip() == "port":
-                lines[i] = f"port = {int(port)}{_inline_comment(lines[i])}"
-                break
-        else:
-            lines.insert(start + 1, f"port = {int(port)}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_private(path, "\n".join(lines) + "\n")
+    and every other line as it was."""
+    save_section(path, "[relay]", {"port": int(port)})
 
 
 def _toml_literal(value) -> str:
@@ -921,33 +776,10 @@ def save_tour_complete(path: Path, completed: bool = True) -> None:
 
 def save_event_settings(path: Path, fields: dict[str, str]) -> None:
     """Write any of state/title/message/notice/pause_message into [event],
-    in place - same shape as save_tunnel_settings above. Called on every
-    change from the status page, so the welcome screen and the event state
-    survive a relay restart."""
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = text.splitlines()
-    header = "[event]"
-    wanted = {key: _quote(str(value)) for key, value in fields.items()}
+    in place. Called on every change from the status page, so the welcome
+    screen and the event state survive a relay restart.
 
-    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
-    if start is not None:
-        end = next(
-            (i for i in range(start + 1, len(lines))
-             if lines[i].strip().startswith("[") and lines[i].strip().endswith("]")),
-            len(lines),
-        )
-        for i in range(start + 1, end):
-            key = lines[i].split("=", 1)[0].strip()
-            if key in wanted:
-                lines[i] = f"{key} = {wanted.pop(key)}"
-        if wanted:
-            insertion = [f"{key} = {value}" for key, value in wanted.items()]
-            lines[start + 1:start + 1] = insertion
-    else:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(header)
-        lines.extend(f"{key} = {value}" for key, value in wanted.items())
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    Values are forced to str: these are all text fields, and a bool slipping
+    through would be written as a TOML boolean and read back as one.
+    """
+    save_section(path, "[event]", {k: str(v) for k, v in fields.items()})
