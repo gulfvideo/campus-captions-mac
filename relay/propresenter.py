@@ -60,6 +60,7 @@ import urllib.parse
 import urllib.request
 from collections import deque
 
+from .state import p95
 from .transcript import split_for_display, wrap_lines
 
 SURFACES = ("stage_message", "message")
@@ -513,10 +514,9 @@ class ProPresenterOutput:
         if not self._latencies:
             return None
         values = sorted(self._latencies)
-        p95 = values[min(len(values) - 1, int(round(0.95 * (len(values) - 1))))]
         return {"samples": len(values),
                 "median_ms": round(statistics.median(values) * 1000),
-                "p95_ms": round(p95 * 1000),
+                "p95_ms": round(p95(values) * 1000),
                 "last_ms": round(self._latencies[-1] * 1000)}
 
     def status(self) -> dict:
