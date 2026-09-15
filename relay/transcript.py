@@ -91,14 +91,20 @@ def wrap_lines(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
     return out
 
 
-def split_for_display(text: str) -> list[str]:
-    """One recorded line becomes one or more cue texts of at most MAX_LINES
+def split_for_display(text: str, max_chars: int = MAX_LINE_CHARS,
+                     max_lines: int = MAX_LINES) -> list[str]:
+    """One recorded line becomes one or more cue texts of at most `max_lines`
     wrapped lines each, so a long sentence is never a single unreadable
-    block."""
-    lines = wrap_lines(text)
+    block.
+
+    The defaults are the cue standard this module writes SRT/VTT against.
+    relay/propresenter.py passes its own pair instead: a ProPresenter text
+    box is whatever width the church made it, not 42 characters.
+    """
+    lines = wrap_lines(text, max_chars)
     if not lines:
         return []
-    return ["\n".join(lines[i:i + MAX_LINES]) for i in range(0, len(lines), MAX_LINES)]
+    return ["\n".join(lines[i:i + max_lines]) for i in range(0, len(lines), max_lines)]
 
 
 def format_timestamp(seconds: float, decimal: str = ",") -> str:
