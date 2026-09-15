@@ -581,6 +581,18 @@ def _inline_comment(line: str) -> str:
     return ""
 
 
+def _rewrite_line(line: str, key: str, value: str) -> str:
+    """`key = value`, with the line's own inline comment put back in the
+    column it was in, so a file whose comments line up still does after a
+    longer or shorter value is written into it."""
+    out = f"{key} = {value}"
+    comment = _inline_comment(line)
+    if not comment:
+        return out
+    column = len(line) - len(comment.lstrip())
+    return out + " " * max(column - len(out), 2) + comment.lstrip()
+
+
 def save_audio_device(path: Path, device: str) -> None:
     """Write the operator's chosen input into [capture] device, in place.
 
@@ -862,7 +874,7 @@ def save_section(path: Path, header: str, values: dict) -> None:
         for i in range(start + 1, end):
             key = lines[i].split("=", 1)[0].strip()
             if key in wanted:
-                lines[i] = f"{key} = {wanted.pop(key)}{_inline_comment(lines[i])}"
+                lines[i] = _rewrite_line(lines[i], key, wanted.pop(key))
         if wanted:
             lines[start + 1:start + 1] = [f"{key} = {value}" for key, value in wanted.items()]
     else:

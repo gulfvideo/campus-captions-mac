@@ -43,7 +43,15 @@ class SaveSectionTests(unittest.TestCase):
         self.assertIn("# top comment", text)
         self.assertIn("# how to reach it", text)
         self.assertIn("port = 8000   # keep me", text)
-        self.assertIn('host = "10.0.0.9"   # this Mac', text)   # inline comment survives
+        # The inline comment survives *in its column*: the value got two
+        # characters shorter, so the gap grows by two to hold "# this Mac"
+        # where it was. A file whose comments line up still does afterwards.
+        self.assertIn('host = "10.0.0.9"    # this Mac', text)
+        before = '[relay]\nport = 8000   # keep me'
+        self.assertIn(before, text)                      # untouched key unchanged
+        col = lambda ln: ln.index("#")
+        self.assertEqual(col('host = "10.0.0.9"    # this Mac'),
+                         col('host = "127.0.0.1"   # this Mac'))
         data = self.read()
         self.assertEqual(data["propresenter"],
                          {"host": "10.0.0.9", "port": 2000, "surface": "message"})
