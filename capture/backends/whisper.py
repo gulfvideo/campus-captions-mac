@@ -32,6 +32,7 @@ trusting it on a live wall.
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 import time
 from pathlib import Path
@@ -213,6 +214,39 @@ TEMPERATURE_LADDER = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 REPEAT_RUN_LIMIT = 4            # this many identical repeats in a row is not speech
 REPEAT_KEEP = 2                 # ...trim it back to this many
 REPEAT_MAX_PHRASE = 16          # longest repeating unit to look for, in words
+
+
+# Two shapes of damage that neither the confidence gate nor collapse_repeats
+# catches, because they are neither low-scoring nor word repetition: a single
+# character run ("aaaaaaaaaa"), and a line that is mostly punctuation. Whisper
+# produces both from music and sustained noise, and scores them confidently.
+# From Church Cap's looks_unreliable_hypothesis (MIT).
+CHAR_RUN_LIMIT = 8              # this many identical characters in a row
+GARBLE_MIN_LENGTH = 80          # only judge punctuation density on a long line
+GARBLE_PUNCTUATION_RATIO = 0.18
+SENTENCE_PUNCTUATION = ".,;:!?'-\"()"
+_CHAR_RUN = re.compile(r"(.)\1{%d,}" % CHAR_RUN_LIMIT)
+
+
+def is_garbled(text: str) -> bool:
+    """Whether a decode is shaped like noise rather than a sentence.
+
+    Rejects the line outright, unlike collapse_repeats, which trims one that is
+    merely repetitive - there is nothing here worth trimming back to. Length
+    gates the punctuation test so that a short, legitimately punctuated caption
+    ("- Yes?") is never judged on ratios.
+    """
+    text = " ".join(text.split()).strip()
+    if not text:
+        return False
+    if _CHAR_RUN.search(re.sub(r"\s+", "", text)):
+        return True
+    if len(text) >= GARBLE_MIN_LENGTH:
+        noise = sum(1 for c in text
+                    if not (c.isalnum() or c.isspace() or c in SENTENCE_PUNCTUATION))
+        if noise / len(text) > GARBLE_PUNCTUATION_RATIO:
+            return True
+    return False
 
 
 def collapse_repeats(text: str, run_limit: int = REPEAT_RUN_LIMIT,
@@ -457,7 +491,13 @@ class LocalWhisperBackend(ASRBackend):
                       f"{text[:60]!r}")
                 continue
             kept.append(text)
-        return collapse_repeats(" ".join(kept).strip())
+        joined = " ".join(kept).strip()
+        # Last gate, on the assembled line: the shape checks need the whole
+        # sentence, and a run split across two segments is still a run.
+        if is_garbled(joined):
+            print(f"[whisper] dropped a decode shaped like noise: {joined[:60]!r}")
+            return ""
+        return collapse_repeats(joined)
 
     async def _decode(self, audio: np.ndarray) -> str:
         """Decode off the event loop - this is CPU-bound and blocking."""

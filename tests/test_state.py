@@ -50,6 +50,26 @@ class ClippingTests(unittest.TestCase):
         self.assertFalse(s.clipping)
 
 
+class AudioRestartTests(unittest.TestCase):
+    """The watchdog's restart count has to reach the status page, or a flaky
+    interface leaves no trace anywhere but capture.log."""
+
+    def test_the_count_reaches_the_snapshot(self):
+        s = connected(audio_restarts=3)
+        self.assertEqual(3, s.snapshot({"total": 0}, 0)["source"]["audio_restarts"])
+
+    def test_a_client_that_never_restarted_reports_zero(self):
+        s = connected()
+        self.assertEqual(0, s.snapshot({"total": 0}, 0)["source"]["audio_restarts"])
+
+    def test_junk_is_ignored_rather_than_shown(self):
+        for junk in ("lots", None, True, -4, 1.5):
+            with self.subTest(junk=junk):
+                s = connected(audio_restarts=junk)
+                self.assertEqual(
+                    0, s.snapshot({"total": 0}, 0)["source"]["audio_restarts"])
+
+
 class LatencyTests(unittest.TestCase):
     def test_no_samples_means_none_not_zero(self):
         snap = connected().snapshot({"total": 0}, 0)

@@ -76,6 +76,7 @@ class RelayState:
     mask_profanity: bool = False
     blocked_word_count: int = 0
     device_busy: bool = False               # another program holds the audio input
+    audio_restarts: int = 0                 # input reopened after it stopped responding
     host: dict = field(default_factory=dict)  # capture machine's CPU/memory, see capture/host.py
     device: str | None = None
     device_index: int | None = None
@@ -125,6 +126,12 @@ class RelayState:
         if isinstance(count, int) and not isinstance(count, bool):
             self.blocked_word_count = max(0, count)
         self.device_busy = bool(msg.get("device_busy"))
+        # Cumulative for the session. A rising count during an event is the
+        # clearest evidence there is that an interface is flaky, and it is the
+        # only trace of a restart that survives outside the log file.
+        restarts = msg.get("audio_restarts")
+        if isinstance(restarts, int) and not isinstance(restarts, bool):
+            self.audio_restarts = max(0, restarts)
         host = msg.get("host")
         if isinstance(host, dict):
             self.host = _clean_host(host)
@@ -283,6 +290,7 @@ class RelayState:
                 "device": self.device,
                 "device_index": self.device_index,
                 "device_busy": self.device_busy,
+                "audio_restarts": self.audio_restarts,
                 "audio_devices": self.audio_devices,
                 "status_age": self._age(self.last_status_at, now),
                 "error": self.error,

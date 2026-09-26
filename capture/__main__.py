@@ -30,6 +30,16 @@ STATUS_HZ = 4.0
 # that an idle capture client is not spinning.
 BACKEND_POLL_SECONDS = 0.25
 
+# How often to ask whether the input is still delivering callbacks, and how
+# long to wait between attempts to reopen one that is not. The backoff exists
+# because the two causes look identical from here: a driver that has wedged and
+# will come back on a reopen, and hardware that has genuinely been unplugged.
+# Retrying the second every second for the rest of the service would fill the
+# log and hammer CoreAudio for nothing.
+WATCHDOG_POLL_SECONDS = 1.0
+AUDIO_RESTART_BASE_COOLDOWN = 3.0
+AUDIO_RESTART_MAX_COOLDOWN = 30.0
+
 
 class CaptureApp:
     def __init__(self, cfg, args):
@@ -42,6 +52,8 @@ class CaptureApp:
         self.sample_rate = audio_mod.PREFERRED_RATE
         self.audio_error: str | None = None
         self.device_busy = False            # another program holds the input (preflight)
+        self.audio_restarts = 0             # times the watchdog reopened the input
+        self._input_lost: audio_mod.DeviceChoice | None = None   # awaiting reopen
         self.host = host_mod.HostMonitor()
         self.audio_devices: list[dict] = []
         self._pending: list[tuple[str, dict]] = []  # handled in the main loop
@@ -75,6 +87,11 @@ class CaptureApp:
             print(f"[capture] {self.audio_error}")
             self.refresh_audio_devices()
             return
+
+        # The operator's choice outranks the watchdog. Without this, a device
+        # abandoned *because* it stopped responding stays queued for reopen and
+        # the watchdog takes the input straight back off them.
+        self._input_lost = None
 
         old_input = self.input
         if old_input and old_input.device.index == device.index:
@@ -124,6 +141,51 @@ class CaptureApp:
         if was_open:
             await self.backend.open(self.sample_rate)
             print(f"[capture] {self.cfg.backend} stream reopened after input change")
+
+    async def restart_input(self, device: audio_mod.DeviceChoice) -> bool:
+        """Reopen one device after it stopped delivering callbacks.
+
+        The same handoff switch_audio_device performs, minus the choosing: a
+        backend connection is tied to the input's sample rate, so an open
+        stream is closed for the swap and the operator's open intent restored
+        once the replacement is live. Captions resume on their own.
+
+        Falls back to SilentInput on failure rather than leaving a stopped
+        AudioInput in place - pump_audio would spin on an iterator that ends
+        immediately - and remembers the device so the watchdog can keep
+        trying. Returns whether the device came back.
+        """
+        was_open = self.backend.wants_open
+        if was_open:
+            await self.backend.close()
+        if self.input:
+            self.input.stop()
+
+        replacement = audio_mod.AudioInput(device)
+        try:
+            replacement.start()
+        except Exception as exc:
+            self._input_lost = device
+            self.input = audio_mod.SilentInput()
+            self.sample_rate = self.input.device.sample_rate
+            self.audio_error = (
+                f"{device.name} stopped responding and could not be reopened: "
+                f"{exc} - retrying")
+            print(f"[capture] {self.audio_error}")
+            return False
+
+        self.input = replacement
+        self.sample_rate = device.sample_rate
+        self._input_lost = None
+        self.audio_restarts += 1
+        self.audio_error = None
+        self.device_busy = False
+        print(f"[capture] reopened {device} after it stopped responding "
+              f"(restart #{self.audio_restarts})")
+        if was_open:
+            await self.backend.open(self.sample_rate)
+            print(f"[capture] {self.cfg.backend} stream reopened after input restart")
+        return True
 
     async def switch_backend(self, name: str) -> None:
         """Swap the ASR backend without restarting the capture client.
@@ -343,6 +405,43 @@ class CaptureApp:
                 if block and self.backend.stream_open:
                     await self.backend.send_audio(block)
 
+    async def pump_audio_watchdog(self) -> None:
+        """Reopen an input that has stopped calling us back.
+
+        PortAudio will happily report a stream as active after the driver has
+        stopped delivering callbacks - seen on Windows, and the same shape as
+        an interface unplugged and replugged mid-event. Nothing downstream
+        notices: the meter holds its last value and the backend keeps decoding
+        a buffer nobody refills, so the captions stop with no error anywhere.
+        Unlike digital silence this never recovers on its own.
+
+        Borrowed from Church Cap's AudioStreamWatchdog (MIT), which reports the
+        same PortAudio behaviour.
+        """
+        failures = 0
+        while True:
+            await asyncio.sleep(WATCHDOG_POLL_SECONDS)
+            device = self._input_lost
+            if device is None:
+                if not self.input or not self.input.callbacks_stalled:
+                    failures = 0
+                    continue
+                device = self.input.device
+                print(f"[capture] no audio callbacks from {device.name} for "
+                      f"{audio_mod.CALLBACK_STALL_AFTER:.0f}s - reopening")
+            elif failures:
+                cooldown = min(AUDIO_RESTART_BASE_COOLDOWN * 2 ** (failures - 1),
+                               AUDIO_RESTART_MAX_COOLDOWN)
+                await asyncio.sleep(cooldown)
+                # The operator can pick a different device during a cooldown -
+                # thirty seconds is long enough that they will. Re-read rather
+                # than reopening the one they just walked away from.
+                if self._input_lost is None:
+                    failures = 0
+                    continue
+                device = self._input_lost
+            failures = 0 if await self.restart_input(device) else failures + 1
+
     async def pump_events(self) -> None:
         # Re-read self.backend every pass. Switching backends builds a whole
         # new instance with a new queue, and an `async for` over the old
@@ -404,6 +503,7 @@ class CaptureApp:
                 "mask_profanity": self.backend.mask_profanity,
                 "blocked_word_count": self.backend.blocked_word_count,
                 "device_busy": self.device_busy,
+                "audio_restarts": self.audio_restarts,
                 "host": self.host.snapshot(),
                 "error": error,
             })
@@ -475,6 +575,7 @@ class CaptureApp:
         tasks = [
             asyncio.create_task(self.relay.run()),
             asyncio.create_task(self.pump_audio()),
+            asyncio.create_task(self.pump_audio_watchdog()),
             asyncio.create_task(self.pump_events()),
             asyncio.create_task(self.pump_status()),
             asyncio.create_task(self.pump_mock_clears()),
