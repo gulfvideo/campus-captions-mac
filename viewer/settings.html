@@ -392,6 +392,27 @@
   </div>
 </section>
 
+<section class="panel" id="panel-update">
+  <h2 class="panel-head">App version
+    <span class="badge" id="update-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="update-body">
+      <div class="row">
+        <input id="update-code" type="password" autocomplete="off" spellcheck="false"
+               placeholder="Update code you were sent">
+        <button id="btn-update-code" type="button">Save</button>
+      </div>
+      <div class="row">
+        <button id="btn-update-check" type="button">Check for updates</button>
+        <button id="btn-update-get" type="button" hidden>Download</button>
+        <button id="btn-update-install" type="button" hidden>Install and restart</button>
+      </div>
+      <div class="disclosure-sub" id="update-sub">&mdash;</div>
+      <div class="disclosure-sub" id="update-notes" hidden></div>
+      <div class="disclosure-sub" id="update-trust" hidden></div>
+    </div>
+</section>
+
 <section class="panel" id="panel-deepgram">
   <h2 class="panel-head">Deepgram API key
     <span class="badge" id="deepgram-badge">&mdash;</span>
@@ -2004,6 +2025,86 @@
         button.textContent = 'Download the model';
       });
     };
+
+    // -- app version -------------------------------------------------
+    // Every step is a button. An app that downloads 75 MB over a venue's wifi
+    // and restarts itself is not something to do to an operator mid-service,
+    // so nothing here runs on a timer.
+    function renderUpdate(u) {
+      var badge = $('update-badge'), sub = $('update-sub');
+      var notes = $('update-notes'), trust = $('update-trust');
+      var get = $('btn-update-get'), install = $('btn-update-install');
+      badge.textContent = u.current || '\u2014';
+      get.hidden = install.hidden = true;
+      if (u.has_access_code) markSecretSaved('update-code');
+      $('btn-update-check').disabled = !u.has_access_code;
+      notes.hidden = !u.notes;
+      notes.textContent = u.notes || '';
+      trust.hidden = !u.trust_note;
+      trust.textContent = u.trust_note ? 'Note: ' + u.trust_note + '.' : '';
+
+      if (u.state === 'error') {
+        sub.textContent = u.error || 'Something went wrong.';
+      } else if (u.state === 'checking') {
+        sub.textContent = 'Checking\u2026';
+      } else if (u.state === 'downloading') {
+        sub.textContent = 'Downloading\u2026 ' + Math.round((u.progress || 0) * 100) + '%';
+      } else if (u.state === 'installing') {
+        sub.textContent = 'Installing. The app will close and reopen itself.';
+      } else if (u.state === 'available') {
+        var mb = u.size ? ' (' + Math.round(u.size / 1048576) + ' MB)' : '';
+        sub.textContent = 'Version ' + u.available + ' is available' + mb + '.';
+        get.hidden = false;
+      } else if (u.state === 'ready') {
+        install.hidden = false;
+        sub.textContent = u.blocked_by_event
+          ? 'Version ' + u.available + ' is ready. Stop the event to install it.'
+          : 'Version ' + u.available + ' is ready to install.';
+        install.disabled = !u.can_install;
+      } else if (!u.has_access_code) {
+        sub.textContent = 'Paste the update code you were sent to check for '
+          + 'updates. Each tester gets their own.';
+      } else {
+        sub.textContent = 'Up to date.';
+      }
+    }
+
+    function updateAction(action, button, extra) {
+      var was = button.textContent;
+      var body = {action: action};
+      if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+      button.disabled = true;
+      button.textContent = 'Working\u2026';
+      return fetch('/api/update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+      }).then(jsonOrThrow).then(renderUpdate).catch(function (err) {
+        $('update-sub').textContent = String(err.message || err);
+      }).then(function () {
+        button.disabled = false;
+        button.textContent = was;
+      });
+    }
+
+    $('btn-update-code').onclick = function () {
+      var box = $('update-code');
+      var code = box.value.trim();
+      updateAction('code', this, {code: code}).then(function () {
+        box.value = '';
+        if (code) markSecretSaved('update-code');
+        else restorePlaceholder('update-code');
+      });
+    };
+    $('update-code').oninput = function () { restorePlaceholder('update-code'); };
+
+    $('btn-update-check').onclick = function () { updateAction('check', this); };
+    $('btn-update-get').onclick = function () { updateAction('download', this); };
+    $('btn-update-install').onclick = function () {
+      if (!window.confirm('Install and restart now? Captions will stop for a moment.')) return;
+      updateAction('install', this);
+    };
+    fetch('/api/update').then(jsonOrThrow).then(renderUpdate).catch(function () {});
 
     $('btn-deepgram-save').onclick = saveDeepgramKey;
     $('btn-deepgram-show').onclick = function () {

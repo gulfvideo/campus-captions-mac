@@ -514,6 +514,21 @@ will not reach a relay on 8001. Two ways out:
 
 ---
 
+## 3i. Updating an installed app
+
+**Settings → App version → Check for updates.** Three buttons — check,
+download, install — and nothing on a timer: an app that downloads 75 MB over a
+venue's wifi and restarts itself mid-service is not something to do to an
+operator. Installing is refused outright while the event is live.
+
+On macOS the app replaces itself and reopens. Because it is currently ad-hoc
+signed, **macOS will ask for microphone access again after an update** — the
+app says so next to the Install button. A Developer ID certificate ends that;
+see [docs/UPDATES.md](docs/UPDATES.md).
+
+Publishing an update is a maintainer job and is documented separately in
+[docs/UPDATES.md](docs/UPDATES.md).
+
 ## 4. Network: static IP and firewall
 
 The wall view URL and the phone URL both contain the relay host's IP address.
