@@ -57,6 +57,17 @@ def _clean_host(raw: dict) -> dict:
     }
 
 
+def p95(sorted_values) -> float:
+    """The 95th percentile of an already-sorted sequence, nearest rank.
+
+    Not statistics.quantiles: that interpolates and needs at least two data
+    points, and both callers have to answer for a single sample - a freshly
+    connected output has made exactly one round trip.
+    """
+    return sorted_values[min(len(sorted_values) - 1,
+                             int(round(0.95 * (len(sorted_values) - 1))))]
+
+
 @dataclass
 class RelayState:
     session_id: str
@@ -211,12 +222,11 @@ class RelayState:
         if not bucket:
             return None
         values = sorted(bucket)
-        p95_index = min(len(values) - 1, int(round(0.95 * (len(values) - 1))))
         return {
             "samples": len(values),
             "last": round(bucket[-1], 2),
             "median": round(statistics.median(values), 2),
-            "p95": round(values[p95_index], 2),
+            "p95": round(p95(values), 2),
         }
 
     def source_dropped(self) -> None:

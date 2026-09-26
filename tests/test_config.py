@@ -43,7 +43,15 @@ class SaveSectionTests(unittest.TestCase):
         self.assertIn("# top comment", text)
         self.assertIn("# how to reach it", text)
         self.assertIn("port = 8000   # keep me", text)
-        self.assertIn('host = "10.0.0.9"   # this Mac', text)   # inline comment survives
+        # The inline comment survives *in its column*: the value got two
+        # characters shorter, so the gap grows by two to hold "# this Mac"
+        # where it was. A file whose comments line up still does afterwards.
+        self.assertIn('host = "10.0.0.9"    # this Mac', text)
+        before = '[relay]\nport = 8000   # keep me'
+        self.assertIn(before, text)                      # untouched key unchanged
+        col = lambda ln: ln.index("#")
+        self.assertEqual(col('host = "10.0.0.9"    # this Mac'),
+                         col('host = "127.0.0.1"   # this Mac'))
         data = self.read()
         self.assertEqual(data["propresenter"],
                          {"host": "10.0.0.9", "port": 2000, "surface": "message"})
@@ -176,3 +184,57 @@ class OverlayKeyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SaverRoundTripTests(unittest.TestCase):
+    """The six named savers are thin wrappers over save_section. One check
+    that each still writes the key it claims to, with the right TOML type,
+    into the right section, without eating the file's comments."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = Path(self.dir.name) / "event.toml"
+        self.path.write_text(
+            "# hand-edited, keep me\n"
+            "[relay]\nport = 8000            # the usual\n\n"
+            "[capture]\ndevice = \"\"              # blank = system default\n\n"
+            "[youtube]\nurl = \"\"\nlang = \"en-US\"\n",
+            encoding="utf-8")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def read(self) -> dict:
+        with self.path.open("rb") as fh:
+            return tomllib.load(fh)
+
+    def test_every_saver_round_trips(self):
+        config.save_youtube_url(self.path, "https://example.test/c", "es")
+        config.save_audio_device(self.path, 'Scarlett 2i2 "Mic #2"')
+        config.save_translate_settings(self.path, "azure", ["es", "zh-Hans"])
+        config.save_tunnel_settings(self.path, "captions.example.test", True)
+        config.save_relay_port(self.path, 8123)
+        config.save_event_settings(self.path, {"state": "live", "title": "Convocation"})
+
+        data = self.read()
+        self.assertEqual(data["youtube"], {"url": "https://example.test/c", "lang": "es"})
+        # A '#' inside the quoted value must not be read as a comment.
+        self.assertEqual(data["capture"]["device"], 'Scarlett 2i2 "Mic #2"')
+        self.assertEqual(data["translate"]["provider"], "azure")
+        self.assertEqual(data["languages"]["offer"], ["es", "zh-Hans"])
+        self.assertEqual(data["relay"]["public_hostname"], "captions.example.test")
+        self.assertIs(data["tunnel"]["start_enabled"], True)      # bool, not "true"
+        self.assertEqual(data["relay"]["port"], 8123)             # int, not "8123"
+        self.assertEqual(data["event"], {"state": "live", "title": "Convocation"})
+
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("# hand-edited, keep me", text)
+        self.assertIn("# the usual", text)                        # inline comment kept
+        self.assertIn("# blank = system default", text)
+
+    def test_event_fields_stay_strings(self):
+        """[event] is all text. A bool slipping through would be written as a
+        TOML boolean and read back as one, which the welcome screen renders
+        as the word True."""
+        config.save_event_settings(self.path, {"title": "True"})
+        self.assertEqual(self.read()["event"]["title"], "True")

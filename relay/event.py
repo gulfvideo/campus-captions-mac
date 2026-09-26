@@ -141,8 +141,8 @@ class EventState:
             message=cfg.event_message,
             notice=cfg.event_notice,
             pause_message=cfg.event_pause_message,
-            logo_alt=getattr(cfg, "event_logo_alt", ""),
-            disclaimer=getattr(cfg, "event_disclaimer", ""),
+            logo_alt=cfg.event_logo_alt,
+            disclaimer=cfg.event_disclaimer,
             image_dir=image_dir,
         )
 

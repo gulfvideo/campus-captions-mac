@@ -60,6 +60,9 @@ import urllib.parse
 import urllib.request
 from collections import deque
 
+from .state import p95
+from .transcript import split_for_display, wrap_lines
+
 SURFACES = ("stage_message", "message")
 DEFAULT_PORT = 1025
 REQUEST_TIMEOUT = 2.0
@@ -89,46 +92,11 @@ PAGE_HOLD_MAX = 2.0
 PAGE_HOLD_PER_CHAR = 0.04
 
 
-def wrap(text: str, width: int) -> list[str]:
-    """Break `text` into lines of at most `width`, on word boundaries. A
-    single token longer than a whole line is cut - it is a URL or a mash of
-    two words, and losing the rest of the sentence to it is worse."""
-    lines: list[str] = []
-    current = ""
-    for word in " ".join(str(text).split()).split(" "):
-        if not word:
-            continue
-        while len(word) > width:
-            if current:
-                lines.append(current)
-                current = ""
-            lines.append(word[:width])
-            word = word[width:]
-        if not current:
-            current = word
-        elif len(current) + 1 + len(word) <= width:
-            current += " " + word
-        else:
-            lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
-
-
-def paginate(text: str, width: int, lines: int) -> list[str]:
-    """A final, cut into pages of at most `lines` lines. Nothing is dropped:
-    a long sentence becomes several pages, delivered in order."""
-    wrapped = wrap(text, width)
-    if not wrapped:
-        return []
-    return ["\n".join(wrapped[i:i + lines]) for i in range(0, len(wrapped), lines)]
-
-
 def tail_lines(text: str, width: int, lines: int) -> str:
     """An interim, cut to its last `lines` lines. Interims are replaced, not
-    paged - the words just spoken are the ones worth showing."""
-    wrapped = wrap(text, width)
+    paged - the words just spoken are the ones worth showing, which is the
+    one thing split_for_display does not do."""
+    wrapped = wrap_lines(text, width)
     return "\n".join(wrapped[-lines:]) if wrapped else ""
 
 
@@ -468,7 +436,7 @@ class ProPresenterOutput:
             # Finals first, in order; then whatever interim is newest.
             while not self._finals.empty():
                 text = self._finals.get_nowait()
-                pages = paginate(text, self.chars_per_line, self.lines)
+                pages = split_for_display(text, self.chars_per_line, self.lines)
                 for index, page in enumerate(pages):
                     await self._deliver(page)
                     # Hold each page long enough to be read before the next
@@ -546,10 +514,9 @@ class ProPresenterOutput:
         if not self._latencies:
             return None
         values = sorted(self._latencies)
-        p95 = values[min(len(values) - 1, int(round(0.95 * (len(values) - 1))))]
         return {"samples": len(values),
                 "median_ms": round(statistics.median(values) * 1000),
-                "p95_ms": round(p95 * 1000),
+                "p95_ms": round(p95(values) * 1000),
                 "last_ms": round(self._latencies[-1] * 1000)}
 
     def status(self) -> dict:

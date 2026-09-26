@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fake_propresenter import FakeProPresenter  # noqa: E402
-from relay import propresenter  # noqa: E402
+from relay import propresenter, transcript  # noqa: E402
 from relay.propresenter import ProPresenterOutput  # noqa: E402
 
 
@@ -223,14 +223,14 @@ class ShapingTests(unittest.TestCase):
     """Wrapping and paging are pure functions - test them without a socket."""
 
     def test_wrap_breaks_on_word_boundaries_and_never_exceeds_width(self):
-        lines = propresenter.wrap(
+        lines = transcript.wrap_lines(
             "the dean of students will speak about the semester schedule", 20)
         self.assertTrue(all(len(line) <= 20 for line in lines), lines)
         self.assertEqual(" ".join(lines),
                          "the dean of students will speak about the semester schedule")
 
     def test_a_token_longer_than_a_line_is_cut_not_dropped(self):
-        lines = propresenter.wrap("see " + "x" * 25 + " now", 10)
+        lines = transcript.wrap_lines("see " + "x" * 25 + " now", 10)
         self.assertTrue(all(len(line) <= 10 for line in lines), lines)
         self.assertIn("now", " ".join(lines))
         self.assertEqual("".join(lines).count("x"), 25)
@@ -239,7 +239,7 @@ class ShapingTests(unittest.TestCase):
         text = ("the campus chapel service continues this morning with a reading "
                 "from the second letter to the church at corinth followed by "
                 "remarks from the dean of students")
-        pages = propresenter.paginate(text, 42, 2)
+        pages = transcript.split_for_display(text, 42, 2)
         self.assertGreater(len(pages), 1)
         for page in pages:
             self.assertLessEqual(len(page.split("\n")), 2, page)
