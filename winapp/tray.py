@@ -1,7 +1,7 @@
 """Notification-area launcher for the packaged Campus Captions on Windows.
 
 The relay and the capture client run on background threads of this process -
-see launcher/embedded.py, which macapp/menubar.py uses in exactly the same
+see launcher/embedded.py, which macapp/engine.py uses in exactly the same
 way. Everything here is the Windows half: the tray icon, its menu, and the
 message boxes.
 
