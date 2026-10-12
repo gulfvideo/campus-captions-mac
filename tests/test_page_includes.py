@@ -86,11 +86,35 @@ class ExpandTests(unittest.TestCase):
         finally:
             secret.unlink()
 
-    def test_only_js_is_includable(self):
+    def test_only_js_and_css_are_includable(self):
         (self.viewer / "event.toml").write_text("secret = 1", encoding="utf-8")
         page = b"<!-- include event.toml -->"
         self.assertIsNone(INCLUDE_RE.search(page))
         self.assertEqual(expand_includes(page, self.viewer)[0], page)
+
+    def test_a_stylesheet_arrives_in_a_style_tag_not_a_script_tag(self):
+        (self.viewer / "theme.css").write_text(":root{--a:1}\n", encoding="utf-8")
+        html, used = expand_includes(b"<head><!-- include theme.css --></head>", self.viewer)
+        self.assertIn(b"<style>", html)
+        self.assertIn(b"</style>", html)
+        self.assertNotIn(b"<script>", html)
+        self.assertIn(b":root{--a:1}", html)
+        self.assertEqual(len(used), 1)
+
+    def test_a_page_may_pull_in_both_a_stylesheet_and_a_script(self):
+        (self.viewer / "theme.css").write_text("body{color:red}\n", encoding="utf-8")
+        html, used = expand_includes(
+            b"<!-- include theme.css -->\n<!-- include shared.js -->", self.viewer)
+        self.assertIn(b"<style>", html)
+        self.assertIn(b"<script>", html)
+        self.assertEqual(len(used), 2)
+
+    def test_a_stylesheet_is_not_hashed_into_the_policy(self):
+        # style-src already allows 'unsafe-inline'; hashing a <style> as if it
+        # were a script would name a hash the browser never computes.
+        (self.viewer / "theme.css").write_text("body{color:red}\n", encoding="utf-8")
+        html, _ = expand_includes(b"<!-- include theme.css -->", self.viewer)
+        self.assertEqual(page_csp(html).split("script-src ")[1].split(";")[0], "'none'")
 
 
 class StalenessTests(unittest.TestCase):
@@ -153,6 +177,15 @@ class CspTests(unittest.TestCase):
 
 class ShippedPagesTests(unittest.TestCase):
     """The pages as they are actually shipped."""
+
+    def test_every_page_shares_one_stylesheet(self):
+        # The whole point of theme.css: seven pages, one definition of what a
+        # card, a pill button and "secondary text" are. A page that stops
+        # including it starts drifting, quietly.
+        for name in ("status.html", "settings.html", "tune.html",
+                     "setup.html"):
+            page = (VIEWER / name).read_text(encoding="utf-8")
+            self.assertIn("include theme.css", page, name)
 
     def test_the_three_operator_pages_include_the_tour(self):
         for name in ("status.html", "settings.html", "tune.html"):

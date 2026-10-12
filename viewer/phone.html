@@ -324,6 +324,89 @@
     padding: 5px 7px; white-space: pre; display: none; pointer-events: none;
   }
   #dbg.on { display: block; }
+
+  /* ---- the chrome, restyled -------------------------------------------
+     Everything below changes how the controls LOOK and nothing about how the
+     captions behave. The caption colour, size and typeface stay exactly as
+     they were, because on this page they are the reader's choice and not the
+     designer's: an audience member with low vision sets them once and the
+     app's taste does not get a vote.
+     The controls themselves use the system face, sit in one floating layer
+     of blurred dark glass, and gain contrast on the way: the old
+     rgba(255,255,255,0.62) label on a 10% white fill was the dimmest text on
+     the page, and it is on the buttons a first-time user has to find. */
+
+  #pause, #settings-btn, #lang, #latest, #settings, #status, #disclaimer {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Figtree",
+                 "Segoe UI", system-ui, sans-serif;
+  }
+
+  #pause, #settings-btn, #lang {
+    background: rgba(44, 44, 46, 0.82);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    font-weight: 600;
+  }
+  #pause[aria-pressed="true"] {
+    background: #FF9F0A; color: #000; border-color: #FF9F0A;
+  }
+  #settings-btn.open {
+    background: rgba(255, 255, 255, 0.18); color: #FFFFFF;
+  }
+
+  #latest {
+    background: #0A84FF; color: #FFFFFF; border: none;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(10, 132, 255, 0.35);
+    height: 44px; padding: 0 20px; line-height: 44px;
+  }
+
+  /* The reading-settings sheet, as a sheet: one dark pane, hairline edge,
+     generous corners. */
+  #settings {
+    background: rgba(28, 28, 30, 0.96);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 22px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    padding: 18px;
+  }
+  #settings label, #settings .lbl, #settings legend {
+    color: #A1A1A6;
+  }
+  #settings select, #settings .size-btn, #settings .font-btn {
+    background: #2C2C2E; color: #F5F5F7;
+    border: none; border-radius: 10px;
+  }
+  #settings .size-btn, #settings .font-btn { font-weight: 600; }
+  #settings .font-btn[aria-checked="true"] {
+    background: #636366; color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  #settings .swatch { border-radius: 50%; border: 2px solid transparent; }
+  #settings .swatch[aria-checked="true"] {
+    border-color: #0A84FF; box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.35);
+  }
+
+  /* Status and disclaimer read as system notices rather than page furniture. */
+  #status, #disclaimer {
+    background: rgba(44, 44, 46, 0.86);
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    color: #F5F5F7;
+  }
+
+  /* A soft floor under the newest line, the way the wall has one. Purely
+     behind the text - it never touches the caption colours above it. */
+  #reading::after {
+    content: ''; position: fixed; left: 0; right: 0; bottom: 0;
+    height: 42vh; pointer-events: none; z-index: 0;
+    background: radial-gradient(90% 100% at 50% 120%, #17171A 0%, rgba(0,0,0,0) 70%);
+  }
+  #scroll, #slide-pane, #event { position: relative; z-index: 1; }
 </style>
 </head>
 <body>

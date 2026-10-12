@@ -4,10 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tune the wall view</title>
+<!-- include theme.css -->
 <style>
+  /* Legacy names this page's rules still use, pointed at the shared
+     palette so there is one place that decides what "panel" looks like. */
   :root {
-    --bg: #14161a; --panel: #1e2127; --edge: #2c313a;
-    --text: #eceff4; --dim: #939bab; --accent: #5aa2f0;
+    --panel: #1C1C1E; --edge: #2C2C2E; --dim: #8E8E93;
   }
   * { box-sizing: border-box; }
   body {
@@ -182,6 +184,80 @@
 
   .note { color: var(--dim); font-size: 12.5px; margin-top: 12px; }
   .note code { color: var(--text); }
+
+  /* ---- restyled to match the rest of the app ---------------------------
+     Appended, not woven in: the layout above this is tuned to fit the
+     sliders and the preview on one screen together, and that is worth more
+     than a tidy diff. What follows changes materials and nothing else. */
+
+  body { max-width: 1240px; margin: 0 auto; padding: 28px 24px 56px; }
+
+  header h1 { font-family: var(--font-display); font-size: 34px;
+    font-weight: 700; letter-spacing: -0.025em; margin: 0; }
+  header .nav a, header .nav button {
+    height: 36px; padding: 0 16px; border-radius: 18px;
+    border: none; background: var(--raised); color: var(--accent);
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font-family: inherit;
+  }
+  header .nav a:hover, header .nav button:hover { background: var(--raised-2); }
+
+  .card {
+    background: var(--card); border: none;
+    border-radius: var(--r-card); padding: 18px;
+  }
+  .card h2 {
+    font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+
+  button {
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    height: 36px; padding: 0 16px; border-radius: 18px;
+    border: none; background: var(--raised); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; white-space: nowrap;
+  }
+  button:hover { background: var(--raised-2); }
+  button.primary { background: var(--accent); color: #fff; border: none; }
+  button.primary:hover { background: var(--accent-hi); }
+
+  /* Copy is the point of the page, so it is the one filled green button on
+     it - and it turns amber the moment a setting moves out from under an
+     address you already took. */
+  button.primary#copy {
+    background: var(--ok); color: #000; height: 40px; padding: 0 22px;
+    border-radius: 20px; font-weight: 700;
+  }
+  button.primary#copy:hover { background: #3BE06A; }
+  button.primary#copy.stale { background: var(--warn); color: #000; }
+  button.primary#copy.stale:hover { background: #FFB340; }
+
+  select, input[type=text] {
+    background: var(--raised); border: 1px solid transparent;
+    border-radius: var(--r-field); color: var(--text);
+    font-family: inherit;
+  }
+  input[type=range] { accent-color: var(--accent); }
+  input[type=color] { border: none; border-radius: 8px; background: var(--raised); }
+
+  .urlbar #url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--raised); border-radius: var(--r-field);
+  }
+  #url-card { background: var(--card); border: none; border-radius: var(--r-card); }
+
+  #stage { border-radius: var(--r-stage); border: 1px solid var(--raised); }
+  #stage.dark { background: radial-gradient(120% 140% at 50% 120%, #1A1A1D 0%, #000 60%); }
+
+  .help-toggle {
+    width: 20px; height: 20px; border-radius: 10px; padding: 0;
+    border: none; background: var(--raised); color: var(--text-3);
+    font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  .help-toggle:hover { background: var(--raised-2); color: var(--text); }
+  .help-toggle.on { background: var(--accent-wash); color: var(--accent-hi); }
 </style>
 </head>
 <body>

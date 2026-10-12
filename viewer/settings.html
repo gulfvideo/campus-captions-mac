@@ -4,243 +4,249 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Campus Captions — Settings</title>
+<!-- include theme.css -->
 <style>
-  :root {
-    --bg: #14161a;
-    --panel: #1e2127;
-    --edge: #2c313a;
-    --text: #eceff4;
-    --dim: #939bab;
-    --ok: #3fbf6f;
-    --warn: #d8a33a;
-    --bad: #d95c5c;
-  }
-  * { box-sizing: border-box; }
+  /* ---- settings ------------------------------------------------------
+     Tabs, because eleven panels behind one scroll is a page nobody finds
+     anything on, and inside each tab the panels are grouped cards in the
+     style of a Settings app: a quiet uppercase heading, one rounded block
+     under it, hairlines between rows. Tokens and primitives are in
+     theme.css; what is here is this page's own vocabulary. */
+
+  /* One column, capped: a settings page is read, and a line of help text
+     stretched across a wide monitor is not. */
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
-    /* Was 900px, which left most of a desktop window empty to the right of
-       the panels while their own contents wrapped. Wide enough for two
-       fields side by side, capped so a very wide monitor does not stretch a
-       line of help text across a foot of glass. */
-    padding: 22px 26px 60px; max-width: 1400px; margin: 0 auto;
+    max-width: 980px; margin: 0 auto;
+    padding: 28px 24px 64px;
+    display: flex; flex-direction: column; gap: 24px;
   }
-  h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
+
   header {
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   }
-  header .meta { color: var(--dim); font-size: 13px; }
-  /* Header links are buttons, not bare text. They sit next to each other in
-     the corner and get pressed as often as anything on the page, so they
-     should look pressable rather than like prose that happens to be blue. */
+  header h1 { margin: 0; font-family: var(--font-display);
+    font-size: 34px; font-weight: 700; letter-spacing: -0.025em; }
+  header .meta { color: var(--text-3); font-size: 13px; }
   header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
   header .nav a, header .nav button {
-    font-family: inherit; cursor: pointer;
+    font-family: inherit; cursor: pointer; white-space: nowrap;
     display: inline-flex; align-items: center; gap: 6px;
+    height: 36px; padding: 0 16px; border-radius: 18px;
     font-size: 14px; font-weight: 600; text-decoration: none;
-    color: var(--text); background: #262b33;
-    border: 1px solid var(--edge); border-radius: 9px;
-    padding: 8px 14px; white-space: nowrap;
+    color: var(--accent); background: var(--raised); border: none;
   }
-  header .nav a:hover, header .nav button:hover { background: #2f353f; border-color: #3a424e; }
-  header .nav a:focus-visible, header .nav button:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  header .nav a:hover, header .nav button:hover { background: var(--raised-2); }
 
-  button {
-    font: inherit; font-weight: 600; font-size: 15px;
-    padding: 13px 21px; border-radius: 10px;
-    border: 1px solid var(--edge); background: #262b33; color: var(--text);
-  }
-  button:hover:not(:disabled) { background: #2f353f; }
-  button:disabled { opacity: .38; }
-  button.go { background: #1f6b3d; border-color: #2b8a51; }
-  button.go:hover:not(:disabled) { background: #248049; }
-  button.stop { background: #7a2f2f; border-color: #9a3d3d; }
-  button.stop:hover:not(:disabled) { background: #8d3737; }
-
-  /* ---- tabs ----------------------------------------------------------
-     Settings grew to eleven panels, all collapsed by default, which made
-     finding one a matter of opening lids until the right thing appeared.
-     Grouped into five tabs instead, and the panels inside a tab are always
-     open: within a group there are few enough that a lid saves nothing and
-     costs a click. */
+  /* ---- tabs -----------------------------------------------------------
+     One contained strip rather than underlines: five destinations that all
+     live at the same level, which is what a segmented control is for. */
   nav.tabs {
-    display: flex; gap: 4px; flex-wrap: wrap;
-    border-bottom: 1px solid var(--edge); margin-bottom: 20px;
+    display: flex; gap: 2px; flex-wrap: wrap;
+    padding: 3px; border-radius: 12px; background: var(--card);
+    margin: 0 0 4px;
   }
   .tab {
-    font: inherit; font-size: 15px; font-weight: 600;
-    background: none; border: none; border-bottom: 2px solid transparent;
-    border-radius: 0; color: var(--dim); cursor: pointer;
-    padding: 11px 16px; margin-bottom: -1px;
+    flex: 1 1 auto;
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    background: none; border: none; border-radius: 9px;
+    color: var(--text-2); cursor: pointer;
+    padding: 9px 14px; white-space: nowrap;
   }
-  .tab:hover { color: var(--text); background: #1c1f25; }
-  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: #7fb2f0; }
-  .tab:focus-visible { outline: 2px solid #7fb2f0; outline-offset: -2px; }
+  .tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+  .tab[aria-selected="true"] {
+    color: #fff; font-weight: 600; background: #636366;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
   .tabpanel[hidden] { display: none; }
+  .tabpanel { display: flex; flex-direction: column; gap: 26px; }
 
   /* ---- panels --------------------------------------------------------- */
-  .panel {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 12px; margin-bottom: 14px; padding: 16px 18px 18px;
-  }
+  .panel { display: flex; flex-direction: column; gap: 8px; }
   .panel-head {
-    display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px;
-    color: var(--dim); font-size: 11.5px; font-weight: 700;
-    letter-spacing: .13em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; margin: 0 0 0 18px;
+    color: var(--text-3); font-size: 13px; font-weight: 500;
+    letter-spacing: 0.02em; text-transform: uppercase;
   }
   .panel-head .badge {
-    font-size: 13.5px; color: var(--dim); font-weight: 400;
-    letter-spacing: 0; text-transform: none; margin-left: auto;
+    margin-left: auto; letter-spacing: 0; text-transform: none;
   }
-  .panel-head .badge.live { color: var(--ok); }
+  .panel-head .badge.live { background: var(--ok-wash); color: var(--ok); }
   .panel-body {
-    display: flex; gap: 11px; flex-wrap: wrap; align-items: end;
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: start;
+    background: var(--card); border-radius: var(--r-list);
+    padding: 18px;
   }
-  .panel-body .row {
-    display: flex; gap: 11px; flex-wrap: wrap; align-items: center;
-    flex: 1 1 100%;
+  .panel-body > .row { flex: 1 1 100%; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  .disclosure-sub {
+    color: var(--text-3); font-size: 13px; line-height: 1.45; flex: 1 1 100%;
   }
+  .hint { color: var(--text-3); font-size: 13px; }
+
+  /* ---- buttons --------------------------------------------------------
+     Pills, like everywhere else in the app. `go` and `stop` keep their
+     meaning - an action that commits, an action that destroys - and gain
+     the colours the rest of the design uses for them. */
+  .panel-body button, .file-label {
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    height: 36px; padding: 0 16px; border-radius: 18px;
+    border: none; background: var(--raised); color: var(--accent);
+    cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; white-space: nowrap;
+  }
+  .panel-body button:hover:not(:disabled), .file-label:hover { background: var(--raised-2); }
+  .panel-body button:disabled { opacity: 0.38; cursor: default; }
+  .panel-body button.go { background: var(--accent); color: #fff; }
+  .panel-body button.go:hover:not(:disabled) { background: var(--accent-hi); }
+  .panel-body button.stop { background: var(--bad-wash); color: var(--bad-soft); }
+  .panel-body button.stop:hover:not(:disabled) { background: rgba(255, 69, 58, 0.26); }
+
+  /* ---- fields ----------------------------------------------------------
+     Order matters in this block and the comment is the reason. A bare input
+     sitting straight in .panel-body - a row flexbox - wants a flex-basis so
+     it shares the row sensibly. The same declaration inside .field, which is
+     a COLUMN flexbox, is a basis along the column: a height. Every labelled
+     box becomes a 340px slab. The two rules have identical specificity, so
+     the only thing deciding it is which comes last: the reset does. */
   .panel-body input[type=text], .panel-body input[type=password],
-  .panel-body input[type=number] {
-    flex: 1 1 340px; min-height: 48px; font: inherit; color: var(--text);
-    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
-    padding: 10px 12px;
-  }
+  .panel-body input[type=number] { flex: 1 1 340px; }
   .panel-body input[type=number] { flex: 0 0 140px; }
-  .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
-  .panel-body select.inline {
-    width: auto; min-width: 200px; flex: 0 1 260px; min-height: 48px;
-    font: inherit; color: var(--text); background: #262b33;
-    border: 1px solid var(--edge); border-radius: 9px;
-    padding: 10px 38px 10px 12px;
-  }
-  .check {
-    display: inline-flex; align-items: center; gap: 8px; color: var(--dim);
-    font-size: 14px; min-height: 48px; white-space: nowrap;
-  }
-  .check input { width: 18px; height: 18px; accent-color: #5aa2f0; }
+  .panel-body select.inline { width: auto; min-width: 200px; flex: 0 1 280px; }
 
-  /* ---- help toggle ----------------------------------------------------
-     Several panels carry a paragraph explaining what they are for. Useful
-     the first time and clutter every time after, and ProPresenter's ran to
-     six lines above the controls it described. A "?" in the panel heading
-     shows and hides it, remembered per panel per browser. */
-  .help-toggle {
-    font: inherit; font-size: 12px; font-weight: 700; line-height: 1;
-    width: 20px; height: 20px; padding: 0; border-radius: 50%;
-    border: 1px solid var(--edge); background: #262b33; color: var(--dim);
-    cursor: pointer; flex: none;
-  }
-  .help-toggle:hover { background: #2f353f; color: var(--text); }
-  .help-toggle.on { background: #2c3a4e; border-color: #3d5a80; color: #cfe0f5; }
-  .help-toggle:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
-
-  /* ---- labelled field ------------------------------------------------
-     A bare row of placeholder-only boxes reads fine to whoever built it and
-     as a guessing game to everyone else, so anything that is not obvious
-     from its own button gets a real label above it. */
-  .field { flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; }
+  .field { flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .field.wide { flex: 1 1 100%; }
   .field > label {
-    font-size: 12.5px; font-weight: 600; color: var(--dim);
-    letter-spacing: .04em;
+    font-size: 13px; font-weight: 500; color: var(--text-2); letter-spacing: 0;
   }
-  .field > .hint { font-size: 13px; color: var(--dim); }
-  /* .panel-body sets `flex: 1 1 340px` on inputs, which is a width in a row
-     flexbox and a HEIGHT in a column one - and .field is a column. Without
-     resetting it here every labelled box became a 340px slab. Matching that
-     rule's specificity exactly and coming later in the sheet is what makes
-     this win. */
+  .field > .hint { font-size: 13px; color: var(--text-3); }
   .field input[type=text], .field input[type=password],
-  .field input[type=number], .field select {
-    width: 100%; flex: 0 0 auto;
+  .field input[type=number], .field select, .field textarea {
+    width: 100%; flex: 0 0 auto; align-self: stretch;
   }
   .field > .row { gap: 8px; }
-  /* A bare <select> in a field stretched to the full column while the number
-     inputs beside it stayed narrow, so one dropdown looked several times the
-     size of everything else. */
-  .field select {
-    min-height: 48px; font: inherit; color: var(--text); background: #262b33;
-    border: 1px solid var(--edge); border-radius: 9px; padding: 10px 34px 10px 12px;
-    max-width: 300px;
-  }
+  .field select { max-width: 320px; }
   .field input[type=number] { max-width: 150px; }
-  .withunit { display: flex; align-items: center; gap: 9px; }
-  .withunit .unit { color: var(--dim); font-size: 13.5px; white-space: nowrap; }
 
-  /* A panel with more than three or four inputs reads as a wall of boxes if
-     they are just flexed into rows, especially when the only clue to what
-     each one is was its placeholder - which the browser truncates. Real
-     labels, two across where there is room. */
+  /* And the same trap one level further in: a .fieldgrid cell is a grid
+     item, and a select with no explicit height stretches to its row. */
+  .fieldgrid select, .fieldgrid input, .fieldgrid textarea { height: auto; }
+
+  .withunit { display: flex; align-items: center; gap: 9px; }
+  .withunit .unit { color: var(--text-3); font-size: 13px; white-space: nowrap; }
+
   .fieldgrid {
-    display: grid; gap: 14px 18px; flex: 1 1 100%;
-    /* Two explicit columns, not auto-fit: on a wide window auto-fit made
-       four, and a row holding two fields left half the panel empty. */
+    display: grid; gap: 16px 20px; flex: 1 1 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* Without this each cell stretches to the tallest in its row, and
-       because .field is a column flexbox the input inside stretches with it
-       - which turned every text box into a several-hundred-pixel slab. */
+    /* Without this each cell stretches to the tallest in its row, and because
+       .field is a column flexbox the input inside stretches with it. */
     align-items: start;
   }
   .fieldgrid .field.wide { grid-column: 1 / -1; }
   @media (max-width: 760px) { .fieldgrid { grid-template-columns: 1fr; } }
+
   .subhead {
-    flex: 1 1 100%; margin: 6px 0 -4px;
-    font-size: 12px; font-weight: 700; letter-spacing: .1em;
-    text-transform: uppercase; color: #7f8899;
+    flex: 1 1 100%; margin: 8px 0 -4px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-3);
   }
   .subhead:first-child { margin-top: 0; }
 
-  /* ---- word list editor ---------------------------------------------- */
+  /* ---- switches and radios --------------------------------------------
+     The checkbox itself is the switch - appearance:none and two pseudo
+     states - so none of the markup has to change to get the control that
+     says "settings" more than any other. Row-reverse puts the label first
+     and the switch after it, which is the reading order on iOS without
+     needing the switch pinned to a far edge it has no relationship with. */
+  .check {
+    display: inline-flex; align-items: center; gap: 12px;
+    flex-direction: row-reverse; justify-content: flex-end;
+    color: var(--text); font-size: 15px; min-height: 44px;
+  }
+  .check input[type=checkbox] {
+    appearance: none; -webkit-appearance: none;
+    position: relative; flex: none; margin: 0; cursor: pointer;
+    width: 51px; height: 31px; border-radius: 16px;
+    background: var(--raised-2); border: none;
+    transition: background 180ms ease;
+  }
+  .check input[type=checkbox]::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 27px; height: 27px; border-radius: 14px; background: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 180ms ease;
+  }
+  .check input[type=checkbox]:checked { background: var(--ok); }
+  .check input[type=checkbox]:checked::after { transform: translateX(20px); }
+  .check input[type=checkbox]:disabled { opacity: 0.45; cursor: default; }
+
+  /* A radio is a choice among several, not a thing you switch on, so it
+     stays a radio - just a better-looking one. */
+  .check input[type=radio] {
+    appearance: none; -webkit-appearance: none;
+    position: relative; flex: none; margin: 0; cursor: pointer;
+    width: 22px; height: 22px; border-radius: 11px;
+    border: 1.5px solid var(--raised-2); background: transparent;
+  }
+  .check input[type=radio]:checked { border-color: var(--accent); background: var(--accent); }
+  .check input[type=radio]:checked::after {
+    content: ''; position: absolute; top: 6px; left: 6px;
+    width: 8px; height: 8px; border-radius: 4px; background: #fff;
+  }
+  .check:has(input[type=radio]) { flex-direction: row; gap: 10px; }
+
+  /* ---- help toggle ----------------------------------------------------- */
+  .help-toggle {
+    font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1;
+    width: 20px; height: 20px; padding: 0; border-radius: 10px;
+    border: none; background: var(--raised); color: var(--text-3);
+    cursor: pointer; flex: none;
+  }
+  .help-toggle:hover { background: var(--raised-2); color: var(--text); }
+  .help-toggle.on { background: var(--accent-wash); color: var(--accent-hi); }
+
+  /* ---- word list editor ------------------------------------------------ */
   .termadd { align-items: center; }
   .termadd input[type=text] { flex: 1 1 260px; }
-  .termlist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 12px; }
+  .termlist { flex: 1 1 100%; display: flex; flex-direction: column; gap: 14px; }
   .termgroup-name {
-    font-size: 11.5px; font-weight: 700; letter-spacing: .1em;
-    text-transform: uppercase; color: #7f8899; margin-bottom: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-3); margin-bottom: 8px;
   }
-  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
-    display: inline-flex; align-items: center; gap: 7px;
-    background: #262b33; border: 1px solid var(--edge); border-radius: 999px;
-    padding: 5px 6px 5px 13px; font-size: 14px;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--raised); border: none; border-radius: 999px;
+    padding: 6px 6px 6px 14px; font-size: 14px;
   }
   .chip-x {
-    font: inherit; font-size: 15px; line-height: 1; color: var(--dim);
-    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    font-family: inherit; font-size: 15px; line-height: 1; color: var(--text-3);
+    background: none; border: 0; border-radius: 11px; cursor: pointer;
     width: 22px; height: 22px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  .chip-x:hover { background: #7a2f2f; color: #fff; }
+  .chip-x:hover { background: var(--bad); color: #fff; }
 
-  /* Output key rows */
-  .key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0;
-    border-top: 1px solid var(--edge); }
+  /* ---- output key rows -------------------------------------------------- */
+  .key-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 0; border-top: 0.5px solid var(--divider);
+  }
   .key-row:first-child { border-top: 0; }
-  .key-name { font-weight: 600; min-width: 90px; }
-  .key-url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; color: var(--text);
-    word-break: break-all; flex: 1 1 320px; }
-  .key-row button { font-size: 13.5px; padding: 8px 13px; font-weight: 500; }
-
-  .file-label {
-    display: inline-block; font: inherit; font-weight: 600; font-size: 15px;
-    padding: 13px 21px; border-radius: 10px; cursor: pointer;
-    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+  .key-name { font-weight: 500; min-width: 90px; }
+  .key-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; color: var(--text-2);
+    word-break: break-all; flex: 1 1 320px;
   }
-  .file-label:hover { background: #2f353f; }
-  .file-label:focus-within { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  .key-row button { font-size: 13px; }
+
+  .file-label { display: inline-flex; }
+  .file-label:focus-within { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
   .visually-hidden {
     position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip: rect(0 0 0 0); white-space: nowrap;
   }
-
-  #toast {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
-    padding: 11px 19px; border-radius: 9px; font-size: 14px;
-    opacity: 0; transition: opacity 220ms; pointer-events: none;
-  }
-  #toast.on { opacity: 1; }
 </style>
 </head>
 <body>
@@ -274,7 +280,7 @@
   </h2>
   <div class="panel-body" id="event-body">
       <div class="disclosure-sub">
-        Attendees who open the phone view see the welcome screen until you press <b>Start event</b>
+        Attendees who open the phone view see the welcome screen until you press <b>Go Live</b>
         on the status page, and again after <b>End event</b>. The words sit on a dark panel over
         the image, so any photo keeps them readable. The logo sits in a slim row above the captions
         while they are live. The disclaimer appears once per device the first time someone opens
