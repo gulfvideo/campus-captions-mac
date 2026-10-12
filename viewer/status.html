@@ -4,474 +4,412 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Captions status</title>
+<!-- include theme.css -->
 <style>
-  :root {
-    --bg: #14161a;
-    --panel: #1e2127;
-    --edge: #2c313a;
-    --text: #eceff4;
-    --dim: #939bab;
-    --ok: #3fbf6f;
-    --warn: #d8a33a;
-    --bad: #d95c5c;
-    --idle: #5a6270;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
-    padding: 22px 26px 40px; max-width: 1600px; margin: 0 auto;
-  }
-  h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: .01em; }
-  header {
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-    margin-bottom: 20px;
-  }
-  header .meta { color: var(--dim); font-size: 13px; }
-  /* Header links are buttons, not bare text. They sit next to each other in
-     the corner and get pressed as often as anything on the page, so they
-     should look pressable rather than like prose that happens to be blue. */
-  header .nav { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  header .nav a, header .nav button {
-    font-family: inherit; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 14px; font-weight: 600; text-decoration: none;
-    color: var(--text); background: #262b33;
-    border: 1px solid var(--edge); border-radius: 9px;
-    padding: 8px 14px; white-space: nowrap;
-  }
-  header .nav a:hover, header .nav button:hover { background: #2f353f; border-color: #3a424e; }
-  header .nav a:focus-visible, header .nav button:focus-visible { outline: 2px solid #7fb2f0; outline-offset: 2px; }
+  /* ---- console-specific layout ---------------------------------------
+     Everything generic - cards, pills, lists, switches, the stage - lives in
+     theme.css. What is here is the shape of this page only. */
 
-  /* ---- two columns ----------------------------------------------------
-     Every block used to run the full width of the window, so a desktop
-     showed four tiles and then a column of half-empty rows, and the things
-     an operator actually watches during an event were below the fold.
-     Left is what gets looked at and pressed while the service runs; right
-     is what gets set once before it. Below 1100px it stacks, which is what
-     a booth laptop in portrait or a narrow window gets. */
-  .columns {
-    display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: 18px; align-items: start;
-  }
-  @media (max-width: 1100px) { .columns { grid-template-columns: 1fr; } }
-  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-  /* The blocks inside a column already carry their own margins from when
-     they were stacked full-width; the gap does that job now. */
-  .col > * { margin: 0 !important; }
+  .main { max-width: 1120px; }
 
-  /* The capture client's own error, if any - e.g. a backend whose optional
-     dependency isn't installed. This used to be a clause tacked onto the
-     small meta line up top, easy to miss entirely; a backend that silently
-     never opens deserves something you can't scroll past. */
   #error-banner {
-    display: none; align-items: center; gap: 10px; margin-bottom: 18px;
-    background: #3a2620; border: 1px solid var(--bad); border-radius: 10px;
-    padding: 12px 16px; color: var(--text); font-size: 14.5px;
+    display: none; align-items: center; gap: 10px;
+    padding: 12px 16px; border-radius: var(--r-card);
+    background: var(--bad-wash); color: var(--bad-soft);
+    font-size: 14px; font-weight: 500;
   }
   #error-banner.on { display: flex; }
   #error-banner .dot {
-    width: 9px; height: 9px; border-radius: 50%; background: var(--bad);
-    flex: none;
+    width: 8px; height: 8px; border-radius: 4px;
+    background: currentColor; flex-shrink: 0;
   }
 
-  /* The stream bar. Open or closed is the one thing on this page that must
-     never be misread - a stream left open after an event bills for hours,
-     and one never opened means no captions at all - so it is the widest,
-     loudest block, at the top, above everything else. */
-  .stream-bar {
-    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-    border-radius: 12px; padding: 16px 20px;
-    border: 1px solid var(--edge); background: var(--panel);
-    transition: background 200ms, border-color 200ms;
-  }
-  .stream-bar.live {
-    background: #14301f; border-color: #2b8a51;
-  }
-  .stream-bar .stream-read { flex: 1 1 260px; min-width: 0; }
-  .stream-bar .stream-headline {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 22px; font-weight: 650; line-height: 1.2;
-  }
-  .stream-bar.live .stream-headline { color: #7ee2a8; }
-  .stream-bar .stream-sub { color: var(--dim); font-size: 13.5px; margin-top: 4px; }
-  .stream-bar .stream-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-  .stream-bar .dot { width: 12px; height: 12px; }
-  /* A labelled block for the hand-caption box. The input used to sit in a
-     row beside one button with the other wrapping underneath, which read as
-     "this box belongs to Send as note" - it belongs to both. */
-  .field-block { flex: 1 1 100%; display: flex; flex-direction: column; gap: 7px; }
-  .field-block > label {
-    font-size: 12.5px; font-weight: 600; color: var(--dim); letter-spacing: .04em;
-  }
-  .field-block > input { width: 100%; }
-  .field-block code {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    background: #262b33; border-radius: 4px; padding: 0 4px;
-  }
-  .stream-bar.live .dot { background: var(--ok); }
-  button.big { font-size: 16px; padding: 14px 22px; }
+  .page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+  .page-head .headings { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
-  .grid {
-    /* Two by two, not auto-fit. Inside the left column auto-fit put three
-       tiles on one row and left the fourth alone beside a hole; a fixed
-       pair keeps the four reading as one block whatever the window does. */
-    display: grid; gap: 14px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* ---- the ready screen ----------------------------------------------
+     Two columns: what has to be true on the left, what it will look like
+     and the one button that starts it on the right. */
+  .ready-cols {
+    display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start;
   }
-  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
-  .card {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 12px; padding: 17px 19px 19px;
+  .ready-main { flex: 999 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+  .ready-side { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+  .check-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 16px 18px;
+    border-bottom: 0.5px solid var(--divider);
   }
-  .card h2 {
-    font-size: 11.5px; font-weight: 700; letter-spacing: .13em;
-    text-transform: uppercase; color: var(--dim); margin: 0 0 12px;
+  .check-row:last-child { border-bottom: none; }
+  .check-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .check-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .check-line .name { font-size: 16px; font-weight: 500; }
+  .check-line .said { font-size: 15px; color: var(--text-2); margin-left: auto; text-align: right; }
+  .check-row select { max-width: 320px; }
+
+  .ready-stage { aspect-ratio: 16 / 10; display: flex; }
+  .ready-stage .stage-body { flex-grow: 1; padding: 22px; }
+  .ready-stage p {
+    margin: 0; font-size: 19px; font-weight: 600;
+    line-height: 1.35; letter-spacing: -0.01em;
   }
-  .big {
-    font-size: 24px; font-weight: 650; line-height: 1.2;
-    /* Wrapping is fine now the tiles are grid cells - a row is as tall as
-       its tallest member either way. Clipping "Stream closed" to
-       "Stream clos..." to avoid that was the wrong trade. */
+
+  /* ---- the live screen ------------------------------------------------ */
+  /* The artboard's letterbox, but never more of a short window than the
+     controls underneath can afford - a 13" laptop is 700px of usable height
+     and the Pause button has to be on screen. */
+  /* Letterboxed like the wall it previews, but capped: two lines of caption
+     floating in half a screen of black reads as a bug, and on a 13" laptop
+     the Pause button underneath has to stay above the fold. */
+  #live-stage .stage-body { aspect-ratio: 21 / 8; max-height: 260px; min-height: 150px; }
+  #live-stage { box-shadow: var(--shadow-stage); background: #000; }
+
+  .quick-captions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .quick-captions button {
+    height: 34px; padding: 0 14px; border-radius: 17px;
+    border: none; background: var(--raised); color: var(--text);
+    font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+  }
+  .quick-captions button:hover { background: var(--raised-2); }
+
+  /* ---- panes ---------------------------------------------------------- */
+  .pane { display: flex; flex-direction: column; gap: 26px; }
+  .pane[hidden] { display: none; }
+
+  .linkrow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    padding: 16px 18px; border-radius: var(--r-card); background: var(--card);
+  }
+  .linkrow .what { flex: 1 1 220px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .linkrow .what b { font-size: 16px; font-weight: 500; }
+  .linkrow .what code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px; color: var(--text-2); overflow-wrap: anywhere;
+  }
+
+  /* ---- preflight ------------------------------------------------------ */
+  #preflight-list { display: flex; flex-direction: column; gap: 2px; }
+  .pf {
+    display: grid; grid-template-columns: 24px 1fr; gap: 4px 12px;
+    padding: 12px 0; border-bottom: 0.5px solid var(--divider);
+  }
+  .pf:last-child { border-bottom: none; }
+  .pf-mark {
+    grid-row: span 3; width: 22px; height: 22px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #000; background: var(--idle);
+  }
+  .pf.ok .pf-mark { background: var(--ok); }
+  .pf.warn .pf-mark { background: var(--warn); }
+  .pf.fail .pf-mark { background: var(--bad); color: #fff; }
+  .pf-title { font-size: 15px; font-weight: 500; }
+  .pf-detail { font-size: 14px; color: var(--text-2); }
+  .pf-action { font-size: 14px; color: var(--accent); }
+  #preflight-verdict { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+
+  /* ---- transcript downloads ------------------------------------------- */
+  .dl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .dl-row .lang { font-size: 14px; color: var(--text-2); min-width: 70px; }
+  .dl-row a {
+    height: 30px; padding: 0 12px; border-radius: 15px;
+    background: var(--raised); color: var(--accent);
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center;
+  }
+  .dl-row a:hover { background: var(--raised-2); }
+
+  #last-line {
+    font-size: 15px; color: var(--text-2);
     overflow-wrap: anywhere;
   }
-  @media (max-width: 1400px) { .big { font-size: 22px; } }
-  .sub { color: var(--dim); font-size: 13.5px; margin-top: 7px; min-height: 1.4em; }
-
-  .dot {
-    display: inline-block; width: 13px; height: 13px; border-radius: 50%;
-    background: var(--idle); margin-right: 10px; vertical-align: baseline;
-  }
-  .ok .dot { background: var(--ok); }
-  .warn .dot { background: var(--warn); }
-  .bad .dot { background: var(--bad); }
-  .ok .big { color: var(--ok); }
-  .warn .big { color: var(--warn); }
-  .bad .big { color: var(--bad); }
-
-  /* input level */
-  .meter {
-    height: 15px; background: #0e1013; border-radius: 8px;
-    overflow: hidden; margin-top: 15px; position: relative;
-  }
-  .meter i {
-    display: block; height: 100%; width: 0%;
-    background: linear-gradient(90deg, var(--ok), #86cf5a 72%, var(--warn) 88%, var(--bad));
-    transition: width 120ms linear;
-  }
-  .meter b {
-    position: absolute; top: 0; bottom: 0; width: 2px;
-    background: rgba(255,255,255,.55); left: 0;
-    transition: left 260ms ease-out;
-  }
-  .scale {
-    display: flex; justify-content: space-between;
-    font-size: 11px; color: var(--dim); margin-top: 5px;
-  }
-
-  .device-control {
-    display: flex; align-items: end; gap: 11px; flex-wrap: wrap;
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;
-  }
-  .device-control label { flex: 1 1 420px; }
-  .device-control label span {
-    display: block; color: var(--dim); font-size: 11.5px; font-weight: 700;
-    letter-spacing: .13em; text-transform: uppercase; margin-bottom: 7px;
-  }
-  .device-control .badge { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--dim); }
-  .device-control .badge.live { color: var(--ok); }
-  select {
-    width: 100%; min-height: 48px; font: inherit; color: var(--text);
-    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
-    padding: 10px 38px 10px 12px;
-  }
-  select:disabled { opacity: .45; }
-  .controls { display: flex; gap: 11px; flex-wrap: wrap; margin-bottom: 18px; }
-  button {
-    font: inherit; font-weight: 600; font-size: 15px;
-    padding: 13px 21px; border-radius: 10px;
-    border: 1px solid var(--edge); background: #262b33; color: var(--text);
-  }
-  button:hover:not(:disabled) { background: #2f353f; }
-  button:disabled { opacity: .38; }
-  button.go { background: #1f6b3d; border-color: #2b8a51; }
-  button.go:hover:not(:disabled) { background: #248049; }
-  button.stop { background: #7a2f2f; border-color: #9a3d3d; }
-  button.stop:hover:not(:disabled) { background: #8d3737; }
-
-  /* Disclosure sections - collapsed state is remembered per-section in
-     localStorage, so a booth operator who tucks these away doesn't have to
-     redo it on every page load. */
-  .disclosure-panel {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 12px; margin-bottom: 14px; overflow: hidden;
-  }
-  button.disclosure-header {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    background: none; border: none; border-radius: 0; color: var(--text);
-    font: inherit; text-align: left; padding: 14px 16px; cursor: pointer;
-  }
-  button.disclosure-header:hover { background: #262b33; }
-  .disclosure-header .chevron {
-    display: inline-block; transition: transform 160ms ease;
-    color: var(--dim); font-size: 12px; width: 1em; flex: none;
-  }
-  .disclosure-header[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
-  .disclosure-header .title {
-    color: var(--dim); font-size: 11.5px; font-weight: 700;
-    letter-spacing: .13em; text-transform: uppercase; flex: 1;
-  }
-  .disclosure-header .badge { font-size: 13.5px; color: var(--dim); font-weight: 400; letter-spacing: 0; text-transform: none; }
-  .disclosure-header .badge.live { color: var(--ok); }
-  .disclosure-body-wrap {
-    display: grid; grid-template-rows: 1fr;
-    transition: grid-template-rows 200ms ease;
-  }
-  .disclosure-header[aria-expanded="false"] + .disclosure-body-wrap { grid-template-rows: 0fr; }
-  .disclosure-body-wrap > div { overflow: hidden; min-height: 0; }
-  .disclosure-body {
-    display: flex; gap: 11px; flex-wrap: wrap; align-items: end;
-    padding: 0 16px 16px;
-  }
-  .disclosure-body .row { display: flex; gap: 11px; flex-wrap: wrap; align-items: center; flex: 1 1 100%; }
-  .disclosure-body input[type=text], .disclosure-body input[type=password] {
-    flex: 1 1 340px; min-height: 48px; font: inherit; color: var(--text);
-    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
-    padding: 10px 12px;
-  }
-  .disclosure-sub { color: var(--dim); font-size: 14px; flex: 1 1 100%; }
-
-  /* Preflight report: one row per finding, a verdict on top. */
-  .preflight-verdict {
-    flex: 1 1 100%; font-size: 16px; font-weight: 600; padding: 12px 14px;
-    border-radius: 9px; background: #262b33; border: 1px solid var(--edge);
-  }
-  .preflight-verdict.ready { border-color: var(--ok); color: var(--ok); }
-  .preflight-verdict.warnings { border-color: var(--warn); color: var(--warn); }
-  .preflight-verdict.not_ready { border-color: var(--bad); color: var(--bad); }
-  .preflight-list { flex: 1 1 100%; display: grid; gap: 6px; }
-  .pf-row {
-    display: grid; grid-template-columns: 26px 1fr; gap: 4px 10px; padding: 9px 12px;
-    background: #1a1d23; border: 1px solid var(--edge); border-radius: 8px; font-size: 14px;
-  }
-  .pf-mark { font-weight: 700; text-align: center; line-height: 1.4; }
-  .pf-row.ok .pf-mark { color: var(--ok); }
-  .pf-row.warn .pf-mark { color: var(--warn); }
-  .pf-row.fail .pf-mark { color: var(--bad); }
-  .pf-row.skip .pf-mark { color: var(--dim); }
-  .pf-title { font-weight: 600; }
-  .pf-detail { grid-column: 2; color: var(--text); }
-  .pf-action { grid-column: 2; color: var(--dim); }
-  .pf-row.skip .pf-title, .pf-row.skip .pf-detail { color: var(--dim); }
-  /* Transcript downloads: one row per recorded language, a link per format. */
-  .export-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-top: 8px; font-size: 14px; }
-  .export-lang { color: var(--text); font-variant-numeric: tabular-nums; margin-right: 6px; }
-  .export-link { color: #7fb2f0; text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  .export-link:hover, .export-link:focus-visible { text-decoration: underline; }
-  .disclosure-header .badge.paused { color: var(--warn); }
-
-  #caption-row input[type=text] {
-    flex: 1 1 260px; min-height: 48px; font: inherit; color: var(--text);
-    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
-    padding: 10px 12px;
-  }
-
-  .links { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
-  .link {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 10px; padding: 13px 16px;
-  }
-  .link span { display: block; font-size: 11.5px; color: var(--dim);
-    text-transform: uppercase; letter-spacing: .11em; margin-bottom: 5px; }
-  .link code { font-size: 17px; color: var(--text); word-break: break-all; }
-
-  .last {
-    margin-top: 16px; background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 10px; padding: 13px 16px; color: var(--dim); font-size: 14px;
-  }
-  .last b { color: var(--text); font-weight: 500; }
-  #toast {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
-    padding: 11px 19px; border-radius: 9px; font-size: 14px;
-    opacity: 0; transition: opacity 220ms; pointer-events: none;
-  }
-  #toast.on { opacity: 1; }
+  #last-line b { color: var(--text); font-weight: 500; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Campus Captions</h1>
-  <div class="meta" id="meta">connecting to relay&hellip;</div>
-  <nav class="nav">
-    <button type="button" data-tour-start>Take the tour</button>
-    <a href="/tune">Tune the wall</a>
-    <a href="/settings">Settings &rarr;</a>
-  </nav>
-</header>
+
+<div class="app">
+<aside class="sidebar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"></rect><line x1="7" y1="11" x2="13" y2="11"></line><line x1="7" y1="15" x2="17" y2="15"></line></svg></span>
+    <span>Campus Captions</span>
+  </div>
+
+  <button type="button" class="nav-link on" id="nav-console" data-pane="console">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 18.4a9 9 0 0 0 0-12.8"></path></svg>Console</button>
+  <button type="button" class="nav-link" id="nav-transcript" data-pane="transcript">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>Transcript</button>
+  <button type="button" class="nav-link" id="nav-screens" data-pane="screens">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"></rect><rect x="17" y="9" width="5" height="11" rx="1.5"></rect><line x1="6" y1="18" x2="12" y2="18"></line></svg>Screens</button>
+  <a class="nav-link" id="nav-settings" href="/settings">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>Settings</a>
+  <button type="button" class="nav-link" data-tour-start>
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9.3a2.5 2.5 0 1 1 3.3 2.9c-.6.2-.9.8-.9 1.4v.4"></path><line x1="12" y1="17" x2="12" y2="17.01"></line></svg>Take the tour</button>
+
+  <div class="sidebar-foot">
+    <span>Event</span>
+    <b id="event-state-label">&mdash;</b>
+    <span id="meta">connecting to relay&hellip;</span>
+  </div>
+</aside>
+
+<main class="main">
 
 <div id="error-banner"><span class="dot"></span><span id="error-banner-text"></span></div>
 
-<div class="columns">
-<div class="col" id="col-main">
+<!-- ======================= CONSOLE ======================= -->
+<div class="pane" id="pane-console">
 
-<div id="stream-bar" class="stream-bar idle">
-  <div class="stream-read">
-    <div class="stream-headline"><span class="dot"></span><span id="stream-state">&mdash;</span></div>
-    <div class="stream-sub" id="stream-sub">&nbsp;</div>
-  </div>
-  <div class="stream-actions">
-    <button id="btn-open" class="go big">Open ASR stream</button>
-    <button id="btn-close" class="stop big">Close ASR stream</button>
-    <button id="btn-clear">Clear captions</button>
-  </div>
-</div>
-
-<div class="grid">
-  <div class="card" id="c-audio">
-    <h2>Audio input</h2>
-    <div class="big"><span class="dot"></span><span id="audio-state">&mdash;</span></div>
-    <div class="sub" id="audio-sub">&nbsp;</div>
-    <div class="meter"><i id="meter-fill"></i><b id="meter-peak"></b></div>
-    <div class="scale"><span>silent</span><span>good</span><span>hot</span></div>
-  </div>
-
-  <div class="card" id="c-asr">
-    <h2>Captions</h2>
-    <div class="big"><span class="dot"></span><span id="asr-state">&mdash;</span></div>
-    <div class="sub" id="asr-sub">&nbsp;</div>
-  </div>
-
-  <div class="card" id="c-viewers">
-    <h2>Viewers</h2>
-    <div class="big"><span class="dot"></span><span id="viewers-count">&mdash;</span></div>
-    <div class="sub" id="viewers-sub">&nbsp;</div>
-  </div>
-</div>
-
-<div class="device-control">
-  <label style="flex:1 1 100%;margin-bottom:-4px">
-    <span>Event <span class="badge" id="event-state-label">&mdash;</span></span>
-  </label>
-  <button id="btn-event-start" class="go" type="button">Start event</button>
-  <button id="btn-event-pause" type="button">Pause</button>
-  <button id="btn-event-resume" class="go" type="button">Resume</button>
-  <button id="btn-event-end" class="stop" type="button">End event</button>
-  <span class="sub" id="event-sub" style="flex:1 1 100%;margin:2px 0 0">&mdash;</span>
-</div>
-
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="recording-toggle" aria-expanded="false" aria-controls="recording-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Recording &amp; transcript</span>
-    <span class="badge" id="transcript-badge">&mdash;</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="recording-body">
-      <div class="row">
-        <button id="btn-mark-start" type="button">Mark video start</button>
-        <button id="btn-reset-transcript" class="stop" type="button">Reset transcript</button>
+  <!-- ---------- ready: nothing is running yet ---------- -->
+  <div id="view-ready" class="ready-cols">
+    <div class="ready-main">
+      <div class="headings">
+        <h1 class="title">Ready when you are</h1>
+        <span class="subtitle" id="ready-sub">Not live yet</span>
       </div>
-      <div class="disclosure-sub" id="transcript-sub">&mdash;</div>
-      <div class="row" id="srt-links"></div>
+
+      <div class="card card-flush" id="checklist">
+        <div class="check-row">
+          <span class="mark" id="mark-mic" aria-hidden="true"></span>
+          <div class="check-body">
+            <div class="check-line">
+              <span class="name">Microphone</span>
+              <span class="said" id="audio-state">&mdash;</span>
+            </div>
+            <div class="meter" id="mic-meter"><i id="meter-fill"></i></div>
+            <div class="check-line">
+              <label class="sr-only" for="audio-device">Audio input device</label>
+              <select id="audio-device" disabled>
+                <option value="">Waiting for capture client&hellip;</option>
+              </select>
+              <button class="pill" id="btn-refresh-devices" type="button">Refresh</button>
+            </div>
+            <span class="subtitle" id="audio-sub">&nbsp;</span>
+          </div>
+        </div>
+
+        <div class="check-row">
+          <span class="mark" id="mark-asr" aria-hidden="true"></span>
+          <div class="check-body">
+            <div class="check-line">
+              <span class="name">Caption engine</span>
+              <span class="said" id="asr-state">&mdash;</span>
+            </div>
+            <div class="check-line">
+              <label class="sr-only" for="backend-select">Transcription backend</label>
+              <select id="backend-select" disabled>
+                <option value="">Waiting for capture client&hellip;</option>
+              </select>
+            </div>
+            <span class="subtitle" id="asr-sub">&nbsp;</span>
+          </div>
+        </div>
+
+        <div class="check-row">
+          <span class="mark" id="mark-screens" aria-hidden="true"></span>
+          <div class="check-body">
+            <div class="check-line">
+              <span class="name">Screens</span>
+              <span class="said" id="viewers-sub">&mdash;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="linkrow" id="audience-link">
+        <div class="what">
+          <b>Audience link</b>
+          <code id="url-phone">&mdash;</code>
+        </div>
+        <button class="pill" type="button" data-copy="url-phone">Copy</button>
+        <a class="pill" href="/qr" target="_blank" rel="noopener">Show QR</a>
+      </div>
+
+      <div class="group" id="preflight-group">
+        <h2 class="group-head">Preflight</h2>
+        <div class="card">
+          <div class="row">
+            <button class="pill" id="btn-preflight" type="button">Run preflight</button>
+            <span class="badge" id="preflight-badge">Not run yet</span>
+          </div>
+          <div id="preflight-verdict" hidden></div>
+          <div id="preflight-list"></div>
+          <p class="group-note" id="preflight-sub" style="margin-left:0">Checks the audio input,
+            the transcription service, this computer's load, the network, and whether anything is
+            showing the captions. Takes a few seconds and changes nothing.</p>
+        </div>
+      </div>
     </div>
-  </div></div>
-</div>
 
-<div class="last" id="last-line">Last caption: <b>&mdash;</b></div>
+    <div class="ready-side">
+      <div class="stage ready-stage">
+        <div class="stage-body">
+          <p id="ready-preview">Welcome. Live captions will appear here once the event begins.</p>
+        </div>
+      </div>
+      <button class="cta" id="btn-golive" type="button">Go Live</button>
+      <button class="link-btn" id="btn-open" type="button">Start captions without going live</button>
+      <p class="group-note" style="margin:0 6px; text-align:center">Go Live starts the captions and
+        shows them to the audience. Starting captions on their own lets you check levels while
+        attendees still see the welcome screen.</p>
+    </div>
+  </div>
 
-</div>
+  <!-- ---------- live: captions are running ---------- -->
+  <div id="view-live" class="pane" hidden>
+    <div class="page-head">
+      <div class="headings">
+        <h1 class="title" id="live-title">Live</h1>
+        <span class="subtitle" id="event-sub">&mdash;</span>
+      </div>
+      <span class="status-pill ok spacer" id="onair"><span class="dot"></span><span id="onair-text">On air</span></span>
+    </div>
 
-<div class="col" id="col-side">
+    <section class="stage" id="live-stage">
+      <div class="stage-body">
+        <p class="stage-prev" id="stage-prev">&nbsp;</p>
+        <p class="stage-now" id="stage-now">&mdash;</p>
+      </div>
+      <div class="stage-foot">
+        <span>What the room sees</span>
+        <div class="row spacer">
+          <button class="pill tall filled" id="btn-event-start" type="button">Go live to audience</button>
+          <button class="pill tall light" id="btn-event-pause" type="button">Pause</button>
+          <button class="pill tall light" id="btn-event-resume" type="button">Resume</button>
+          <button class="pill tall danger" id="btn-event-end" type="button">End event&hellip;</button>
+          <button class="pill tall" id="btn-close" type="button">Stop captions</button>
+        </div>
+      </div>
+    </section>
 
-<div class="device-control">
-  <label for="backend-select">
-    <span>Transcription backend</span>
-    <select id="backend-select" disabled>
-      <option value="">Waiting for capture client&hellip;</option>
-    </select>
-  </label>
-</div>
+    <div class="tiles">
+      <div class="tile" id="c-audio">
+        <span class="k">Microphone</span>
+        <span class="v" id="audio-state-live">&mdash;</span>
+        <div class="meter" id="mic-meter-live"><i id="meter-fill-live"></i></div>
+      </div>
+      <div class="tile" id="c-asr">
+        <span class="k">Delay</span>
+        <span class="v" id="asr-latency">&mdash;</span>
+        <span class="n" id="asr-sub-live">&mdash;</span>
+      </div>
+      <div class="tile" id="c-viewers">
+        <span class="k">Watching</span>
+        <span class="v" id="viewers-count">&mdash;</span>
+        <span class="n" id="viewers-sub-live">&mdash;</span>
+      </div>
+      <div class="tile" id="c-rec">
+        <span class="k">Recording</span>
+        <span class="v" id="rec-state">&mdash;</span>
+        <span class="n" id="rec-sub">&mdash;</span>
+      </div>
+    </div>
 
-<div class="device-control">
-  <label for="audio-device">
-    <span>Audio input device</span>
-    <select id="audio-device" disabled>
-      <option value="">Waiting for capture client&hellip;</option>
-    </select>
-  </label>
-  <button id="btn-refresh-devices">Refresh devices</button>
-</div>
-
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="caption-toggle" aria-expanded="false" aria-controls="caption-row">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Send a caption by hand</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="caption-row">
-      <div class="disclosure-sub" style="margin-bottom:2px">Puts a line on the wall and the
-        phones yourself, for anything the recognizer cannot hear.</div>
-      <div class="row">
+    <div class="group" id="hand-captions">
+      <h2 class="group-head">Send a caption by hand</h2>
+      <div class="quick-captions" id="caption-row">
         <button type="button" data-caption="[Applause]">[Applause]</button>
         <button type="button" data-caption="[Laughter]">[Laughter]</button>
         <button type="button" data-caption="[Music]">[Music]</button>
         <button type="button" data-caption="[Inaudible]">[Inaudible]</button>
+        <button class="pill" type="button" id="btn-clear">Clear captions</button>
       </div>
-      <div class="field-block">
-        <label for="note-text">Type a line, then choose how to send it</label>
+      <div class="composer" id="composer">
+        <label class="sr-only" for="note-text">Type a caption to put on the screens</label>
         <input id="note-text" type="text" autocomplete="off"
-               placeholder="e.g. Please stand for the reading — or a speaker&rsquo;s name">
-        <div class="row">
-          <button id="btn-note-send" type="button">Send as a caption</button>
-          <button id="btn-speaker-send" type="button">Send as a speaker change</button>
-        </div>
-        <div class="disclosure-sub" style="margin-top:2px">
-          <b>Send as a caption</b> shows the words exactly as typed.
-          <b>Send as a speaker change</b> puts <code>&gt;&gt;</code> in front of a name,
-          the broadcast convention for &ldquo;someone else is talking now&rdquo;.
-        </div>
+               placeholder="Type a message for the screens&hellip;">
+        <button class="pill" id="btn-speaker-send" type="button">Speaker change</button>
+        <button class="send" id="btn-note-send" type="button" aria-label="Send to screens">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        </button>
       </div>
+      <p class="group-note" style="margin-left:4px"><b>Speaker change</b> puts
+        <code>&gt;&gt;</code> in front of a name, which is how a caption wall marks that someone
+        else has started talking.</p>
     </div>
-  </div></div>
+  </div>
 </div>
 
-<div class="disclosure-panel">
-  <button class="disclosure-header" id="preflight-toggle" aria-expanded="true" aria-controls="preflight-body">
-    <span class="chevron">&#9662;</span>
-    <span class="title">Preflight check</span>
-    <span class="badge" id="preflight-badge">Not run yet</span>
-  </button>
-  <div class="disclosure-body-wrap"><div>
-    <div class="disclosure-body" id="preflight-body">
+<!-- ======================= TRANSCRIPT ======================= -->
+<div class="pane" id="pane-transcript" hidden>
+  <div class="headings">
+    <h1 class="title">Transcript</h1>
+    <span class="subtitle" id="transcript-sub">&mdash;</span>
+  </div>
+
+  <div class="group">
+    <h2 class="group-head">Recording</h2>
+    <div class="card">
       <div class="row">
-        <button id="btn-preflight" class="go" type="button">Run preflight</button>
-        <span class="disclosure-sub" id="preflight-sub" style="flex:1 1 300px;margin:0">
-          Checks the audio input, the transcription service, this computer's load, the network to
-          the services in use, and whether anything is showing the captions. Takes a few seconds and
-          changes nothing. Run it with ProPresenter, OBS or the stream already running, the way the
-          service will be.
-        </span>
+        <button class="pill" id="btn-mark-start" type="button">Mark video start</button>
+        <button class="pill danger" id="btn-reset-transcript" type="button">Reset transcript</button>
+        <span class="badge spacer" id="transcript-badge">&mdash;</span>
       </div>
-      <div class="preflight-verdict" id="preflight-verdict" hidden></div>
-      <div class="preflight-list" id="preflight-list"></div>
+      <p class="group-note" style="margin-left:0">If the event is also being filmed, press
+        <b>Mark video start</b> when the camera rolls and the subtitle timings will line up with
+        the video file.</p>
     </div>
-  </div></div>
+  </div>
+
+  <div class="group">
+    <h2 class="group-head">Download</h2>
+    <div class="card" id="srt-links"></div>
+  </div>
+
+  <div class="group">
+    <h2 class="group-head">Last caption</h2>
+    <div class="card"><div id="last-line"><b>&mdash;</b></div></div>
+  </div>
 </div>
 
+<!-- ======================= SCREENS ======================= -->
+<div class="pane" id="pane-screens" hidden>
+  <div class="headings">
+    <h1 class="title">Screens</h1>
+    <span class="subtitle">The addresses to hand out, and how the wall is set up.</span>
+  </div>
 
+  <div class="group">
+    <h2 class="group-head">Addresses</h2>
+    <div class="linkrow">
+      <div class="what">
+        <b>Wall view &mdash; ProPresenter, OBS, a projector</b>
+        <code id="url-wall">&mdash;</code>
+      </div>
+      <button class="pill" type="button" data-copy="url-wall">Copy</button>
+      <a class="pill" href="/wall" target="_blank" rel="noopener">Open</a>
+    </div>
+    <div class="linkrow">
+      <div class="what">
+        <b>Phone view &mdash; the audience</b>
+        <code id="url-phone-2">&mdash;</code>
+      </div>
+      <button class="pill" type="button" data-copy="url-phone-2">Copy</button>
+      <a class="pill" href="/qr" target="_blank" rel="noopener">Show QR</a>
+    </div>
+  </div>
 
-<div class="links" style="margin-top:18px">
-  <div class="link"><span>Wall view &mdash; ProPresenter</span><code id="url-wall">&mdash;</code></div>
-  <div class="link"><span>Phone view &mdash; audience</span><code id="url-phone">&mdash;</code></div>
+  <div class="group">
+    <h2 class="group-head">The wall</h2>
+    <div class="list">
+      <a class="list-row" href="/tune" id="link-tune">
+        <span class="label">Tune the wall view</span>
+        <span class="value">Size, colours, position</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </a>
+      <a class="list-row" href="/settings#outputs">
+        <span class="label">ProPresenter &amp; outputs</span>
+        <span class="value">Settings</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </a>
+    </div>
+  </div>
 </div>
 
-</div>
+</main>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (function () {
@@ -482,12 +420,7 @@
   var signedOut = false;
 
   function $(id) { return document.getElementById(id); }
-  function setCard(id, cls, big, sub) {
-    var card = $(id);
-    card.className = 'card ' + cls;
-    $(big.id).textContent = big.text;
-    $(sub.id).textContent = sub.text;
-  }
+
   function toast(text) {
     var t = $('toast');
     t.textContent = text;
@@ -495,61 +428,66 @@
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { t.className = ''; }, 2600);
   }
+
   function ago(v) {
     if (v === null || v === undefined) return 'never';
     if (v < 1) return 'just now';
     if (v < 60) return Math.round(v) + 's ago';
-    return Math.round(v / 60) + 'm ago';
+    if (v < 3600) return Math.round(v / 60) + 'm ago';
+    return Math.round(v / 3600) + 'h ago';
   }
 
-  // ---- rendering -------------------------------------------------------
-
+  // The states relay/state.py actually emits -> [mark, what to call it].
+  // Worded for someone who has not read the code: "Good" and "Too quiet"
+  // rather than "live" and "silent".
   var AUDIO = {
-    live:      ['ok',   'Receiving'],
-    clipping:  ['warn', 'Clipping'],
+    live:      ['ok',   'Good'],
+    clipping:  ['warn', 'Too loud'],
     silent:    ['warn', 'Silent'],
     stale:     ['bad',  'Capture stalled'],
     no_source: ['bad',  'No capture client']
   };
   var ASR = {
-    producing:    ['ok',   'Producing text'],
-    open_no_text: ['warn', 'Open, no text yet'],
-    closed:       ['idle', 'Stream closed'],
+    producing:    ['ok',   'Making captions'],
+    open_no_text: ['warn', 'Listening, nothing yet'],
+    closed:       ['',     'Not running'],
     no_source:    ['bad',  'No capture client']
   };
-
-  var peakHold = 0, peakAt = 0;
+  var lastFinal = '', prevFinal = '';
   var backendSignature = null, pendingBackend = null, pendingBackendTimer = null;
   var EVENT_LABELS = { starting: 'Starting soon', live: 'Live', paused: 'Paused', ended: 'Ended' };
   var FAULT_TEXT = {
-    no_source: 'no capture client is connected',
-    source_error: 'the capture client reports an error (see the banner above)',
-    audio_stalled: 'audio has stopped arriving from the capture client',
-    stream_closed: 'the ASR stream is closed'
+    no_source: 'the capture client is not connected',
+    stream_closed: 'the recognizer stream is closed',
+    audio_stale: 'no audio is arriving',
+    asr_error: 'the transcription service reported an error'
   };
-  // Shorter than the setup wizard's descriptions (which come from
-  // capture/backends/support.py), because this is a dropdown mid-event, not a
-  // choice being made for the first time - but the same names, so the option
-  // an operator picked in the wizard is recognisable here.
   var BACKEND_LABELS = {
-    apple_speech: 'Apple on-device speech (free)',
-    deepgram: 'Deepgram cloud (costs money)',
-    whisper: 'Whisper on this computer (free)',
-    mock: 'Practice mode (fake captions)'
+    deepgram: 'Deepgram (cloud, billed)',
+    whisper: 'Whisper (this computer)',
+    apple_speech: 'Apple on-device speech',
+    mock: 'Practice mode (no real audio)'
   };
+
+  function setMark(id, cls) {
+    var el = $(id);
+    el.className = 'mark' + (cls ? ' ' + cls : '');
+    el.innerHTML = cls === 'ok'
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+      : (cls ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><line x1="12" y1="7" x2="12" y2="13"></line><line x1="12" y1="17" x2="12" y2="17.01"></line></svg>' : '');
+  }
 
   function renderBackends(source) {
     var select = $('backend-select');
     var backends = Array.isArray(source.available_backends) ? source.available_backends : [];
     var signature = backends.join('|');
-
     if (signature !== backendSignature) {
       backendSignature = signature;
-      select.textContent = '';
+      select.innerHTML = '';
       if (!backends.length) {
         var empty = document.createElement('option');
         empty.value = '';
-        empty.textContent = source.connected ? 'No backends reported' : 'Waiting for capture client…';
+        empty.textContent = source.connected ? 'No backends available' : 'Waiting for capture client…';
         select.appendChild(empty);
       } else {
         backends.forEach(function (name) {
@@ -560,117 +498,107 @@
         });
       }
     }
-
-    select.disabled = !source.connected || !backends.length;
-    if (pendingBackend !== null) {
-      select.value = pendingBackend;
-      if (source.backend === pendingBackend) {
-        pendingBackend = null;
-        clearTimeout(pendingBackendTimer);
+    var chosen = pendingBackend || source.backend;
+    if (chosen && select.value !== chosen) {
+      var found = false;
+      for (var i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === chosen) { found = true; break; }
       }
-    } else if (source.backend) {
-      select.value = source.backend;
+      if (found) select.value = chosen;
     }
+    if (pendingBackend && source.backend === pendingBackend) pendingBackend = null;
+    select.disabled = !source.connected || !backends.length;
   }
 
   function renderDevices(source) {
     var select = $('audio-device');
     var devices = Array.isArray(source.audio_devices) ? source.audio_devices : [];
     var signature = devices.map(function (d) {
-      return [d.index, d.name, d.hostapi, d.default_samplerate, d.is_default].join(':');
+      return d.index + ':' + d.name;
     }).join('|');
-
     if (signature !== deviceSignature) {
       deviceSignature = signature;
-      select.textContent = '';
+      select.innerHTML = '';
       if (!devices.length) {
         var empty = document.createElement('option');
         empty.value = '';
-        empty.textContent = source.connected ? 'No audio inputs found' : 'Waiting for capture client…';
+        empty.textContent = source.connected ? 'No input devices found' : 'Waiting for capture client…';
         select.appendChild(empty);
       } else {
         devices.forEach(function (d) {
           var option = document.createElement('option');
           option.value = String(d.index);
-          option.textContent = d.name + ' — ' + d.hostapi + ' · ' +
-            d.default_samplerate + ' Hz' + (d.is_default ? ' (system default)' : '');
+          option.textContent = d.name;
           select.appendChild(option);
         });
       }
     }
-
+    var want = (pendingDevice === null || pendingDevice === undefined)
+      ? source.device_index : pendingDevice;
+    if (want !== null && want !== undefined && select.value !== String(want)) {
+      select.value = String(want);
+    }
+    if (pendingDevice !== null && source.device_index === pendingDevice) pendingDevice = null;
     select.disabled = !source.connected || !devices.length;
     $('btn-refresh-devices').disabled = !source.connected;
-    if (pendingDevice !== null) {
-      select.value = String(pendingDevice);
-      if (source.device_index === pendingDevice) {
-        pendingDevice = null;
-        clearTimeout(pendingTimer);
-      }
-    } else if (source.device_index !== null && source.device_index !== undefined) {
-      select.value = String(source.device_index);
-    }
   }
 
   function renderRecording(t) {
     t = t || {};
     var badge = $('transcript-badge');
     var lines = t.total || 0;
-    badge.textContent = lines ? lines + ' line' + (lines === 1 ? '' : 's') : 'No lines yet';
-    badge.className = 'badge' + (t.recording ? ' live' : '');
-    $('transcript-sub').textContent = t.zero_set
-      ? 'Video start marked ' + ago(t.zero_age) + ' — timing in the .srt is relative to that point.'
-      : 'Video start not marked yet — mark it right when the recording/stream actually begins, or exported timing will be off.';
+    badge.textContent = lines ? lines + ' lines' : 'No lines yet';
+    badge.className = 'badge spacer' + (lines ? ' ok' : '');
+    $('rec-state').textContent = t.video_start_marked ? 'Synced' : (lines ? 'Recording' : 'Waiting');
+    $('rec-sub').textContent = t.video_start_marked
+      ? 'Video start marked' : (lines ? lines + ' lines kept' : 'Nothing captioned yet');
 
     var langs = Object.keys((t.lines || {}));
     var container = $('srt-links');
-    container.textContent = '';
+    container.innerHTML = '';
     if (!langs.length) {
-      var none = document.createElement('span');
-      none.className = 'disclosure-sub';
-      none.style.margin = '0';
-      none.textContent = 'Nothing recorded yet.';
+      var none = document.createElement('p');
+      none.className = 'subtitle';
+      none.textContent = 'Nothing to download yet — captions appear here as they are made.';
       container.appendChild(none);
-    } else {
-      // One row per recorded language, one link per export format. The
-      // format list mirrors relay/transcript.py's FORMATS. .srt and .vtt
-      // are for a video's caption track, .txt is the readable transcript,
-      // .json and .csv carry the timing as data.
-      var FORMATS = ['srt', 'vtt', 'txt', 'json', 'csv'];
-      langs.forEach(function (lang) {
-        var row = document.createElement('div');
-        row.className = 'export-row';
-        var label = document.createElement('span');
-        label.className = 'export-lang';
-        label.textContent = lang + ' · ' + t.lines[lang] + ' line' + (t.lines[lang] === 1 ? '' : 's');
-        row.appendChild(label);
-        FORMATS.forEach(function (fmt) {
-          var a = document.createElement('a');
-          a.href = '/api/transcript.' + fmt + '?lang=' + encodeURIComponent(lang);
-          a.textContent = '.' + fmt;
-          a.className = 'export-link';
-          a.setAttribute('aria-label', 'Download .' + fmt + ' for ' + lang);
-          row.appendChild(a);
-        });
-        container.appendChild(row);
-      });
+      $('transcript-sub').textContent = 'Nothing captioned yet.';
+      return;
     }
+    $('transcript-sub').textContent = lines + ' lines kept'
+      + (t.video_start_marked ? ' · video start marked' : '');
+    var FORMATS = ['srt', 'vtt', 'txt', 'json', 'csv'];
+    langs.forEach(function (lang) {
+      var row = document.createElement('div');
+      row.className = 'dl-row';
+      var label = document.createElement('span');
+      label.className = 'lang';
+      label.textContent = lang;
+      row.appendChild(label);
+      FORMATS.forEach(function (fmt) {
+        var a = document.createElement('a');
+        a.href = '/api/transcript.' + fmt + '?lang=' + encodeURIComponent(lang);
+        a.textContent = fmt.toUpperCase();
+        row.appendChild(a);
+      });
+      container.appendChild(row);
+    });
   }
 
   function renderEvent(ev, health) {
     ev = ev || {};
-    var badge = $('event-state-label');
-    badge.textContent = EVENT_LABELS[ev.state] || '—';
-    badge.className = 'badge' + (ev.state === 'live' ? ' live' : (ev.state === 'paused' ? ' paused' : ''));
-    $('btn-event-start').disabled = ev.state === 'live';
-    $('btn-event-pause').disabled = ev.state !== 'live';
-    $('btn-event-resume').disabled = ev.state !== 'paused';
+    $('event-state-label').textContent = EVENT_LABELS[ev.state] || '—';
+
+    // Four buttons, but never four at once: the pair that applies to the
+    // state the event is actually in.
+    $('btn-event-start').hidden = ev.state === 'live';
+    $('btn-event-pause').hidden = ev.state !== 'live';
+    $('btn-event-resume').hidden = ev.state !== 'paused';
     $('btn-event-end').disabled = ev.state === 'ended';
 
     var fault = health && health.fault;
     var sub;
     if (ev.state === 'starting') {
-      sub = 'Attendees see the welcome screen. Press Start event when the program begins.';
+      sub = 'Attendees see the welcome screen. Press Go live to audience when the program begins.';
     } else if (ev.state === 'paused') {
       sub = 'Attendees see “' + (ev.pause_message || 'Captions paused') + '” over their captions.';
     } else if (ev.state === 'ended') {
@@ -678,44 +606,63 @@
     } else if (fault) {
       sub = 'Attendees see “Captions paused — technical difficulty”: ' + (FAULT_TEXT[fault] || fault) + '.';
     } else {
-      sub = 'Live — captions are flowing to attendees.';
+      sub = 'Everything’s running smoothly.';
     }
     $('event-sub').textContent = sub;
-  }
+    $('ready-sub').textContent = (ev.title ? ev.title + ' · ' : '')
+      + (ev.state === 'ended' ? 'Ended' : 'Not live yet');
 
-  // ---- preflight ----------------------------------------------------------
+    // The pill is the one thing someone glances at from across the booth.
+    var pill = $('onair'), text = $('onair-text');
+    if (ev.state === 'live' && !fault) {
+      pill.className = 'status-pill ok spacer'; text.textContent = 'On air';
+      $('live-title').textContent = 'Live';
+    } else if (ev.state === 'paused') {
+      pill.className = 'status-pill warn spacer'; text.textContent = 'Paused';
+      $('live-title').textContent = 'Paused';
+    } else if (ev.state === 'ended') {
+      pill.className = 'status-pill spacer'; text.textContent = 'Ended';
+      $('live-title').textContent = 'Ended';
+    } else if (fault) {
+      pill.className = 'status-pill bad spacer'; text.textContent = 'Trouble';
+      $('live-title').textContent = 'Captions running';
+    } else {
+      pill.className = 'status-pill warn spacer';
+      text.textContent = 'Captions on, audience waiting';
+      $('live-title').textContent = 'Captions running';
+    }
+  }
 
   var PF_MARK = { ok: '✓', warn: '!', fail: '✕', skip: '–' };
   var VERDICT_BADGE = { ready: 'Ready', warnings: 'Ready, with warnings', not_ready: 'Not ready' };
+  var VERDICT_CLASS = { ready: 'ok', warnings: 'warn', not_ready: 'bad' };
   var preflightRunning = false;
 
   function renderPreflight(report) {
-    // Re-enable on every snapshot: renderOffline() disables the button while
-    // the relay is unreachable, and this is the "it is back" signal.
-    $('btn-preflight').disabled = preflightRunning;
     if (preflightRunning) return;
     var badge = $('preflight-badge'), verdict = $('preflight-verdict'), list = $('preflight-list');
     if (!report) {
-      badge.textContent = 'Not run yet'; badge.className = 'badge';
-      verdict.hidden = true; list.textContent = '';
+      badge.textContent = 'Not run yet';
+      badge.className = 'badge';
+      verdict.hidden = true;
+      list.innerHTML = '';
       return;
     }
-    badge.textContent = VERDICT_BADGE[report.verdict] || report.verdict;
-    badge.className = 'badge' + (report.verdict === 'ready' ? ' live' : '');
-    verdict.hidden = false;
-    verdict.className = 'preflight-verdict ' + report.verdict;
     var when = report.ran_at ? ' (' + ago((Date.now() / 1000) - report.ran_at) + ')' : '';
-    verdict.textContent = report.headline + when;
-    list.textContent = '';
+    badge.textContent = (VERDICT_BADGE[report.verdict] || report.verdict) + when;
+    badge.className = 'badge ' + (VERDICT_CLASS[report.verdict] || '');
+    verdict.hidden = false;
+    verdict.textContent = report.headline || '';
+    list.innerHTML = '';
     (report.checks || []).forEach(function (c) {
       var row = document.createElement('div');
-      row.className = 'pf-row ' + c.status;
+      row.className = 'pf ' + c.status;
       var mark = document.createElement('div'); mark.className = 'pf-mark';
       mark.textContent = PF_MARK[c.status] || '?';
-      mark.setAttribute('aria-label', c.status);
+      row.appendChild(mark);
       var title = document.createElement('div'); title.className = 'pf-title'; title.textContent = c.title;
       var detail = document.createElement('div'); detail.className = 'pf-detail'; detail.textContent = c.detail;
-      row.appendChild(mark); row.appendChild(title); row.appendChild(detail);
+      row.appendChild(title); row.appendChild(detail);
       if (c.action) {
         var action = document.createElement('div'); action.className = 'pf-action'; action.textContent = c.action;
         row.appendChild(action);
@@ -725,19 +672,19 @@
   }
 
   function runPreflight() {
-    if (preflightRunning) return;
     preflightRunning = true;
     $('btn-preflight').disabled = true;
-    $('preflight-badge').textContent = 'Running…';
-    fetch('/api/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    $('preflight-badge').textContent = 'Checking…';
+    $('preflight-badge').className = 'badge';
+    fetch('/api/preflight', { method: 'POST' })
       .then(jsonOrThrow)
       .then(function (report) {
         preflightRunning = false;
         renderPreflight(report);
-        toast('Preflight: ' + (VERDICT_BADGE[report.verdict] || report.verdict));
       })['catch'](function (e) {
         preflightRunning = false;
-        $('preflight-badge').textContent = 'Failed to run';
+        $('preflight-badge').textContent = 'Check failed';
+        $('preflight-badge').className = 'badge bad';
         toast('Preflight — ' + e.message);
       }).then(function () { $('btn-preflight').disabled = false; });
   }
@@ -750,6 +697,13 @@
     renderDevices(s.source || {});
     renderRecording(s.transcript);
 
+    var open = s.asr.stream_open;
+    // The whole console answers one question first: is this thing running?
+    // Ready and Live are two screens rather than two colours of one screen,
+    // because an operator glancing up mid-service must not have to read.
+    $('view-ready').hidden = open;
+    $('view-live').hidden = !open;
+
     var a = AUDIO[s.audio.state] || ['bad', s.audio.state];
     var audioSub;
     if (s.audio.state === 'clipping') {
@@ -759,60 +713,72 @@
     } else {
       audioSub = s.source.connected ? 'no device reported' : 'start the capture client';
     }
-    setCard('c-audio', a[0],
-      { id: 'audio-state', text: a[1] },
-      { id: 'audio-sub', text: audioSub });
+    setMark('mark-mic', a[0]);
+    $('audio-state').textContent = a[1];
+    $('audio-state-live').textContent = a[1];
+    $('audio-sub').textContent = audioSub;
+    $('c-audio').className = 'tile' + (a[0] === 'bad' ? ' bad' : (a[0] === 'warn' ? ' warn' : ''));
 
-    // Perceptual-ish scaling: a linear RMS bar sits near zero for normal speech.
-    // The fill uses the smoothed level so it does not collapse between words;
-    // the tick is the true sample peak (falls back to RMS from an older
-    // capture client), held briefly, so transients and clipping show.
+    // Perceptual-ish scaling: a linear RMS bar sits near zero for normal
+    // speech. The fill uses the smoothed level so it does not collapse
+    // between words; the colour carries the fault, since a thin bar on a
+    // dark card is not where anyone looks for bad news.
     var smoothed = (s.audio.smoothed === undefined) ? s.audio.level : s.audio.smoothed;
     var pct = Math.min(100, Math.sqrt(smoothed) * 118);
-    var peakSample = (s.audio.peak === undefined) ? s.audio.level : s.audio.peak;
-    var inst = Math.min(100, Math.sqrt(peakSample) * 100);
+    var meterClass = 'meter' + (s.audio.state === 'clipping' ? ' clipping'
+      : (s.audio.state === 'silent' ? ' hot' : ''));
+    $('mic-meter').className = meterClass;
+    $('mic-meter-live').className = meterClass;
     $('meter-fill').style.width = pct.toFixed(1) + '%';
-    var now = Date.now();
-    if (inst >= peakHold || (now - peakAt) > 2500) { peakHold = inst; peakAt = now; }
-    $('meter-peak').style.left = peakHold.toFixed(1) + '%';
+    $('meter-fill-live').style.width = pct.toFixed(1) + '%';
 
     var r = ASR[s.asr.state] || ['bad', s.asr.state];
-    // Latency is speech-to-relay, from the backend's own word timing. A
-    // backend that cannot say when words were spoken gets "not measured"
-    // rather than a made-up number.
+    setMark('mark-asr', r[0]);
+    $('asr-state').textContent = r[1];
     var lat = (s.latency || {}).final;
-    var latText = lat
-      ? 'latency ' + lat.median.toFixed(1) + 's (p95 ' + lat.p95.toFixed(1) + 's)'
-      : 'latency not measured';
-    setCard('c-asr', r[0],
-      { id: 'asr-state', text: r[1] },
-      { id: 'asr-sub', text: s.asr.finals + ' lines  ·  last ' + ago(s.asr.last_final_age) +
-          '  ·  ' + latText });
-
-    var open = s.asr.stream_open;
-    var billed = s.source.backend === 'deepgram';
-    // The one thing on this page that must never be misread: whether the
-    // recognizer is running. It is the loudest block, at the top, and it
-    // says the state in words rather than leaving it to a coloured dot.
-    $('stream-bar').className = 'stream-bar ' + (open ? 'live' : 'idle');
-    $('stream-state').textContent = open
-      ? 'Captions are running' : 'Captions are not running';
-    $('stream-sub').textContent = (s.source.backend || 'no backend')
-      + (billed ? (open ? '  ·  this connection is billing' : '  ·  not billing') : '')
-      + (open ? '' : '  ·  press Open when the event is about to begin');
+    $('asr-latency').innerHTML = '';
+    if (lat) {
+      $('asr-latency').appendChild(document.createTextNode(lat.median.toFixed(1)));
+      var unit = document.createElement('small');
+      unit.textContent = ' sec';
+      $('asr-latency').appendChild(unit);
+    } else {
+      $('asr-latency').textContent = 'Not measured';
+    }
+    var engine = BACKEND_LABELS[s.source.backend] || s.source.backend || 'no backend';
+    $('asr-sub').textContent = engine + '  ·  ' + s.asr.finals + ' lines';
+    $('asr-sub-live').textContent = engine;
+    $('c-asr').className = 'tile' + (r[0] === 'bad' ? ' bad' : '');
 
     var v = s.viewers || {};
-    setCard('c-viewers', v.total > 0 ? 'ok' : 'idle',
-      { id: 'viewers-count', text: String(v.total || 0) },
-      { id: 'viewers-sub', text: (v.wall || 0) + ' wall  ·  ' + (v.phone || 0) +
-          ' phone  ·  ' + (v.status || 0) + ' status' });
+    var screens = (v.wall || 0) + ' wall  ·  ' + (v.phone || 0) + ' phone';
+    setMark('mark-screens', (v.wall || 0) > 0 ? 'ok' : '');
+    $('viewers-sub').textContent = (v.wall || 0) > 0 ? 'Wall connected' : 'No wall connected yet';
+    $('viewers-count').textContent = String(v.total || 0);
+    $('viewers-sub-live').textContent = screens;
 
-    $('btn-open').disabled = open || !s.source.connected;
-    $('btn-close').disabled = !open || !s.source.connected;
+    // Go Live is only pressable when there is something to go live with.
+    $('btn-golive').disabled = !s.source.connected;
+    $('btn-open').disabled = !s.source.connected;
+    $('btn-close').disabled = !s.source.connected;
+    // Undo what renderOffline() switched off: the relay is answering again.
+    $('btn-preflight').disabled = preflightRunning;
+    $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = false;
 
-    $('last-line').innerHTML = 'Last caption: <b></b>';
-    $('last-line').getElementsByTagName('b')[0].textContent =
-      s.asr.last_final_text || '—';
+    // The stage shows the line before the current one, dimmed, the way the
+    // wall does. The snapshot only carries the latest, so the previous one is
+    // remembered here as it rolls off. This is a preview, not the wall: if
+    // two lines land between frames the older is simply missed, which costs
+    // nothing, whereas carrying a second field through the relay for a
+    // preview would cost everyone.
+    var now = s.asr.last_final_text || '';
+    if (now && now !== lastFinal) { prevFinal = lastFinal; lastFinal = now; }
+    $('stage-prev').textContent = prevFinal;
+    $('stage-prev').hidden = !prevFinal;
+    $('stage-now').textContent = now || '—';
+
+    $('last-line').innerHTML = '<b></b>';
+    $('last-line').getElementsByTagName('b')[0].textContent = s.asr.last_final_text || '—';
 
     var err = s.source.error;
     $('meta').textContent = 'session ' + s.session_id +
@@ -824,27 +790,26 @@
   }
 
   function renderOffline() {
-    ['c-audio', 'c-asr', 'c-viewers'].forEach(function (id) {
-      $(id).className = 'card bad';
-    });
+    $('view-ready').hidden = false;
+    $('view-live').hidden = true;
+    setMark('mark-mic', 'bad');
+    setMark('mark-asr', 'bad');
+    setMark('mark-screens', '');
     $('audio-state').textContent = 'Relay unreachable';
     $('asr-state').textContent = '—';
-    $('stream-bar').className = 'stream-bar idle';
-    $('stream-state').textContent = 'Not connected';
-    $('stream-sub').textContent = '\u00a0';
-    $('viewers-count').textContent = '—';
+    $('audio-sub').textContent = ' ';
+    $('asr-sub').textContent = ' ';
+    $('viewers-sub').textContent = '—';
+    $('event-state-label').textContent = '—';
     $('meta').textContent = 'relay unreachable — retrying';
     $('error-banner').classList.remove('on');
-    $('btn-open').disabled = $('btn-close').disabled = true;
+    $('btn-golive').disabled = $('btn-open').disabled = $('btn-close').disabled = true;
     $('audio-device').disabled = $('btn-refresh-devices').disabled = true;
     $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = true;
-    $('btn-event-start').disabled = $('btn-event-pause').disabled = $('btn-event-resume').disabled =
-      $('btn-event-end').disabled = true;
+    $('btn-event-end').disabled = true;
     $('event-sub').textContent = 'Relay unreachable.';
     $('btn-preflight').disabled = true;
   }
-
-  // ---- transport -------------------------------------------------------
 
   function connect() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -888,7 +853,7 @@
   function control(action, label, fields) {
     var body = { action: action };
     Object.keys(fields || {}).forEach(function (key) { body[key] = fields[key]; });
-    fetch('/api/control', {
+    return fetch('/api/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -919,7 +884,7 @@
   }
 
   function eventPost(fields, label) {
-    fetch('/api/event', {
+    return fetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fields)
@@ -943,34 +908,79 @@
     })['catch'](function (e) { toast('Caption — ' + e.message); });
   }
 
-  // A disclosure remembers its own open/closed state across reloads - the
-  // same reason Finder and Mail remember which sidebar groups you collapsed.
-  function setupDisclosure(headerId, storageKey) {
-    var header = $(headerId);
-    var key = 'campus-captions:' + storageKey;
-    var expanded = header.getAttribute('aria-expanded') === 'true';
-    try {
-      var saved = localStorage.getItem(key);
-      if (saved !== null) expanded = saved === '1';
-    } catch (e) { /* private browsing, etc. - just don't persist */ }
-    header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    header.onclick = function () {
-      var next = header.getAttribute('aria-expanded') !== 'true';
-      header.setAttribute('aria-expanded', next ? 'true' : 'false');
-      try { localStorage.setItem(key, next ? '1' : '0'); } catch (e) {}
-    };
+  // The sidebar switches panes in the page rather than loading three pages:
+  // the websocket stays up, which is the whole point of a console.
+  function showPane(name) {
+    ['console', 'transcript', 'screens'].forEach(function (p) {
+      $('pane-' + p).hidden = (p !== name);
+      var nav = $('nav-' + p);
+      if (nav) nav.className = 'nav-link' + (p === name ? ' on' : '');
+    });
+    try { localStorage.setItem('campus-captions:pane', name); } catch (e) {}
+  }
+
+  function copyText(text, what) {
+    function fallback() {
+      var box = document.createElement('textarea');
+      box.value = text;
+      box.setAttribute('readonly', '');
+      box.style.position = 'fixed';
+      box.style.opacity = '0';
+      document.body.appendChild(box);
+      box.select();
+      try { document.execCommand('copy'); toast(what + ' copied'); }
+      catch (e) { toast('Could not copy — select the address and copy it'); }
+      document.body.removeChild(box);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { toast(what + ' copied'); })['catch'](fallback);
+    } else {
+      fallback();
+    }
   }
 
   function boot() {
+    var navs = document.querySelectorAll('[data-pane]');
+    for (var n = 0; n < navs.length; n++) {
+      navs[n].onclick = function () { showPane(this.getAttribute('data-pane')); };
+    }
+    try {
+      var saved = localStorage.getItem('campus-captions:pane');
+      if (saved === 'transcript' || saved === 'screens') showPane(saved);
+    } catch (e) {}
+
+    var copies = document.querySelectorAll('[data-copy]');
+    for (var c = 0; c < copies.length; c++) {
+      copies[c].onclick = function () {
+        var el = $(this.getAttribute('data-copy'));
+        var text = el ? el.textContent.trim() : '';
+        if (!text || text === '—') { toast('No address yet'); return; }
+        copyText(text, 'Address');
+      };
+    }
+
+    // Go Live is the ordinary path: start listening and show the audience
+    // the captions, in one press. The two halves stay available on their own
+    // - "Start captions without going live" here, "Go live to audience" and
+    // "Stop captions" on the live screen - because checking levels before
+    // the doors open is a real thing people do, and so is ending an event
+    // while the recognizer keeps running.
+    $('btn-golive').onclick = function () {
+      control('open_stream', 'Captions started').then(function () {
+        eventPost({ state: 'live' }, 'You are live — attendees now see captions');
+      });
+    };
+    $('btn-open').onclick = function () { control('open_stream', 'Captions started'); };
+    $('btn-close').onclick = function () { control('close_stream', 'Captions stopped'); };
+    $('btn-clear').onclick = function () { control('clear', 'Cleared'); };
+
     $('btn-event-start').onclick = function () { eventPost({ state: 'live' }, 'Event started — attendees now see captions'); };
     $('btn-event-pause').onclick = function () { eventPost({ state: 'paused' }, 'Paused — attendees see the pause message'); };
     $('btn-event-resume').onclick = function () { eventPost({ state: 'live' }, 'Resumed'); };
     $('btn-event-end').onclick = function () { eventPost({ state: 'ended' }, 'Event ended'); };
 
-    setupDisclosure('preflight-toggle', 'preflight-expanded');
     $('btn-preflight').onclick = runPreflight;
-    setupDisclosure('recording-toggle', 'recording-expanded');
-    setupDisclosure('caption-toggle', 'caption-expanded');
 
     var quick = document.querySelectorAll('#caption-row [data-caption]');
     for (var q = 0; q < quick.length; q++) {
@@ -979,8 +989,6 @@
     $('btn-note-send').onclick = function () {
       var t = $('note-text').value.trim();
       if (!t) { toast('Type something first'); return; }
-      // Sound and stage notes are conventionally bracketed; a name or a
-      // correction is sent as typed.
       sendCaption(t);
       $('note-text').value = '';
     };
@@ -998,9 +1006,6 @@
     $('btn-reset-transcript').onclick = function () {
       relayAction('reset_transcript', 'Transcript reset');
     };
-    $('btn-open').onclick = function () { control('open_stream', 'Open stream'); };
-    $('btn-close').onclick = function () { control('close_stream', 'Close stream'); };
-    $('btn-clear').onclick = function () { control('clear', 'Clear'); };
     $('btn-refresh-devices').onclick = function () {
       control('refresh_audio_devices', 'Refresh audio devices');
     };
@@ -1027,8 +1032,10 @@
         $('url-wall').textContent = base + '/wall';
         // The phone link is what gets handed out; prefer the https tunnel
         // address when there is one, like the QR code does.
-        $('url-phone').textContent = (s.relay.public_hostname
+        var phone = (s.relay.public_hostname
           ? 'https://' + s.relay.public_hostname : base) + '/phone';
+        $('url-phone').textContent = phone;
+        $('url-phone-2').textContent = phone;
         // First launch on this machine: show the operator round before
         // they have to guess what any of this is. Offered from here rather
         // than from the tour itself because the answer comes from the

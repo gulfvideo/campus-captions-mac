@@ -28,97 +28,84 @@
     {
       page: '/status', chapter: 'Welcome',
       title: 'A quick tour',
-      body: 'This walks through the three pages you will use: the status ' +
-            'dashboard you watch during an event, the tuner that sizes the ' +
-            'captions for your screen, and the settings. It takes about two ' +
-            'minutes, and you can leave at any point with <b>Skip</b>.'
+      body: 'This walks through the three pages you will use: the console ' +
+            'you watch during an event, the tuner that sizes the captions ' +
+            'for your screen, and the settings. It takes about two minutes, ' +
+            'and you can leave at any point with <b>Skip</b>.',
+      before: openPane('console')
     },
     {
-      page: '/status', chapter: 'Status', target: '#stream-bar',
-      title: 'The listening switch',
-      body: 'This is the one control that matters during an event. ' +
-            '<b>Open ASR stream</b> starts listening to the microphone and ' +
-            'putting captions on screen; <b>Close ASR stream</b> stops. The ' +
-            'bar turns green and says so while it is open, so it is hard to ' +
-            'leave running by accident after everyone has gone home.'
+      page: '/status', chapter: 'Console', target: '#checklist',
+      title: 'The three things that have to be right',
+      body: 'Before an event, this is the whole job. Each row turns green ' +
+            'when it is ready: a microphone that can hear the room, an ' +
+            'engine to turn speech into words, and at least one screen ' +
+            'listening. A red mark here is the reason captions will not ' +
+            'appear, and it says which one.',
+      before: openPane('console')
     },
     {
-      page: '/status', chapter: 'Status', target: '#c-audio',
-      title: 'Is it hearing anything?',
-      body: 'The level meter is the first place to look when captions stop ' +
-            'appearing. Speaking normally should put it in the middle band. ' +
-            'Pinned at the left means the wrong microphone is selected or ' +
-            'the desk is muted; pinned at the right means the input is too ' +
-            'hot and words will be clipped.'
+      page: '/status', chapter: 'Console', target: '#audio-device',
+      title: 'Which microphone',
+      body: 'Pick the input that carries the room — the desk feed, not the ' +
+            'laptop lid. The bar above moves while someone talks; if it ' +
+            'stays flat you are on the wrong input. <b>Refresh</b> after ' +
+            'plugging something in.'
     },
     {
-      page: '/status', chapter: 'Status', target: '#c-asr',
-      title: 'Is it understanding it?',
-      body: 'Which transcription engine is running and whether it is ' +
-            'connected. Audio can be perfect while this is red - a Deepgram ' +
-            'key that has run out, or a network that has dropped - so the ' +
-            'two are separate tiles rather than one.'
+      page: '/status', chapter: 'Console', target: '#backend-select',
+      title: 'Which engine',
+      body: 'How speech becomes text. Only the options this computer can ' +
+            'actually run are listed. Practice mode makes captions up, for ' +
+            'rehearsing the setup without spending anything.'
     },
     {
-      page: '/status', chapter: 'Status', target: '#c-viewers',
-      title: 'Who is reading',
-      body: 'How many phones and screens are connected right now. Useful as ' +
-            'a sanity check before a service: open the phone view on your ' +
-            'own phone and watch this go up by one.'
+      page: '/status', chapter: 'Console', target: '#btn-golive',
+      title: 'The one button',
+      body: 'Go Live starts listening <i>and</i> shows the captions to the ' +
+            'audience, in one press. That is the ordinary path, and most ' +
+            'events never need anything else.'
     },
     {
-      page: '/status', chapter: 'Status', target: '#col-side',
-      title: 'Microphone and engine',
-      body: 'The two things you set once per room: which input to listen to ' +
-            'and which engine to transcribe with. They live on the right ' +
-            'because they are picked before the event, not during it. ' +
-            '<b>Refresh devices</b> after plugging something in.'
+      page: '/status', chapter: 'Console', target: '#btn-open',
+      title: 'Or just the captions',
+      body: 'Starting captions on their own lets you check levels and ' +
+            'accuracy while the audience still sees the welcome screen. ' +
+            'When the program begins, <b>Go live to audience</b> on the ' +
+            'live screen hands it over to them.'
     },
     {
-      page: '/status', chapter: 'Status', target: '#btn-event-start',
-      title: 'Starting and ending an event',
-      body: 'This is about what the <i>audience</i> sees, not about ' +
-            'listening. Before you start, phones show your welcome screen. ' +
-            '<b>Pause</b> puts up the intermission message and stops ' +
-            'captions reaching anyone. <b>End event</b> closes it off and ' +
-            'finishes the transcript.'
-    },
-    {
-      page: '/status', chapter: 'Status', target: '#recording-toggle',
-      title: 'Recording and transcript',
-      body: 'Everything captioned is kept, and can be downloaded afterwards ' +
-            'as subtitles or plain text. If the event is also being filmed, ' +
-            'press <b>Mark video start</b> when the camera rolls and the ' +
-            'subtitle timings will line up with the video file.',
-      before: openDisclosure('#recording-toggle')
-    },
-    {
-      page: '/status', chapter: 'Status', target: '#caption-toggle',
-      title: 'Captions you type yourself',
-      body: 'For the things a microphone cannot describe. The four buttons ' +
-            'put [Applause], [Laughter], [Music] or [Inaudible] on screen in ' +
-            'one press. The text box below them is for anything else: type ' +
-            'it, then send it either as a caption or as a speaker change - ' +
-            'a name, shown in the style the wall uses for whoever is ' +
-            'talking.',
-      before: openDisclosure('#caption-toggle')
-    },
-    {
-      page: '/status', chapter: 'Status', target: '#btn-preflight',
+      page: '/status', chapter: 'Console', target: '#btn-preflight',
       title: 'The check before the doors open',
       body: 'Run this twenty minutes before an event. It checks the ' +
             'microphone, the engine, the network and anything you have ' +
             'connected, and tells you what to do about whatever it finds. ' +
-            'Much better than discovering it from an empty screen.',
-      before: openDisclosure('#preflight-toggle')
+            'Much better than discovering it from an empty screen.'
     },
     {
-      page: '/status', chapter: 'Status', target: '#url-wall',
-      title: 'The two addresses to hand out',
-      body: 'The <b>wall view</b> is the one ProPresenter, OBS or a browser ' +
-            'on the projector opens. The <b>phone view</b> is the one the ' +
-            'audience opens, and the one behind the QR code. Both work from ' +
-            'any device on the same network.'
+      page: '/status', chapter: 'Console', target: '#audience-link',
+      title: 'The link to hand out',
+      body: 'This is the address an attendee opens on their own phone, and ' +
+            'the one behind the QR code. Copy it into a slide, a program, or ' +
+            'the chat of whatever is streaming.'
+    },
+    {
+      page: '/status', chapter: 'Console', target: '#nav-transcript',
+      title: 'Everything gets kept',
+      body: 'Every caption is recorded and can be downloaded afterwards as ' +
+            'subtitles or plain text. If the event is also being filmed, ' +
+            '<b>Mark video start</b> in here lines the subtitle timings up ' +
+            'with the video file.',
+      before: openPane('transcript')
+    },
+    {
+      page: '/status', chapter: 'Console', target: '#url-wall',
+      title: 'The screens',
+      body: 'The wall address is what ProPresenter, OBS or a projector ' +
+            'opens. Both addresses work from any device on the same ' +
+            'network — that is all a screen needs to start showing ' +
+            'captions.',
+      before: openPane('screens')
     },
     {
       page: '/tune', chapter: 'Tuner',
@@ -230,6 +217,19 @@
     };
   }
 
+  // The console switches panes in the page rather than loading three pages,
+  // so a step that talks about the transcript has to put that pane on screen
+  // first. Clicking the rail button rather than setting hidden keeps the
+  // page's own bookkeeping - the remembered pane, the highlighted nav - in
+  // step with what the tour just did.
+  function openPane(name) {
+    return function () {
+      var nav = document.getElementById('nav-' + name);
+      var pane = document.getElementById('pane-' + name);
+      if (nav && pane && pane.hidden) nav.click();
+    };
+  }
+
   function openTab(sel) {
     return function () {
       var tab = document.querySelector(sel);
@@ -278,32 +278,36 @@
     // has a target, the ring's own outer shadow does the dimming, and a
     // second layer on top of it only makes the page unreadable.
     '.tour-veil{position:fixed;inset:0;z-index:9000;background:transparent;}',
-    '.tour-veil.solid{background:rgba(6,10,16,.62);}',
-    '.tour-ring{position:absolute;z-index:9001;border-radius:10px;pointer-events:none;',
-    '  box-shadow:0 0 0 3px #4ea1ff,0 0 0 9999px rgba(6,10,16,.62);transition:',
+    '.tour-veil.solid{background:rgba(0,0,0,.66);}',
+    '.tour-ring{position:absolute;z-index:9001;border-radius:14px;pointer-events:none;',
+    '  box-shadow:0 0 0 3px #0A84FF,0 0 0 9999px rgba(0,0,0,.68);transition:',
     '  top 180ms ease,left 180ms ease,width 180ms ease,height 180ms ease;}',
-    '.tour-card{position:absolute;z-index:9002;width:min(380px,calc(100vw - 32px));',
-    '  background:#111823;color:#e8eef7;border:1px solid #2b3a4d;border-radius:12px;',
-    '  padding:16px 18px 14px;box-shadow:0 18px 44px rgba(0,0,0,.55);',
-    '  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}',
+    '.tour-card{position:absolute;z-index:9002;width:min(390px,calc(100vw - 32px));',
+    '  background:rgba(28,28,30,.96);color:#F5F5F7;',
+    '  border:0.5px solid rgba(255,255,255,.12);border-radius:20px;',
+    '  padding:18px 20px 16px;box-shadow:0 18px 44px rgba(0,0,0,.6);',
+    '  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);',
+    '  font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Figtree",',
+    '  "Segoe UI",system-ui,sans-serif;}',
     '.tour-card.centred{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);',
     '  width:min(440px,calc(100vw - 32px));}',
-    '.tour-chapter{font-size:11px;letter-spacing:.09em;text-transform:uppercase;',
-    '  color:#7f96b2;margin-bottom:6px;}',
-    '.tour-card h3{margin:0 0 8px;font-size:17px;line-height:1.25;color:#fff;}',
-    '.tour-card p{margin:0;color:#c3d2e4;}',
+    '.tour-chapter{font-size:12px;letter-spacing:.02em;text-transform:uppercase;',
+    '  color:#8E8E93;font-weight:500;margin-bottom:6px;}',
+    '.tour-card h3{margin:0 0 8px;font-size:19px;line-height:1.25;color:#fff;',
+    '  font-weight:600;letter-spacing:-0.015em;}',
+    '.tour-card p{margin:0;color:#C7C7CC;}',
     '.tour-card b{color:#fff;font-weight:600;}',
-    '.tour-foot{display:flex;align-items:center;gap:8px;margin-top:14px;}',
-    '.tour-count{flex:1;font-size:12px;color:#7f96b2;}',
-    '.tour-card button{font:inherit;font-size:13px;padding:7px 14px;border-radius:8px;',
-    '  border:1px solid #2b3a4d;background:#1b2534;color:#e8eef7;cursor:pointer;}',
-    '.tour-card button:hover{background:#243247;}',
-    '.tour-card button.go{background:#2f7d4f;border-color:#2f7d4f;color:#fff;',
-    '  font-weight:600;}',
-    '.tour-card button.go:hover{background:#379560;}',
-    '.tour-card button.quiet{background:none;border-color:transparent;color:#8fa6c2;}',
-    '.tour-card button.quiet:hover{color:#e8eef7;background:#1b2534;}',
-    '.tour-start{font:inherit;font-size:inherit;cursor:pointer;}',
+    '.tour-foot{display:flex;align-items:center;gap:8px;margin-top:16px;}',
+    '.tour-count{flex:1;font-size:13px;color:#8E8E93;}',
+    '.tour-card button{font:inherit;font-size:14px;font-weight:600;height:36px;',
+    '  padding:0 16px;border-radius:18px;border:none;background:#2C2C2E;',
+    '  color:#0A84FF;cursor:pointer;}',
+    '.tour-card button:hover{background:#3A3A3C;}',
+    '.tour-card button.go{background:#0A84FF;color:#fff;}',
+    '.tour-card button.go:hover{background:#5AB0FF;}',
+    '.tour-card button.quiet{background:none;color:#8E8E93;}',
+    '.tour-card button.quiet:hover{color:#F5F5F7;background:#2C2C2E;}',
+    '.tour-card :focus-visible{outline:2px solid #5AB0FF;outline-offset:2px;}',
     '@media (prefers-reduced-motion: reduce){.tour-ring{transition:none;}}'
   ].join('');
 
@@ -369,7 +373,16 @@
   function showable(step) {
     if (!step) return false;
     if (step.page !== PATH) return true;            // decided after the hop
-    return !step.target || !!document.querySelector(step.target);
+    if (!step.target) return true;
+    var el = document.querySelector(step.target);
+    if (!el) return false;
+    // Present but not on screen is as useless as absent: the console keeps
+    // its live screen in the DOM while the ready screen is showing, and a
+    // ring drawn round a zero-sized box is worse than skipping the step.
+    // A step with a `before` gets the benefit of the doubt - that hook is
+    // what is about to make it visible.
+    if (step.before) return true;
+    return el.getClientRects().length > 0;
   }
 
   function go(i, dir) {

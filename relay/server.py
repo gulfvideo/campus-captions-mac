@@ -155,13 +155,16 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
 }
 SCRIPT_RE = re.compile(rb"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
-# `<!-- include name.js -->` in a viewer page, replaced with that file's
-# contents wrapped in a <script> before the page is hashed and served. The
-# CSP names hashes of a page's own inline blocks and nothing else - there is
-# deliberately no 'self' in script-src - so a shared module cannot be pulled
-# in with src=. Stitching it in here keeps the strict policy and still lets
-# several pages share one copy of a script instead of carrying a copy each.
-INCLUDE_RE = re.compile(rb"<!--\s*include\s+([A-Za-z0-9_][A-Za-z0-9_.-]*\.js)\s*-->")
+# `<!-- include name.js -->` or `name.css` in a viewer page, replaced with
+# that file's contents wrapped in a <script> or <style> before the page is
+# hashed and served. The CSP names hashes of a page's own inline blocks and
+# nothing else - there is deliberately no 'self' in script-src - so a shared
+# module cannot be pulled in with src=. Stitching it in here keeps the strict
+# policy and still lets several pages share one copy of a file instead of
+# carrying a copy each, which for the stylesheet is the difference between
+# one set of design tokens and seven sets that drift apart.
+INCLUDE_RE = re.compile(rb"<!--\s*include\s+([A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:js|css))\s*-->")
+INCLUDE_TAG = {".js": (b"<script>", b"</script>"), ".css": (b"<style>", b"</style>")}
 SAFE_HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
@@ -180,9 +183,14 @@ def _script_hash(script: bytes) -> str:
 
 def expand_includes(html: bytes,
                     viewer_dir: Path) -> tuple[bytes, tuple[tuple[Path, float], ...]]:
-    """Stitch every `<!-- include name.js -->` into the page, and report what
-    was pulled in and when it was last written, so a caller caching the result
-    can tell that a *shared* file has changed underneath it.
+    """Stitch every `<!-- include name.js -->` and `<!-- include name.css -->`
+    into the page, and report what was pulled in and when it was last written,
+    so a caller caching the result can tell that a *shared* file has changed
+    underneath it.
+
+    A script arrives as an inline <script>, which page_csp then hashes; a
+    stylesheet as an inline <style>, which the policy already allows with
+    style-src 'unsafe-inline'.
 
     The name may not contain a path separator, and the file has to resolve
     inside the viewer directory: these pages are edited by whoever runs the
@@ -198,9 +206,10 @@ def expand_includes(html: bytes,
                 status_code=500,
                 detail=f"{name} is included by a page but is not in the viewer directory")
         used.append((path, path.stat().st_mtime))
-        # A newline either side, so the module's first line cannot land inside
+        # A newline either side, so the file's first line cannot land inside
         # a comment that happened to precede the marker.
-        return b"<script>\n" + path.read_bytes() + b"\n</script>"
+        open_tag, close_tag = INCLUDE_TAG[path.suffix]
+        return open_tag + b"\n" + path.read_bytes() + b"\n" + close_tag
 
     return INCLUDE_RE.sub(one, html), tuple(used)
 

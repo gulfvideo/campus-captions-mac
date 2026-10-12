@@ -4,20 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Campus Captions — Setup</title>
+<!-- include theme.css -->
 <style>
   /* Same palette and controls as the status and settings pages: this is the
      first thing an operator ever sees, and nothing it teaches them should
      have to be relearned two screens later. */
+  /* Legacy names this page's rules still use, pointed at the shared
+     palette in theme.css rather than carrying a second opinion. */
   :root {
-    --bg: #14161a;
-    --panel: #1e2127;
-    --edge: #2c313a;
-    --text: #eceff4;
-    --dim: #939bab;
-    --ok: #3fbf6f;
-    --warn: #d8a33a;
-    --bad: #d95c5c;
-    --link: #7fb2f0;
+    --panel: #1C1C1E;
+    --edge: #2C2C2E;
+    --dim: #8E8E93;
+    --link: #0A84FF;
   }
   * { box-sizing: border-box; }
   body {
@@ -140,6 +138,53 @@
     opacity: 0; transition: opacity 220ms; pointer-events: none;
   }
   #toast.on { opacity: 1; }
+
+  /* ---- restyled to match the rest of the app --------------------------- */
+
+  body { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
+
+  h1 { font-family: var(--font-display); font-size: 34px;
+    font-weight: 700; letter-spacing: -0.025em; }
+  h2 { font-family: var(--font-display); font-size: 24px;
+    font-weight: 600; letter-spacing: -0.02em; }
+  .sub, .note { color: var(--text-2); }
+
+  /* The step rail as a row of dots and labels rather than a numbered list:
+     it says where you are, which is all it is for. */
+  .rail { color: var(--text-3); }
+  .rail li.now { color: var(--text); font-weight: 600; }
+  .rail li.done { color: var(--ok); }
+
+  .step, .field {
+    background: var(--card); border: none; border-radius: var(--r-card);
+  }
+
+  button, .file-label {
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    height: 44px; padding: 0 20px; border-radius: 22px;
+    border: none; background: var(--raised); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { background: var(--raised-2); }
+  button:disabled { opacity: 0.38; cursor: default; }
+  button.go {
+    background: var(--accent); color: #fff;
+    box-shadow: 0 10px 30px rgba(10, 132, 255, 0.28);
+  }
+  button.go:hover:not(:disabled) { background: var(--accent-hi); }
+  button.quiet { background: none; color: var(--text-3); box-shadow: none; }
+  button.quiet:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+
+  input[type=text], input[type=password], select {
+    background: var(--raised); border: 1px solid transparent;
+    border-radius: var(--r-field); color: var(--text); font-family: inherit;
+  }
+
+  .meter { border-radius: 3px; background: var(--raised-2); overflow: hidden; }
+  .meter > i { background: var(--ok); }
+
+  .links li, .links a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -167,7 +212,7 @@ page.</p>
   <p>This wizard picks the microphone, chooses how captions are produced, and
   ends with the links to hand out. It takes about two minutes.</p>
   <p class="note">Captions never start on their own. Even after setup, no
-  transcript is produced until someone presses <em>Open ASR stream</em> on the
+  transcript is produced until someone presses <em>Go Live</em> on the
   status page — so you can leave this running through rehearsal at no cost.</p>
   <nav class="actions">
     <button class="go" id="go-0">Get started</button>
