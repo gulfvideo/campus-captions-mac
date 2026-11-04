@@ -1,12 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for the Campus Captions engine: relay + capture, no UI.
+"""PyInstaller spec for the Campus Captions macOS menu bar app.
 
-The front end is macapp/CampusCaptions.swift, a native menu bar app that
-bundles this as a helper in Contents/Resources/engine and talks to it over
-127.0.0.1. So there is no BUNDLE step here and no rumps or pyobjc in the
-analysis - this is a console executable that the shell spawns.
-
-Build with macapp/build.sh, not `pyinstaller` directly.
+Build with macapp/build.sh, not `pyinstaller` directly - that script also
+(re)builds and signs the Swift speech_helper this bundles, and ad-hoc signs
+the finished .app afterward. See macapp/menubar.py for what actually runs.
 """
 
 from pathlib import Path
@@ -66,14 +63,13 @@ hiddenimports = [
 ]
 
 a = Analysis(  # noqa: F821
-    [str(ROOT / "macapp" / "engine.py")],
+    [str(ROOT / "macapp" / "menubar.py")],
     pathex=[str(ROOT)],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    # The front end is Swift now, so none of this belongs in the engine.
-    excludes=["rumps", "AppKit", "Foundation", "objc", "PyObjCTools"],
+    excludes=[],
     noarchive=False,
 )
 
@@ -84,13 +80,11 @@ exe = EXE(  # noqa: F821
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Campus Captions Engine",
+    name="Campus Captions",
     debug=False,
     strip=False,
     upx=False,
-    # A console executable: the shell reads its first stdout line to learn the
-    # port, and leaves stderr attached so a traceback reaches the log.
-    console=True,
+    console=False,
 )
 
 coll = COLLECT(  # noqa: F821
@@ -99,5 +93,24 @@ coll = COLLECT(  # noqa: F821
     a.datas,
     strip=False,
     upx=False,
-    name="engine",
+    name="Campus Captions",
+)
+
+app = BUNDLE(  # noqa: F821
+    coll,
+    name="Campus Captions.app",
+    icon=str(ROOT / "macapp" / "icons" / "AppIcon.icns"),
+    bundle_identifier="edu.faulkner.campus-captions",
+    info_plist={
+        "CFBundleName": "Campus Captions",
+        "CFBundleDisplayName": "Campus Captions",
+        "CFBundleShortVersionString": VERSION,
+        "LSUIElement": True,
+        "NSMicrophoneUsageDescription":
+            "Campus Captions needs the microphone to generate live captions.",
+        "NSSpeechRecognitionUsageDescription":
+            "Campus Captions uses on-device speech recognition to generate "
+            "live captions. Audio never leaves this Mac.",
+        "NSHighResolutionCapable": True,
+    },
 )
