@@ -79,3 +79,10 @@ node_modules/
 # Companion module build output (companion-module-build)
 integrations/companion-module-campus-captions/pkg/
 integrations/companion-module-campus-captions/*.tgz
+
+# Locally installed agent skills (npx skills add) and scratch output from
+# local tooling. Belongs to whoever is working here, not to what Campus
+# Captions ships. Restored after the #32 revert removed it.
+.agents/
+skills-lock.json
+brag-output/
