@@ -1,0 +1,36 @@
+{
+  "buildPath": "code",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "site/public/index.html"
+        ],
+        "createdAt": "2026-11-06T15:22:33.853Z",
+        "reason": "user confirmed: chose 'Flat, shadows only for float/glow' in the /impeccable document elevation question, which names the blue CTA glow; recorded in DESIGN.md as the cta-glow token and the Shadow-Means-Float rule"
+      },
+      {
+        "rule": "tight-leading",
+        "value": "*",
+        "files": [
+          "site/public/index.html"
+        ],
+        "createdAt": "2026-11-06T15:23:14.101Z",
+        "reason": "false positive: the rule targets body text (its own text says 'use 1.5 to 1.7 for body text'); the only two hits are 44px display statements at 1.24, while all body copy on this page is 1.5-1.6"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/public/index.html"
+        ],
+        "createdAt": "2026-11-06T15:23:14.125Z",
+        "reason": "false positive on .spec-row: flex children span the content box by design, while the text itself is inset 24-40px from the border (verified in the render)"
+      }
+    ]
+  }
+}

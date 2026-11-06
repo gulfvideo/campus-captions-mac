@@ -1,0 +1,16 @@
+# Cloudflare Pages project for campuscaptions.app (the marketing site —
+# nothing to do with the relay the app itself runs).
+#
+# Deploy:  cd site && npx wrangler pages deploy
+#
+# Two bindings must exist on the project (Pages → Settings → Functions):
+#   WAITLIST        KV namespace, bound under this exact name
+#   ADMIN_PASSWORD  secret, the password for the CSV export at /api/waitlist
+
+name = "campus-captions"
+pages_build_output_dir = "public"
+compatibility_date = "2026-11-01"
+
+[[kv_namespaces]]
+binding = "WAITLIST"
+id = "f45eba3f5e094715b606890893097352"

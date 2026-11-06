@@ -1,0 +1,8 @@
+# The records belong in the repo; the scratch does not.
+# config.json, design.json and surfaces/ are shared design authority —
+# a blanket .impeccable/ ignore would hide them from everyone else.
+review/
+questions/
+mocks/
+hook.cache.json
+config.local.json

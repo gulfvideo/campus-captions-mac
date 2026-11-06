@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T00:00:00Z",
+  "title": "Design System: Campus Captions",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#0A84FF",
+        "tonalRamp": [
+          "#021833",
+          "#042F5E",
+          "#064789",
+          "#0862B7",
+          "#0A84FF",
+          "#3C9FFF",
+          "#5AB0FF",
+          "#B8DCFF"
+        ]
+      },
+      "signal-blue-lit": {
+        "role": "primary",
+        "displayName": "Signal Blue Lit",
+        "canonical": "#5AB0FF",
+        "tonalRamp": [
+          "#0A1E2E",
+          "#133A58",
+          "#1D5682",
+          "#2A77B5",
+          "#3C94E0",
+          "#5AB0FF",
+          "#8FC9FF",
+          "#D3EAFF"
+        ]
+      },
+      "running-green": {
+        "role": "secondary",
+        "displayName": "Running Green",
+        "canonical": "#30D158",
+        "tonalRamp": [
+          "#04260E",
+          "#07441A",
+          "#0A6226",
+          "#148F39",
+          "#22B54A",
+          "#30D158",
+          "#6FE28D",
+          "#C3F5D1"
+        ]
+      },
+      "holding-amber": {
+        "role": "secondary",
+        "displayName": "Holding Amber",
+        "canonical": "#FF9F0A",
+        "tonalRamp": [
+          "#2E1C00",
+          "#523200",
+          "#784A00",
+          "#A66600",
+          "#D48400",
+          "#FF9F0A",
+          "#FFC260",
+          "#FFE6BF"
+        ]
+      },
+      "fault-red": {
+        "role": "secondary",
+        "displayName": "Fault Red",
+        "canonical": "#FF453A",
+        "tonalRamp": [
+          "#330B08",
+          "#5C130F",
+          "#871B15",
+          "#B32820",
+          "#DE362C",
+          "#FF453A",
+          "#FF6961",
+          "#FFC4C0"
+        ]
+      },
+      "stage-black": {
+        "role": "neutral",
+        "displayName": "Stage Black",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "#000000",
+          "#161618",
+          "#1C1C1E",
+          "#2C2C2E",
+          "#3A3A3C",
+          "#5A5A5F",
+          "#8E8E93",
+          "#F5F5F7"
+        ],
+        "note": "This ramp is the literal surface ladder of the system, not a synthesized scale. Depth is stepped through these exact values."
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "Text Primary",
+        "canonical": "#F5F5F7"
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Text Secondary",
+        "canonical": "#A1A1A6"
+      },
+      "text-tertiary": {
+        "role": "neutral",
+        "displayName": "Text Tertiary",
+        "canonical": "#8E8E93"
+      },
+      "text-spent": {
+        "role": "neutral",
+        "displayName": "Text Spent",
+        "canonical": "#6E6E73",
+        "note": "Reserved exclusively for an already-read caption line. Does not clear AA at small sizes and must not be used for ordinary secondary text."
+      },
+      "caption-white": {
+        "role": "tertiary",
+        "displayName": "Caption White",
+        "canonical": "#f2f2f2",
+        "note": "Reader-selectable caption colour. Not a brand colour."
+      },
+      "caption-amber": {
+        "role": "tertiary",
+        "displayName": "Caption Amber",
+        "canonical": "#ffd54a",
+        "note": "Reader-selectable caption colour; also the phone view's paused state."
+      },
+      "caption-green": {
+        "role": "tertiary",
+        "displayName": "Caption Green",
+        "canonical": "#8ee08a",
+        "note": "Reader-selectable caption colour. Not a brand colour."
+      },
+      "caption-blue": {
+        "role": "tertiary",
+        "displayName": "Caption Blue",
+        "canonical": "#8ab4ff",
+        "note": "Reader-selectable caption colour. Not a brand colour."
+      },
+      "caption-red": {
+        "role": "tertiary",
+        "displayName": "Caption Red",
+        "canonical": "#ff9b9b",
+        "note": "Reader-selectable caption colour. Not a brand colour."
+      },
+      "signal-blue-filled": {
+        "role": "primary",
+        "displayName": "Signal Blue Filled",
+        "canonical": "#0A6FD9",
+        "tonalRamp": [
+          "#021527",
+          "#042A4B",
+          "#063F70",
+          "#085497",
+          "#0A6FD9",
+          "#3B90E6",
+          "#73B2EE",
+          "#C5DEF8"
+        ],
+        "note": "For any blue surface carrying white text. Signal Blue holds white at 3.6:1 and its lit variant at 2.3:1; this clears 4.5:1. Hover goes darker (#0B5FB8), not lighter."
+      },
+      "signal-blue-filled-hover": {
+        "role": "primary",
+        "displayName": "Signal Blue Filled Hover",
+        "canonical": "#0B5FB8"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Console page titles only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The live caption line inside a preview stage — the words currently being spoken."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Stat tile values and section heads."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Everything else in the operator console."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase group headings above grouped lists."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "The wall output. Sized in vh so it scales with output resolution; the reader may substitute Atkinson Hyperlegible."
+      },
+      "caption-hyperlegible": {
+        "displayName": "Caption Hyperlegible",
+        "purpose": "Atkinson Hyperlegible, the reader-selectable caption face drawn for low-vision legibility. Must stay available; must not be swapped for a lookalike."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Measured facts only - figures, specs, column rubrics. Never prose; mono on a sentence is costume."
+      }
+    },
+    "shadows": [
+      {
+        "name": "cta-glow",
+        "value": "0 10px 30px rgba(10, 132, 255, 0.35)",
+        "purpose": "Under the primary action only. The accent emitting light, not a card lifting."
+      },
+      {
+        "name": "stage",
+        "value": "0 30px 80px rgba(0, 0, 0, 0.6)",
+        "purpose": "Under a caption preview, so it reads as a screen rather than another card."
+      },
+      {
+        "name": "float",
+        "value": "0 12px 40px rgba(0, 0, 0, 0.5)",
+        "purpose": "The toast — the only element that genuinely floats over content."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "180ms ease",
+        "purpose": "Default for background, transform and control state changes."
+      },
+      {
+        "name": "fade",
+        "value": "200ms ease",
+        "purpose": "Opacity transitions on overlays and toasts."
+      },
+      {
+        "name": "meter",
+        "value": "110ms linear",
+        "purpose": "Live audio meters tracking level; linear so the motion reads as measurement, not animation."
+      },
+      {
+        "name": "caption-in",
+        "value": "80ms linear",
+        "purpose": "Caption bar appearing. Fast, so the first words after a pause do not ramp up from invisible."
+      },
+      {
+        "name": "caption-out",
+        "value": "600ms linear",
+        "purpose": "Caption bar leaving. Slow, because a bar that vanishes abruptly reads as a fault."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "760px"
+      },
+      {
+        "name": "rail-collapse",
+        "value": "860px"
+      },
+      {
+        "name": "md",
+        "value": "900px"
+      },
+      {
+        "name": "lg",
+        "value": "1080px"
+      },
+      {
+        "name": "xl",
+        "value": "1240px"
+      }
+    ],
+    "gradients": [
+      {
+        "name": "stage-floor",
+        "value": "radial-gradient(120% 140% at 50% 120%, #1A1A1D 0%, #000 60%)",
+        "purpose": "The system's only permitted gradient: the lit floor beneath caption text."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary CTA",
+      "kind": "button",
+      "refersTo": "cta",
+      "description": "The single most important action on a screen. Full width, glowing.",
+      "html": "<button class=\"ds-cta\">Start captions</button>",
+      "css": ".ds-cta { height: 56px; width: 100%; border: none; border-radius: 28px; background: #0A84FF; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; box-shadow: 0 10px 30px rgba(10,132,255,0.35); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: background 180ms ease; } .ds-cta:hover { background: #5AB0FF; } .ds-cta:focus-visible { outline: 2px solid #5AB0FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Pill Button",
+      "kind": "button",
+      "refersTo": "pill",
+      "description": "The console workhorse: grey surface, blue label. Used for every secondary action.",
+      "html": "<button class=\"ds-pill\">Open wall view</button>",
+      "css": ".ds-pill { height: 36px; padding: 0 16px; border: none; border-radius: 18px; background: #2C2C2E; color: #0A84FF; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; transition: background 180ms ease; } .ds-pill:hover { background: #3A3A3C; } .ds-pill:focus-visible { outline: 2px solid #5AB0FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Pill Button, Filled",
+      "kind": "button",
+      "refersTo": "pill-filled",
+      "description": "The one blue action in a row of grey pills. Never two per screen.",
+      "html": "<button class=\"ds-pill-filled\">Go live</button>",
+      "css": ".ds-pill-filled { height: 36px; padding: 0 16px; border: none; border-radius: 18px; background: #0A84FF; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 180ms ease; } .ds-pill-filled:hover { background: #5AB0FF; } .ds-pill-filled:focus-visible { outline: 2px solid #5AB0FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Raised fill on a card, transparent border that turns blue on focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Event title\" aria-label=\"Event title\">",
+      "css": ".ds-input { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 15px; color: #F5F5F7; background: #2C2C2E; border: 1px solid transparent; border-radius: 10px; padding: 9px 12px; width: 260px; } .ds-input::placeholder { color: #8E8E93; } .ds-input:focus { outline: none; border-color: #0A84FF; } .ds-input:focus-visible { outline: 2px solid #5AB0FF; outline-offset: 1px; }"
+    },
+    {
+      "name": "Grouped List",
+      "kind": "nav",
+      "refersTo": "list-row",
+      "description": "iOS-style grouped list. Hairlines between rows, never after the last.",
+      "html": "<div class=\"ds-list\"><button class=\"ds-list-row\"><span class=\"ds-list-label\">Transcription engine</span><span class=\"ds-list-value\">Apple on-device</span><svg class=\"ds-chev\" width=\"8\" height=\"13\" viewBox=\"0 0 8 13\" fill=\"none\"><path d=\"M1.5 1.5 6.5 6.5l-5 5\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button><button class=\"ds-list-row\"><span class=\"ds-list-label\">Audio input</span><span class=\"ds-list-value\">Scarlett 2i2</span><svg class=\"ds-chev\" width=\"8\" height=\"13\" viewBox=\"0 0 8 13\" fill=\"none\"><path d=\"M1.5 1.5 6.5 6.5l-5 5\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button></div>",
+      "css": ".ds-list { background: #1C1C1E; border-radius: 14px; overflow: hidden; width: 340px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; } .ds-list-row { display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 10px 16px; width: 100%; color: #F5F5F7; background: none; border: none; border-bottom: 0.5px solid #38383A; font-family: inherit; font-size: 16px; text-align: left; cursor: pointer; } .ds-list-row:last-child { border-bottom: none; } .ds-list-row:hover { background: rgba(255,255,255,0.04); } .ds-list-row:focus-visible { outline: 2px solid #5AB0FF; outline-offset: -2px; } .ds-list-label { flex-grow: 1; } .ds-list-value { color: #8E8E93; } .ds-chev { color: #5A5A5F; flex-shrink: 0; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Machine state at a glance. Wash background, saturated text, a dot in currentColor.",
+      "html": "<span class=\"ds-status ds-status-ok\"><span class=\"ds-dot\"></span>Captions live</span> <span class=\"ds-status ds-status-warn\"><span class=\"ds-dot\"></span>Paused</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 16px; background: #2C2C2E; color: #A1A1A6; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 13px; font-weight: 600; } .ds-dot { width: 7px; height: 7px; border-radius: 4px; background: currentColor; flex-shrink: 0; } .ds-status-ok { background: rgba(48,209,88,0.14); color: #30D158; } .ds-status-warn { background: rgba(255,159,10,0.12); color: #FF9F0A; }"
+    },
+    {
+      "name": "Caption Stage",
+      "kind": "custom",
+      "refersTo": "caption-stage",
+      "description": "The signature component. Spent lines recede, the live line is white. Never shows a fault.",
+      "html": "<div class=\"ds-stage\"><div class=\"ds-stage-body\"><p class=\"ds-stage-line\">so turn with me, if you would, to the second reading</p><p class=\"ds-stage-line ds-stage-now\">Dr. Whitfield will take questions in Rotunda B</p></div><div class=\"ds-stage-foot\"><span class=\"ds-stage-live\"><span class=\"ds-dot\"></span>Live</span><span>Wall view</span></div></div>",
+      "css": ".ds-stage { width: 420px; border-radius: 22px; border: 1px solid #2C2C2E; background: radial-gradient(120% 140% at 50% 120%, #1A1A1D 0%, #000 60%); box-shadow: 0 30px 80px rgba(0,0,0,0.6); overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; } .ds-stage-body { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 26px 30px; min-height: 150px; } .ds-stage-line { margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 18px; line-height: 1.38; color: #6E6E73; } .ds-stage-now { color: #fff; font-weight: 600; font-size: 20px; letter-spacing: -0.01em; } .ds-stage-foot { display: flex; align-items: center; gap: 14px; padding: 13px 18px; background: rgba(28,28,30,0.85); border-top: 1px solid #2C2C2E; font-size: 13px; color: #A1A1A6; } .ds-stage-live { display: inline-flex; align-items: center; gap: 7px; color: #30D158; font-weight: 600; } .ds-stage-foot .ds-dot { width: 8px; height: 8px; border-radius: 4px; background: currentColor; }"
+    },
+    {
+      "name": "Nav Rail Item",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Console navigation. Active state takes a raised background and turns its icon blue.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-link ds-nav-on\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 17 17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><rect x=\"1.5\" y=\"3\" width=\"14\" height=\"10\" rx=\"1.6\"/><path d=\"M6 15.5h5\"/></svg>Status</a><a class=\"ds-nav-link\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 17 17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><circle cx=\"8.5\" cy=\"8.5\" r=\"2.4\"/><path d=\"M8.5 1.5v2M8.5 13.5v2M1.5 8.5h2M13.5 8.5h2\" stroke-linecap=\"round\"/></svg>Settings</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 3px; width: 208px; padding: 14px; background: #161618; border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; } .ds-nav-link { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: #F5F5F7; text-decoration: none; font-size: 14px; } .ds-nav-link:hover { background: rgba(255,255,255,0.06); } .ds-nav-link:focus-visible { outline: 2px solid #5AB0FF; outline-offset: 2px; } .ds-nav-on { background: #2C2C2E; font-weight: 500; } .ds-nav-on svg { stroke: #0A84FF; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Dark Booth",
+    "overview": "Black here is not a mood. It is what a projector and an LED wall physically render as off, and it is the ambient light level of the room where every one of these surfaces is actually used. The palette is Apple's dark system palette because an operator console that runs in an unlit booth beside an unlit stage has the same problem Apple solved: stay readable without becoming the brightest object in a dark room.\n\nTwo populations use this system and they get opposite treatments. The operator gets an instrument panel — dense, precise, every state legible at a glance by someone who is also running the switcher. The audience gets almost nothing: words, large, on black, with the interface removed. The same tokens serve both, but restraint runs in opposite directions. In the console, restraint means one blue control among many grey ones. On the wall, restraint means there is no interface at all.\n\nThe system is flat by construction. Depth is carried by surface lightness alone, with no borders doing a surface's job. Shadows exist, but only for things that genuinely float above the page or emit light. Everything else sits flat on the black.",
+    "keyCharacteristics": [
+      "Pure black ground, four lifted greys, three weights of text attention",
+      "One accent, used rarely and deliberately",
+      "Flat surfaces; shadow reserved for float and glow",
+      "Fully round pills; soft 16–22px radii on cards and stages",
+      "Audience surfaces hand typography control to the reader",
+      "Nothing on an audience-facing screen ever reports a fault"
+    ],
+    "rules": [
+      {
+        "name": "The One Blue Rule",
+        "body": "Signal Blue marks a single action per screen. If two things on a screen are blue, one of them is wrong. On a dense status page the operator must be able to find the control that matters without reading, and that only works while blue stays scarce.",
+        "section": "colors"
+      },
+      {
+        "name": "The Off-Is-Black Rule",
+        "body": "Audience-facing surfaces use #000000, never a near-black. On an LED wall or a projected key, black is the absence of light; #0A0A0C is a visible grey rectangle hanging in a dark room.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status-Only Rule",
+        "body": "Green, amber and red report machine state and nothing else. They are never used to categorise, decorate, or brand.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reader's Choice Rule",
+        "body": "On audience surfaces, text size, colour and typeface belong to the reader, not the designer. The phone view sizes in rem so an OS text-size preference already set by an older or low-vision reader carries through. Never hard-code a caption size, never remove the controls, and never ship a layout that breaks at the largest one.",
+        "section": "typography"
+      },
+      {
+        "name": "The Outline Always Rule",
+        "body": "Caption glyphs carry a dark text-shadow at all times, so that whatever an operator does to the background bar's opacity, the words keep an edge against bright video underneath.",
+        "section": "typography"
+      },
+      {
+        "name": "The Lightness-Carries-Depth Rule",
+        "body": "If a surface needs to separate from the one behind it, change its lightness. Reach for a border only when lightness genuinely cannot do the job.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Shadow-Means-Float Rule",
+        "body": "A shadow says this element is above the page or emitting light. A card is neither. Three shadows exist; there is no elevation scale and there should not be one.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Press-It-Round Rule",
+        "body": "Interactive and wider than tall → fully round. Container → soft rectangle. Small indicators → half their own height, which makes them capsules and circles rather than tiny rectangles. There is no fourth option, and no sharp corner anywhere in this system.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Last Hairline Rule",
+        "body": "Hairlines go between rows and never after the final one. A trailing divider is the single clearest giveaway that a list was built to look like iOS rather than built correctly.",
+        "section": "components"
+      },
+      {
+        "name": "The No-Fault-On-Air Rule",
+        "body": "The wall and any stage representing it never display a spinner, an error, a placeholder or a reconnect message. When something breaks, the bar empties. A dark rectangle reads as 'nothing is being said'; a red error reads as 'this organisation is broken', eight feet tall, behind a speaker.",
+        "section": "components"
+      },
+      {
+        "name": "The Fast-In, Slow-Out Rule",
+        "body": "The caption bar fades in over 80ms and out over 600ms. The first words after a pause must not ramp up from invisible, but a bar that vanishes abruptly reads as a fault.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do keep Signal Blue to one action per screen. If a second element wants to be blue, make it a Raised Slate pill instead.",
+      "Do use #000000 on anything the audience sees. Black is off on a projector, not a dark grey.",
+      "Do separate surfaces by lightness before reaching for a border.",
+      "Do round anything pressable that is wider than it is tall, fully.",
+      "Do put hairlines between list rows and never after the last one.",
+      "Do size audience text in rem or vh, and leave the reader's size, colour and typeface controls intact.",
+      "Do let audience surfaces fail silently and empty.",
+      "Do use :focus-visible for focus rings, never :focus.",
+      "Do keep green, amber and red for machine state only."
+    ],
+    "donts": [
+      "Don't drift toward a generic SaaS dashboard: no purple or multi-hue gradients, no pastel chart palettes, no rounded-everything, no spot illustrations. This system has one gradient and it is under the captions.",
+      "Don't drift toward legacy AV software either: no grey chrome, no beveled toolbars, no 11px labels, no nested menu trees. Density is achieved with lightness and spacing, not with smaller text.",
+      "Don't introduce an elevation scale. Three shadows exist, each with one job.",
+      "Don't use Text Spent (#6E6E73) for ordinary secondary text — it is the already-read caption line and nothing else.",
+      "Don't borrow the caption palette (amber, green, blue, red at caption weights) as brand or accent colour. Those are reader accessibility choices.",
+      "Don't show a spinner, error state, toast or placeholder on a surface an audience can see.",
+      "Don't swap Atkinson Hyperlegible for a visually similar face. It is offered for a reason that is not aesthetic.",
+      "Don't draw a sharp corner anywhere. Even the 3–6px radii in this system (the audio meter, status dots, the focus ring) are half their element's height — they are capsules and circles, not small rectangles."
+    ]
+  }
+}
