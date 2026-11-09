@@ -237,17 +237,42 @@
     right: calc(env(safe-area-inset-right) + 66px);
     bottom: calc(env(safe-area-inset-bottom) + 14px);
     z-index: 6;
-    height: 44px; padding: 0 30px 0 14px; border-radius: 22px;
-    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.7);
-    border: 1px solid rgba(255,255,255,0.35); font-family: inherit; font-size: 0.9375rem; font-weight: 600;
+    height: 44px; padding: 0 30px 0 38px; border-radius: 22px;
+    background: rgba(255,255,255,0.10); color: rgba(255,255,255,0.9);
+    border: 1px solid rgba(255,255,255,0.5); font-family: inherit; font-size: 0.9375rem; font-weight: 600;
     -webkit-tap-highlight-color: transparent;
     appearance: none; -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%23bbb'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 12px center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cellipse cx='12' cy='12' rx='4' ry='10'/%3E%3Cpath d='M2 12h20M4 7h16M4 17h16'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%23bbb'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: left 12px center, right 12px center;
     display: none;
   }
   #lang.on { display: block; }
   #lang option { color: #000; }
+
+  /* First-visit language sheet: every offered language written in its own
+     script, so a reader who cannot read English still finds theirs without
+     having to know what the small switcher is for. Once per device; a saved
+     choice (or ?lang=) means it never shows. */
+  #lang-pick {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9; display: none;
+    align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.6);
+  }
+  #lang-pick.on { display: flex; }
+  #lang-pick .sheet {
+    width: 100%; max-width: 34rem; background: #1c1c1c; color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.18); border-bottom: 0; border-radius: 20px 20px 0 0;
+    padding: 20px 20px calc(env(safe-area-inset-bottom) + 20px);
+  }
+  #lang-pick .globe { display: block; width: 36px; height: 36px; margin: 0 auto 10px; }
+  #lang-pick button {
+    display: block; width: 100%; min-height: 56px; margin: 10px 0 0; padding: 0 16px;
+    border-radius: 14px; border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.08);
+    color: #ffffff; font-family: inherit; font-size: 1.25rem; font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #lang-pick button.phone { background: rgba(255,255,255,0.22); border-color: #ffffff; }
+  #lang-pick button:focus-visible { outline: 3px solid #ffffff; outline-offset: 2px; }
 
   /* Settings panel: a small card anchored above the trigger, not a
      full-screen takeover - captions keep scrolling behind it. Width is
@@ -342,7 +367,7 @@
   }
 
   #pause, #settings-btn, #lang {
-    background: rgba(44, 44, 46, 0.82);
+    background-color: rgba(44, 44, 46, 0.82);   /* -color: keeps #lang's globe and caret images */
     border: 0.5px solid rgba(255, 255, 255, 0.12);
     color: #FFFFFF;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -442,6 +467,12 @@
 </div>
 <button id="latest" type="button">Jump to latest</button>
 <button id="pause" type="button" aria-pressed="false" aria-label="Pause automatic scrolling">Pause</button>
+<div id="lang-pick" role="dialog" aria-modal="true" aria-label="Choose your language">
+  <div class="sheet">
+    <svg class="globe" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20M4 7h16M4 17h16"/></svg>
+    <div id="lang-pick-list"></div>
+  </div>
+</div>
 <select id="lang" aria-label="Caption language"></select>
 <button id="settings-btn" type="button" aria-label="Caption display settings"
         aria-expanded="false" aria-controls="settings">Aa</button>
@@ -502,7 +533,7 @@
   // than the old 37 px ceiling. The panel shows the px count, not a name -
   // "Small"/"Huge" reads as a judgment on whoever needs the big end of it.
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
-  var chosenLang = '', availableLangs = [];
+  var chosenLang = '', availableLangs = [], langChosenBefore = false, elLangPick, elLangPickList;
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
@@ -511,7 +542,9 @@
     de: 'Deutsch', it: 'Italiano', ko: '한국어',
     ja: '日本語', ar: 'العربية',
     zh: '中文', 'zh-Hans': '简体中文',
-    'zh-Hant': '繁體中文', vi: 'Tiếng Việt', ru: 'Русский'
+    'zh-Hant': '繁體中文', vi: 'Tiếng Việt', ru: 'Русский',
+    uk: 'Українська', hi: 'हिन्दी', id: 'Bahasa Indonesia', nl: 'Nederlands',
+    pl: 'Polski', th: 'ไทย', tr: 'Türkçe'
   };
 
   // WCAG relative luminance and contrast ratio, for the custom colour guard.
@@ -713,6 +746,39 @@
     elLang.value = chosenLang;
   }
 
+  // The phone's own language settings, for putting the likely choice first.
+  function phoneLangs() {
+    var list = navigator.languages || [navigator.language || ''];
+    return Array.prototype.map.call(list, function (l) { return String(l).toLowerCase(); });
+  }
+  function matchesPhone(code) {
+    var c = String(code).toLowerCase(), base = c.split('-')[0];
+    return phoneLangs().some(function (l) { return l === c || l.split('-')[0] === base; });
+  }
+  function pickLang(code) {
+    try { localStorage.setItem('cc.lang', code); } catch (e) {}
+    langChosenBefore = true;
+    elLangPick.className = '';
+    setLang(code);
+  }
+  function showLangPick() {
+    elLangPickList.textContent = '';
+    availableLangs.slice().sort(function (a, b) {
+      return (matchesPhone(b) ? 1 : 0) - (matchesPhone(a) ? 1 : 0);
+    }).forEach(function (code) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = langLabel(code);
+      b.setAttribute('lang', code);
+      if (matchesPhone(code)) b.className = 'phone';
+      b.addEventListener('click', function () { pickLang(code); });
+      elLangPickList.appendChild(b);
+    });
+    elLangPick.className = 'on';
+    var first = elLangPickList.querySelector('button');
+    if (first) first.focus();
+  }
+
   function loadLanguages() {
     fetch('/api/site')
       .then(function (r) { return r.json(); })
@@ -727,6 +793,7 @@
         // Only show the control when there is a real choice. One language
         // means the picker would do nothing, so it stays hidden.
         elLang.className = availableLangs.length > 1 ? 'on' : '';
+        if (availableLangs.length > 1 && !langChosenBefore) showLangPick();
         // Interims are always in the source language, whatever stream was
         // picked - a screen reader needs to know which rules to read by.
         elInterim.setAttribute('lang', site.source || 'en');
@@ -1237,6 +1304,8 @@
     elStatus = document.getElementById('status');
     elPause = document.getElementById('pause');
     elLangNote = document.getElementById('lang-note');
+    elLangPick = document.getElementById('lang-pick');
+    elLangPickList = document.getElementById('lang-pick-list');
     elEvent = document.getElementById('event');
     elBrand = document.getElementById('brand');
     elBrandImg = document.getElementById('brand-img');
@@ -1257,6 +1326,10 @@
     elLatest.addEventListener('click', function () { if (holdScroll) togglePause(); else scrollToBottom(); });
     elPause.addEventListener('click', togglePause);
     elLang.addEventListener('change', function () { setLang(this.value); });
+    // Tapping outside or Escape keeps the current language and stops the sheet
+    // from asking again.
+    elLangPick.addEventListener('click', function (e) { if (e.target === elLangPick) pickLang(chosenLang); });
+    elLangPick.addEventListener('keydown', function (e) { if (e.key === 'Escape') pickLang(chosenLang); });
     elSettingsBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       toggleSettings();
@@ -1298,6 +1371,7 @@
 
     startedAt = lastMsgAt = now();
     chosenLang = loadLang();
+    langChosenBefore = !!chosenLang;
     loadLanguages();
     try { initSlides(); } catch (e) { /* Optional feature never blocks captions. */ }
     setLink(false);
