@@ -9,6 +9,7 @@
 # lifecycle explicit and avoids the SDK's own transitive pins.
 
 # --- direct ---------------------------------------------------------------
+certifi==2026.10.23        # the CA store the packaged app uses; see relay/config.py
 fastapi==0.141.1
 uvicorn==0.52.4
 websockets==17.1

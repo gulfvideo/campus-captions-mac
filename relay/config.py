@@ -24,6 +24,23 @@ ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
 APP_NAME = "Campus Captions"
 
 
+def use_bundled_certs() -> None:
+    """Point OpenSSL at the CA store certifi ships inside the bundle.
+
+    The packaged app's OpenSSL looks for its CA store at the path compiled
+    into the Python it was built with - python.org's, in CI - which does not
+    exist on a tester's Mac, so every HTTPS connection (updates, Deepgram,
+    Azure) fails certificate verification. OpenSSL reads this variable.
+    """
+    if not os.environ.get("SSL_CERT_FILE"):
+        import certifi
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+
+
+if FROZEN:
+    use_bundled_certs()
+
+
 def _data_dir() -> Path:
     """Where per-machine state lives in the packaged app: event.toml, .env,
     uploaded images, logs. Never inside the bundle - it is signed, shared as

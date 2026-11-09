@@ -238,3 +238,26 @@ class SaverRoundTripTests(unittest.TestCase):
         as the word True."""
         config.save_event_settings(self.path, {"title": "True"})
         self.assertEqual(self.read()["event"]["title"], "True")
+
+
+class BundledCertsTests(unittest.TestCase):
+    """The packaged app's OpenSSL is compiled with a CA path from the build
+    machine's Python. On a Mac without it, every HTTPS connection fails
+    'unable to get local issuer certificate' - which the updater reported as
+    'could not reach github.com'."""
+
+    def test_the_bundled_store_is_used_when_nothing_else_is_set(self):
+        import certifi
+        from unittest import mock
+        with mock.patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("SSL_CERT_FILE", None)
+            config.use_bundled_certs()
+            self.assertEqual(certifi.where(), env["SSL_CERT_FILE"])
+            self.assertTrue(Path(env["SSL_CERT_FILE"]).is_file())
+
+    def test_an_operator_override_is_left_alone(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"SSL_CERT_FILE": "/corp/ca.pem"}):
+            config.use_bundled_certs()
+            import os
+            self.assertEqual("/corp/ca.pem", os.environ["SSL_CERT_FILE"])

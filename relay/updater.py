@@ -198,6 +198,7 @@ def _fetch(url: str, limit: int) -> bytes:
         # a service. Say the thing they can act on.
         from urllib.parse import urlparse
         host = urlparse(url).hostname or "the update host"
+        print(f"[update] {exc!r}")       # the log gets the real reason
         raise UpdateError(
             f"could not reach {host} - check this computer's internet "
             f"connection") from exc
