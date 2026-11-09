@@ -19,18 +19,9 @@ download for your operating system.
 
 ### macOS
 
-Two downloads — take the one matching your Mac. Apple menu → About This Mac
-says which: "Apple M1/M2/M3/M4" means Apple Silicon, "Intel" means Intel.
-
-- **`CampusCaptions-<version>-AppleSilicon.dmg`** — M1 and later
-- **`CampusCaptions-<version>-Intel.dmg`** — Intel Macs
-
-The wrong one will not open at all, so if nothing happens, try the other.
-
-The Intel build has no Whisper backend: `onnxruntime`, which Whisper needs,
-no longer ships a macOS Intel version. Deepgram, Apple on-device speech and
-practice mode all work there; the app says so rather than offering an option
-that cannot run.
+One download, **`CampusCaptions-<version>-AppleSilicon.dmg`**, for Macs with
+an Apple M1 or later chip. Apple menu → About This Mac says which chip you
+have; Intel Macs are not supported.
 
 1. Double-click the `.dmg`. A window opens with the app and a shortcut to
    Applications.

@@ -29,40 +29,13 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------ macOS
+  # Apple Silicon only. apple_speech needs macOS 26, and the Intel Macs that
+  # can run 26 are the last of their line; an x86_64 build also could not
+  # carry Whisper (onnxruntime ships no macOS x86_64 wheel for Python 3.14).
   macos:
-    name: macOS app (${{ matrix.label }})
-    runs-on: ${{ matrix.runner }}
+    name: macOS app (Apple Silicon)
+    runs-on: macos-latest
     timeout-minutes: 40
-
-    strategy:
-      # One architecture failing must not cancel the other: an Apple Silicon
-      # build is worth shipping on its own, and the Intel runner is the one
-      # on borrowed time (see below).
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            label: AppleSilicon
-            whisper: true
-          # macos-13 was retired in December 2025; macos-15-intel replaces it
-          # and is GitHub's last x86_64 image, available until August 2027.
-          # Worth carrying until then: PyInstaller freezes for the host
-          # architecture, so an arm64 build does not launch at all on an Intel
-          # Mac - Rosetta translates Intel to ARM, not the reverse. macOS 26
-          # itself still runs on four Intel models (2019 16" MacBook Pro, 2020
-          # 13" 4-port MacBook Pro, 2020 27" iMac, 2019 Mac Pro), so
-          # apple_speech is reachable there too and the helper is still worth
-          # building.
-          - runner: macos-15-intel
-            label: Intel
-            # onnxruntime, which faster-whisper needs, ships no macOS x86_64
-            # wheel for Python 3.14 - "from versions: none" - so this build
-            # cannot carry Whisper at all and installing it fails the job
-            # outright. Deepgram, Apple on-device speech and practice mode all
-            # work; the app says Whisper is not included in this build rather
-            # than offering it and failing, and rather than telling someone to
-            # pip install into a frozen app.
-            whisper: false
 
     steps:
       - uses: actions/checkout@v5
@@ -93,12 +66,7 @@ jobs:
           python3 -m venv .venv
           .venv/bin/python3 -m pip install --upgrade pip
           .venv/bin/python3 -m pip install -r requirements.txt \
-            -r macapp/requirements-build.txt
-          if [ "${{ matrix.whisper }}" = "true" ]; then
-            .venv/bin/python3 -m pip install -r requirements-whisper.txt
-          else
-            echo "skipping requirements-whisper.txt on ${{ matrix.label }}"
-          fi
+            -r macapp/requirements-build.txt -r requirements-whisper.txt
 
       - name: Byte-compile every module
         run: .venv/bin/python3 -m compileall -q relay capture launcher macapp tools
@@ -106,9 +74,7 @@ jobs:
       - name: Select the newest Xcode
         # The image usually carries several and defaults to one of the older
         # ones. speech_helper.swift needs the macOS 26 SDK, so take the
-        # highest version present rather than whatever xcode-select points at
-        # - on the Intel runner the default had no SpeechAnalyzer at all and
-        # the helper would not compile.
+        # highest version present rather than whatever xcode-select points at.
         run: |
           newest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
           if [ -n "$newest" ]; then
@@ -172,7 +138,7 @@ jobs:
         # step.
         run: |
           version=$(.venv/bin/python3 -c "from launcher.version import VERSION; print(VERSION)")
-          macapp/make_dmg.sh "macapp/dist/CampusCaptions-$version-${{ matrix.label }}.dmg"
+          macapp/make_dmg.sh "macapp/dist/CampusCaptions-$version-AppleSilicon.dmg"
           ls -lh macapp/dist/*.dmg
 
       - name: Check the disk image mounts and holds the app
@@ -193,7 +159,7 @@ jobs:
       - name: Upload the app as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CampusCaptions-macOS-${{ matrix.label }}
+          name: CampusCaptions-macOS-AppleSilicon
           path: macapp/dist/*.dmg
           if-no-files-found: error
 
@@ -232,11 +198,11 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Collect every built asset
+      - name: Collect the built asset
         uses: actions/download-artifact@v5
         with:
           path: assets
-          merge-multiple: true      # both architectures land in one directory
+          merge-multiple: true
 
       - name: Show what is being published
         run: ls -lh assets

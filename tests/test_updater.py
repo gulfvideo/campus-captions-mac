@@ -253,12 +253,12 @@ class FetchTargetTests(unittest.TestCase):
 
     def test_each_platform_maps_to_the_build_it_can_run(self):
         """PyInstaller freezes for the host architecture, so an arm64 build
-        does not launch on an Intel Mac at all - handing someone the wrong one
-        looks exactly like a corrupt download."""
+        does not launch on an Intel Mac at all. Only Apple Silicon is shipped;
+        an Intel Mac gets a key no manifest carries, and so no update."""
         cases = {
             ("darwin", "arm64"): "macos-arm64",
             ("darwin", "aarch64"): "macos-arm64",
-            ("darwin", "x86_64"): "macos-x86_64",
+            ("darwin", "x86_64"): "darwin-x86_64",
         }
         for (system, machine), expected in cases.items():
             with self.subTest(system=system, machine=machine):

@@ -15,7 +15,6 @@ update manifest" step in .github/workflows/release.yml.
 Asset names come from the release workflow:
 
     CampusCaptions-<version>-AppleSilicon.dmg  -> macos-arm64
-    CampusCaptions-<version>-Intel.dmg         -> macos-x86_64
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ from launcher.version import VERSION  # noqa: E402
 # Suffix -> the platform key relay/updater.py:platform_key() produces.
 PATTERNS = (
     ("-AppleSilicon.dmg", "macos-arm64"),
-    ("-Intel.dmg", "macos-x86_64"),
 )
 
 

@@ -13,14 +13,13 @@ The manifest is one JSON document:
       "version": "0.4.0-beta",
       "notes":   "what changed",
       "builds": {
-        "macos-arm64":    {"url": "...", "sha256": "...", "size": 78123456},
-        "macos-x86_64":   {...}
+        "macos-arm64":    {"url": "...", "sha256": "...", "size": 78123456}
       }
     }
 
-Per-architecture because PyInstaller freezes for the host architecture: an
-arm64 build does not launch on an Intel Mac at all, and handing someone the
-wrong one looks exactly like a corrupt download.
+Keyed by platform because PyInstaller freezes for the host architecture; a
+machine whose key is absent is told there is no build rather than handed one
+that cannot launch.
 
 Who is allowed to download it: the bucket is private and sits behind a
 Cloudflare Worker that checks a per-tester access code (see
@@ -101,8 +100,8 @@ class UpdateError(Exception):
 def platform_key() -> str:
     """Which build in the manifest belongs to this machine."""
     machine = platform.machine().lower()
-    if sys.platform == "darwin":
-        return "macos-arm64" if machine in ("arm64", "aarch64") else "macos-x86_64"
+    if sys.platform == "darwin" and machine in ("arm64", "aarch64"):
+        return "macos-arm64"
     return f"{sys.platform}-{machine or 'unknown'}"
 
 

@@ -43,7 +43,6 @@ release tag v0.4.0-beta
         │                 ▼
         └── publish-update  ──►  R2 bucket
                                    /0.4.0-beta/CampusCaptions-0.4.0-beta-AppleSilicon.dmg
-                                   /0.4.0-beta/CampusCaptions-0.4.0-beta-Intel.dmg
                                    /latest.json          ← written last
 ```
 
@@ -114,8 +113,8 @@ Cloudflare account.
 
 ## Cutting a release
 
-Unchanged: push a `v*` tag. The macOS job builds both architectures as it
-always did, and `publish-update` runs after it succeeds. If it fails no
+Unchanged: push a `v*` tag. The macOS job builds the app as it always
+did, and `publish-update` runs after it succeeds. If it fails no
 manifest is published and everyone stays on the version they have, which is
 the safe outcome — a manifest naming a build that failed offers a download
 that 404s.
