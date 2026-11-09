@@ -233,6 +233,7 @@ def page_csp(html: bytes) -> str:
         f"script-src {script_src}; "
         "style-src 'unsafe-inline'; "
         "img-src 'self' data:; "
+        "media-src data:; "
         "font-src 'self'; "
         "connect-src 'self' ws: wss:; "
         "frame-src 'self'; frame-ancestors 'self'; "

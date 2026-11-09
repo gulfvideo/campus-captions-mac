@@ -521,7 +521,7 @@
     <div class="fonts">
       <button id="speak-btn" class="font-btn" type="button" role="switch" aria-checked="false">Speak each line</button>
     </div>
-    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room. Hearing nothing? Check the volume and the ring/silent switch.</p>
+    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room.</p>
   </fieldset>
 </div>
 <div id="dbg"></div>
@@ -545,7 +545,7 @@
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
   var chosenLang = '', availableLangs = [], langChosenBefore = false, elLangPick, elLangPickList;
   var elSpeakRow, elSpeakBtn, speakOn = false, speakQueue = [], speakBusy = false, speakTimer = null;
-  var speakCurrent = null, liveSeen = false;
+  var speakCurrent = null, liveSeen = false, silentClip = null;
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
@@ -792,9 +792,28 @@
     try { if (wasSpeaking || s.speaking || s.pending) s.cancel(); } catch (e) {}
   }
 
+  // Phones in a service are on silent, and iOS mutes speech synthesis with
+  // the ring switch unless the page already counts as playing media. A
+  // looping 50 ms silent clip, started inside the reader's tap, puts the
+  // page in that mode for as long as the switch is on. Inline so it needs no
+  // request; the CSP allows media-src data: for it.
+  var SILENCE = 'data:audio/wav;base64,' + 'UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+  function holdAudio(on) {
+    try {
+      if (!silentClip) {
+        silentClip = new Audio(SILENCE);
+        silentClip.loop = true;
+        silentClip.setAttribute('playsinline', '');
+      }
+      if (on) { var p = silentClip.play(); if (p && p['catch']) p['catch'](function () {}); }
+      else silentClip.pause();
+    } catch (e) {}
+  }
+
   function setSpeak(on) {
     speakOn = on;
     elSpeakBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+    holdAudio(on);
     if (!on) { stopSpeaking(); return; }
     // Spoken from the tap itself, which is what unlocks audio on iOS; also
     // the one confirmation the reader gets that the voice exists.
