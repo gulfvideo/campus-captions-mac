@@ -343,7 +343,9 @@
   #settings .font-btn.selected { background: rgba(255,255,255,0.28); }
   #speak-row[hidden] { display: none; }
   #speak-btn[aria-checked="true"] { background: #0A84FF; }
-  #speak-note { color: rgba(255,255,255,0.6); font-size: 0.8125rem; margin: 8px 0 0; }
+  #speak-note, #speak-status { color: rgba(255,255,255,0.6); font-size: 0.8125rem; margin: 8px 0 0; }
+  #speak-status { color: #8ab4ff; }
+  #speak-status[hidden] { display: none; }
 
   #dbg {
     position: fixed; top: 6px; left: 6px; z-index: 9;
@@ -522,6 +524,7 @@
       <button id="speak-btn" class="font-btn" type="button" role="switch" aria-checked="false">Speak each line</button>
     </div>
     <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room.</p>
+    <p id="speak-status" role="status" aria-live="polite" hidden></p>
   </fieldset>
 </div>
 <div id="dbg"></div>
@@ -545,7 +548,7 @@
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
   var chosenLang = '', availableLangs = [], langChosenBefore = false, elLangPick, elLangPickList;
   var elSpeakRow, elSpeakBtn, speakOn = false, speakQueue = [], speakBusy = false, speakTimer = null;
-  var speakCurrent = null, liveSeen = false, silentClip = null;
+  var speakCurrent = null, liveSeen = false, silentClip = null, elSpeakStatus, speakStarted = false;
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
@@ -810,11 +813,28 @@
     } catch (e) {}
   }
 
+  // What the engine reports, in the sheet: the one place a reader (or the
+  // person helping them) can see why nothing is coming out.
+  function speakStatus(msg) {
+    elSpeakStatus.hidden = !msg;
+    elSpeakStatus.textContent = msg || '';
+  }
+
   function setSpeak(on) {
     speakOn = on;
     elSpeakBtn.setAttribute('aria-checked', on ? 'true' : 'false');
     holdAudio(on);
-    if (!on) { stopSpeaking(); return; }
+    if (!on) { stopSpeaking(); speakStatus(''); return; }
+    speakStarted = false;
+    speakStatus('Starting…');
+    setTimeout(function () {
+      if (!speakOn || speakStarted) return;
+      var n = 0;
+      try { n = window.speechSynthesis.getVoices().length; } catch (e) {}
+      speakStatus('Nothing has played. Voices on this phone: ' + n +
+        (window.speechSynthesis.speaking ? ', engine says speaking' : '') +
+        (window.speechSynthesis.pending ? ', pending' : '') + '.');
+    }, 4000);
     // Spoken from the tap itself, which is what unlocks audio on iOS; also
     // the one confirmation the reader gets that the voice exists.
     stopSpeaking();
@@ -843,8 +863,8 @@
       speakBusy = false;
       speakNext();
     }
-    u.onend = finish;
-    u.onerror = finish;
+    u.onend = function () { speakStatus('Waiting for the next line'); finish(); };
+    u.onerror = function (e) { speakStatus('Speech error: ' + ((e && e.error) || 'unknown')); finish(); };
     // Some engines never fire onend (Chrome after ~15 s of speech, Safari
     // after an interruption), so a watchdog advances the queue - but only
     // when speech has made no progress: every boundary event re-arms it, and
@@ -860,7 +880,7 @@
         finish();
       }, ms);
     }
-    u.onstart = function () { arm(budget); };
+    u.onstart = function () { speakStarted = true; speakStatus('Speaking'); arm(budget); };
     u.onboundary = function () { arm(15000); };
     arm(budget);
     speakBusy = true;
@@ -1445,6 +1465,7 @@
     elFonts = document.getElementById('fonts');
     elSpeakRow = document.getElementById('speak-row');
     elSpeakBtn = document.getElementById('speak-btn');
+    elSpeakStatus = document.getElementById('speak-status');
     elStatus = document.getElementById('status');
     elPause = document.getElementById('pause');
     elLangNote = document.getElementById('lang-note');
