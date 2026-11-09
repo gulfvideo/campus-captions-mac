@@ -38,7 +38,8 @@ This README is for working on the code.
 ## Operating it: the short version
 
 The installed app runs as a **menu bar icon** — right-click it for the status, settings, wall and phone
-pages, and to quit.
+pages, and to quit. While it runs it keeps the Mac and its display awake, so a long service
+never ends with a sleeping laptop.
 
 From a source checkout, double-click **`Start Captions.command`**. It creates the virtual environment on
 first run, starts the relay and the capture client, opens the status page, and

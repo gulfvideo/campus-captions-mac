@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
+import subprocess
 import threading
 import time
 import types
@@ -197,6 +199,12 @@ class Supervisor:
         end's own Quit takes the whole process down with it.
         """
         threading.Thread(target=self.run_relay, daemon=True).start()
+        # Keep the Mac (and its display, for a mirrored wall) awake for as
+        # long as the app runs; caffeinate exits with us. ponytail: whole
+        # app lifetime, not just while streaming - switch to start/stop on
+        # STREAMING if idle operators complain about a Mac that never sleeps.
+        subprocess.Popen(["/usr/bin/caffeinate", "-dis", "-w", str(os.getpid())],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         def then_capture() -> None:
             if not wait_ready(self.port, self.token,

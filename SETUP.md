@@ -33,6 +33,7 @@ have; Intel Macs are not supported.
    on-device backend. Allow both, or there is nothing to caption.
 
 It runs as a graduation-cap icon in the **menu bar** at the top of the screen.
+While it is running the Mac will not go to sleep (closing the lid still sleeps it).
 
 ### The setup wizard
 
