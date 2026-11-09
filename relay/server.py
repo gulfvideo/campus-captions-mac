@@ -1523,9 +1523,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         """{"action": "check"|"download"|"install"}
 
         Relay-local and operator-driven throughout - nothing here happens on a
-        timer. The source repository is private, so its release assets need a
-        token no distributed app can safely hold; the manifest and the builds
-        live on storage the project owns instead. See relay/updater.py.
+        timer. See relay/updater.py.
         """
         require_operator(request)
         body = await read_json(request) or {}
@@ -1534,16 +1532,6 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             return JSONResponse(await updater.check(), headers=NO_STORE)
         if action == "download":
             return JSONResponse(await updater.fetch(), headers=NO_STORE)
-        if action == "code":
-            # Same handling as the Deepgram key and the tunnel token: straight
-            # into .env, into the environment for this process, and never read
-            # back out to the browser - /api/update reports has_access_code.
-            code = text_field(body, "code", 512, allow_empty=True)
-            config_module.save_env_var(updater_module.ACCESS_TOKEN_ENV, code)
-            os.environ[updater_module.ACCESS_TOKEN_ENV] = code
-            print("[update] access code "
-                  + ("saved" if code else "cleared"))   # never the code itself
-            return JSONResponse(updater.status(), headers=NO_STORE)
         if action == "install":
             # Not a 4xx when the event is live: the operator asked a reasonable
             # question and the answer is "not now", which belongs in the status
@@ -1551,7 +1539,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             return JSONResponse(updater.install(), headers=NO_STORE)
         raise HTTPException(
             status_code=400,
-            detail="action must be check, download, install or code")
+            detail="action must be check, download or install")
 
     @app.post("/api/tunnel")
     async def api_tunnel(request: Request) -> JSONResponse:

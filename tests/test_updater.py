@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -190,47 +189,11 @@ class RefusalTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.up.status()["can_install"])
 
 
-class AccessCodeTests(unittest.TestCase):
-    """The per-tester code that gates downloads. It is a credential, so the
-    two things that matter are that it is attached when it should be and never
-    appears where it should not."""
-
-    def setUp(self):
-        self.previous = os.environ.get(up.ACCESS_TOKEN_ENV)
-        os.environ[up.ACCESS_TOKEN_ENV] = "tester-code-123"
-
-    def tearDown(self):
-        if self.previous is None:
-            os.environ.pop(up.ACCESS_TOKEN_ENV, None)
-        else:
-            os.environ[up.ACCESS_TOKEN_ENV] = self.previous
-
-    def test_the_code_travels_as_a_bearer_token(self):
-        self.assertEqual("Bearer tester-code-123",
-                         up.request_headers()["Authorization"])
-
-    def test_no_code_means_no_header_rather_than_an_empty_one(self):
-        os.environ.pop(up.ACCESS_TOKEN_ENV)
-        self.assertNotIn("Authorization", up.request_headers())
-
-    def test_status_says_a_code_is_set_but_never_what_it_is(self):
-        status = up.Updater(staging=Path(tempfile.gettempdir())).status()
-        self.assertTrue(status["has_access_code"])
-        self.assertNotIn("tester-code-123", json.dumps(status))
-
-    def test_a_refused_code_is_explained_rather_than_numbered(self):
-        self.assertIn("revoked", up._http_message(401))
-        self.assertIn("revoked", up._http_message(403))
-
-    def test_having_no_code_at_all_says_so_instead(self):
-        os.environ.pop(up.ACCESS_TOKEN_ENV)
-        self.assertIn("no update code", up._http_message(401))
-
-    def test_the_code_is_never_sent_off_the_allowed_host(self):
-        """_fetch refuses before a request object is built, so there is no
-        path on which the header could be attached to a foreign host."""
+class FetchTargetTests(unittest.TestCase):
+    def test_fetching_from_another_host_is_refused_outright(self):
         for bad in ("https://evil.example/latest.json",
-                    f"http://{HOST}/latest.json"):
+                    f"http://{HOST}/latest.json",
+                    "file:///etc/passwd"):
             with self.subTest(url=bad):
                 with self.assertRaises(up.UpdateError):
                     up._fetch(bad, 1024)
@@ -240,16 +203,6 @@ class AccessCodeTests(unittest.TestCase):
                          sha256=GOOD_DIGEST, size=1024)
         with self.assertRaises(up.UpdateError):
             up.download(build, Path(tempfile.gettempdir()))
-
-
-class FetchTargetTests(unittest.TestCase):
-    def test_fetching_from_another_host_is_refused_outright(self):
-        for bad in ("https://evil.example/latest.json",
-                    f"http://{HOST}/latest.json",
-                    "file:///etc/passwd"):
-            with self.subTest(url=bad):
-                with self.assertRaises(up.UpdateError):
-                    up._fetch(bad, 1024)
 
     def test_each_platform_maps_to_the_build_it_can_run(self):
         """PyInstaller freezes for the host architecture, so an arm64 build

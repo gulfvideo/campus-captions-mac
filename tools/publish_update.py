@@ -4,7 +4,7 @@
 Run after the release workflow has produced its assets, pointed at the
 directory holding them:
 
-    python tools/publish_update.py --assets dist/ --base https://updates.gulfvideo.io
+    python tools/publish_update.py --assets dist/
 
 It reads the real files rather than being told about them - the size and
 SHA-256 in the manifest have to describe the bytes that were actually built,
@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from launcher.version import VERSION  # noqa: E402
+from relay.updater import REPO  # noqa: E402
 
 # Suffix -> the platform key relay/updater.py:platform_key() produces.
 PATTERNS = (
@@ -64,7 +65,7 @@ def build(assets: Path, base: str, version: str, notes: str) -> dict:
                 f"two files claim to be the {key} build: "
                 f"{builds[key]['url'].rsplit('/', 1)[-1]} and {path.name}")
         builds[key] = {
-            "url": f"{base}/{version}/{path.name}",
+            "url": f"{base}/v{version}/{path.name}",
             "sha256": digest(path),
             "size": path.stat().st_size,
         }
@@ -78,8 +79,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets", type=Path, required=True,
                         help="directory holding the built .dmg files")
-    parser.add_argument("--base", default="https://updates.gulfvideo.io",
-                        help="public base URL the files will be served from")
+    parser.add_argument("--base", default=f"https://github.com/{REPO}/releases/download",
+                        help="base URL; the files are served from <base>/v<version>/")
     parser.add_argument("--version", default=VERSION)
     parser.add_argument("--notes", default="", help="what changed, shown in the app")
     parser.add_argument("--out", type=Path, default=Path("latest.json"))

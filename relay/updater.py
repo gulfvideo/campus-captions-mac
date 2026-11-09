@@ -1,13 +1,6 @@
-"""Checks for a newer build and installs it, for testers who were sent the app.
+"""Checks for a newer build on GitHub Releases and installs it.
 
-The source repository is private, so its release assets need a token to
-download and an app that carried one would be handing every tester read access
-to the whole repository - the token is extractable from the bundle in about a
-minute. So the binaries and a small manifest live on object storage the project
-owns instead (Cloudflare R2 behind updates.gulfvideo.io), and nothing secret
-ships inside the app.
-
-The manifest is one JSON document:
+The manifest is one JSON document, attached to each release as `latest.json`:
 
     {
       "version": "0.4.0-beta",
@@ -21,21 +14,11 @@ Keyed by platform because PyInstaller freezes for the host architecture; a
 machine whose key is absent is told there is no build rather than handed one
 that cannot launch.
 
-Who is allowed to download it: the bucket is private and sits behind a
-Cloudflare Worker that checks a per-tester access code (see
-infra/update-gate/). Each tester gets their own, it travels as a bearer token,
-and revoking one is deleting a row - so an app that leaks out of the beta stops
-being able to update, and the log says whose code fetched what.
-
-That gates *distribution*, which is the part that can actually be enforced. It
-does not stop someone who already has the bundle from running it or handing it
-to a friend: any check the app performs on itself runs on their machine and can
-be edited out of it. Signing and notarization are what make a *tampered* build
-refuse to run; access codes are what keep the download off the open internet.
-
 What guarantees the download is the build we meant to ship:
 
-  * HTTPS to a host the project controls, and no redirect off it.
+  * HTTPS to GitHub, and no redirect anywhere else. GitHub serves release
+    assets from a githubusercontent.com host after a redirect, so that host
+    is allowed too.
   * The size and SHA-256 from the manifest, checked before anything is opened.
   * If the running app carries a Team ID - that is, once it is signed with a
     Developer ID certificate rather than ad-hoc - the replacement must carry the
@@ -67,16 +50,15 @@ from pathlib import Path
 
 from launcher.version import VERSION, VERSION_NUMBER, _version_tuple
 
-DEFAULT_MANIFEST_URL = "https://updates.gulfvideo.io/latest.json"
+REPO = "gulfvideo/campus-captions-mac"
+DEFAULT_MANIFEST_URL = f"https://github.com/{REPO}/releases/latest/download/latest.json"
 
-# Only ever fetch from somewhere the project controls. A manifest that points
-# its download at another host is not a redirect worth following - it is either
-# a mistake or the interesting half of an attack.
-ALLOWED_HOSTS = ("updates.gulfvideo.io",)
-
-# Per-tester access code. Lives in .env beside the Deepgram key and the tunnel
-# token, is never sent anywhere but ALLOWED_HOSTS, and is never printed.
-ACCESS_TOKEN_ENV = "CAPTIONS_UPDATE_TOKEN"
+# Only ever fetch from GitHub. A manifest that points its download at another
+# host is not a redirect worth following - it is either a mistake or the
+# interesting half of an attack. The githubusercontent hosts are where GitHub
+# redirects release-asset downloads.
+ALLOWED_HOSTS = ("github.com", "objects.githubusercontent.com",
+                 "release-assets.githubusercontent.com")
 
 CONNECT_TIMEOUT = 15.0
 MANIFEST_MAX_BYTES = 64 * 1024        # a JSON document, not a payload
@@ -191,22 +173,8 @@ def parse_manifest(raw: bytes) -> Manifest:
                     builds=builds)
 
 
-def access_token() -> str:
-    return os.environ.get(ACCESS_TOKEN_ENV, "").strip()
-
-
-def request_headers(token: str = "") -> dict[str, str]:
-    """Headers for one update request.
-
-    The code is attached only by callers that have already checked the URL
-    against ALLOWED_HOSTS - a bearer token is a credential, and the one way to
-    lose it is to send it somewhere that was not supposed to have it.
-    """
-    headers = {"User-Agent": f"CampusCaptions/{VERSION}"}
-    token = token or access_token()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    return headers
+def request_headers() -> dict[str, str]:
+    return {"User-Agent": f"CampusCaptions/{VERSION}"}
 
 
 def _fetch(url: str, limit: int) -> bytes:
@@ -235,20 +203,10 @@ def _fetch(url: str, limit: int) -> bytes:
             f"connection") from exc
 
 
-NO_TOKEN = (
-    "this copy has no update code - paste the one you were sent under "
-    "Settings, App version")
-BAD_TOKEN = (
-    "this update code was not accepted - it may have been replaced or "
-    "revoked; ask for a current one")
-
-
 def _http_message(code: int) -> str:
     """What an operator can act on, rather than a status number."""
-    if code in (401, 403):
-        return NO_TOKEN if not access_token() else BAD_TOKEN
     if code == 404:
-        return "the update host has no manifest yet"
+        return "no release carries an update manifest yet"
     return f"the update host answered {code}"
 
 
@@ -481,10 +439,6 @@ class Updater:
             "size": build.size if build else None,
             "progress": round(self.progress, 3),
             "signed": bool(self._team),
-            # Whether one is set, never what it is - same contract as
-            # has_deepgram_key. The code is a credential and the settings page
-            # is a browser.
-            "has_access_code": bool(access_token()),
             # Shown next to the Install button rather than buried in a log.
             "trust_note": "" if self._team else TRUST_NOTE,
             "can_install": self.state == "ready" and not self._is_live(),

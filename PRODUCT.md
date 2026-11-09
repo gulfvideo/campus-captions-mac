@@ -102,8 +102,8 @@ translated) versus *committed lines* (final, recorded, translated, exported).
   keyterm list was supplied. No accuracy figure has been measured.
 
 **Open product decisions — do not invent answers.**
-- Not for sale. No price, no tier, no licensing model has been set.
-- Whether the product becomes commercial, free, or open is undecided.
+- Not for sale. No price and no tier has been set.
+- The source is open under the MIT license (decided 2026-11-09); builds are public on GitHub Releases.
 
 ## Brand Commitments
 

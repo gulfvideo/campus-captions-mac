@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import http.server
 import json
-import os
 import shutil
 import ssl
 import subprocess
@@ -27,9 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from relay import updater as up  # noqa: E402
 from tests.test_updater_macos import make_app, make_dmg  # noqa: E402
-
-
-ACCESS_CODE = "0123456789abcdef0123456789abcdef"
 
 
 def have(tool: str) -> bool:
@@ -71,7 +67,7 @@ class RoundTripTests(unittest.TestCase):
         # underneath is not what any of these tests are about.
         self.dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self.dir.name)
-        self.served = self.root / "served" / "99.0.0-beta"
+        self.served = self.root / "served" / "v99.0.0-beta"
         self.served.mkdir(parents=True)
 
         # A real signed app in a real disk image, named the way the release
@@ -84,24 +80,9 @@ class RoundTripTests(unittest.TestCase):
         context.load_cert_chain(str(self.cert), str(self.key))
         root = self.root / "served"
 
-        seen: list[str] = []
-        self.seen = seen
-
         class Handler(http.server.SimpleHTTPRequestHandler):
-            """Behaves like infra/update-gate: a valid bearer code or 401."""
-
             def __init__(self, *a, **kw):
                 super().__init__(*a, directory=str(root), **kw)
-
-            def do_GET(self):
-                header = self.headers.get("Authorization", "")
-                seen.append(header)
-                if header != f"Bearer {ACCESS_CODE}":
-                    self.send_response(401)
-                    self.end_headers()
-                    self.wfile.write(b"Not authorised\n")
-                    return
-                super().do_GET()
 
             def log_message(self, *a):
                 pass
@@ -122,8 +103,6 @@ class RoundTripTests(unittest.TestCase):
 
         self.hosts = up.ALLOWED_HOSTS
         up.ALLOWED_HOSTS = ("localhost",)
-        self.previous_code = os.environ.get(up.ACCESS_TOKEN_ENV)
-        os.environ[up.ACCESS_TOKEN_ENV] = ACCESS_CODE
 
         # Teach urllib about this one test certificate, rather than giving
         # updater.py a way to skip verification. The code under test still
@@ -135,10 +114,6 @@ class RoundTripTests(unittest.TestCase):
             urllib.request.HTTPSHandler(context=trusted)))
 
     def tearDown(self):
-        if self.previous_code is None:
-            os.environ.pop(up.ACCESS_TOKEN_ENV, None)
-        else:
-            os.environ[up.ACCESS_TOKEN_ENV] = self.previous_code
         up.ALLOWED_HOSTS = self.hosts
         urllib.request.install_opener(None)
         self.server.shutdown()
@@ -215,53 +190,6 @@ class RoundTripTests(unittest.TestCase):
             status = u.install()
             self.assertEqual("error", status["state"])
             self.assertIn("live", status["error"])
-
-        asyncio.run(run())
-
-
-    def test_every_request_carried_the_access_code(self):
-        """Both the manifest and the build are behind the gate - an update
-        path that authenticated one and not the other would leave the large,
-        interesting file open to anyone with the URL."""
-        import asyncio
-
-        async def run():
-            u = self.updater()
-            await u.check()
-            status = await u.fetch()
-            self.assertEqual("ready", status["state"], status.get("error"))
-
-        asyncio.run(run())
-        self.assertGreaterEqual(len(self.seen), 2)
-        self.assertTrue(all(h == f"Bearer {ACCESS_CODE}" for h in self.seen),
-                        f"a request went out unauthenticated: {self.seen}")
-
-    def test_a_revoked_code_cannot_download_anything(self):
-        import asyncio
-
-        os.environ[up.ACCESS_TOKEN_ENV] = "revoked-code"
-
-        async def run():
-            u = self.updater()
-            status = await u.check()
-            self.assertEqual("error", status["state"])
-            self.assertIn("revoked", status["error"])
-            self.assertIsNone(u.available)
-            # ...and with nothing on offer, there is nothing to fetch either.
-            self.assertEqual("error", (await u.fetch())["state"])
-
-        asyncio.run(run())
-
-    def test_with_no_code_the_operator_is_told_to_paste_one(self):
-        import asyncio
-
-        os.environ.pop(up.ACCESS_TOKEN_ENV, None)
-
-        async def run():
-            status = await self.updater().check()
-            self.assertEqual("error", status["state"])
-            self.assertIn("no update code", status["error"])
-            self.assertFalse(status["has_access_code"])
 
         asyncio.run(run())
 

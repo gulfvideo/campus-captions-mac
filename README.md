@@ -21,12 +21,12 @@ installing, ProPresenter, firewall and IP requirements, audio device selection,
 the query parameters, keyterms, and a pre-event checklist.
 
 **Just want to run it, not work on it?** Take the download for your machine
-from [Releases](https://github.com/koakley3/campus-captions/releases). No
+from [Releases](https://github.com/gulfvideo/campus-captions-mac/releases). No
 Python, no terminal, no zip to unpack:
 
 | | |
 |---|---|
-| macOS | `CampusCaptions.zip` — unzip, drag to Applications, Control-click → Open the first time |
+| macOS (Apple Silicon) | `CampusCaptions-<version>-AppleSilicon.dmg` — open, drag to Applications, Control-click → Open the first time |
 
 It is not code-signed, so it shows a one-time warning the first time it runs
 on a given Mac (Control-click → Open). See [SETUP.md §1](SETUP.md).
@@ -850,3 +850,7 @@ external network dependency beyond the relay itself.
 ProPresenter cue thumbnails to the phone viewer. It is disabled by default and
 independent of outgoing caption delivery. See the setup and preview limitations
 before enabling it for an event.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

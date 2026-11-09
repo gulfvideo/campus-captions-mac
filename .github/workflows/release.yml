@@ -141,6 +141,21 @@ jobs:
           macapp/make_dmg.sh "macapp/dist/CampusCaptions-$version-AppleSilicon.dmg"
           ls -lh macapp/dist/*.dmg
 
+      - name: Build latest.json from the real file
+        # An installed copy fetches this from the latest release to learn
+        # whether a newer build exists; see relay/updater.py. The size and
+        # SHA-256 are read off the bytes that were actually built - a
+        # hand-written manifest is how you ship the previous release's
+        # checksum and give every tester a failed verification.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          .venv/bin/python3 tools/publish_update.py \
+            --assets macapp/dist \
+            --version "${GITHUB_REF_NAME#v}" \
+            --notes "$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | head -c 3000)" \
+            --out macapp/dist/latest.json
+          cat macapp/dist/latest.json
+
       - name: Check the disk image mounts and holds the app
         # hdiutil can produce an image that is valid but empty, and a release
         # asset nobody opened before publishing is how that gets discovered
@@ -163,82 +178,17 @@ jobs:
           path: macapp/dist/*.dmg
           if-no-files-found: error
 
-      - name: Attach the app to the release
+      - name: Attach the app and the manifest to the release
+        # Not a prerelease: the app fetches latest.json through
+        # releases/latest/, and GitHub points that at the newest release that
+        # is not marked prerelease. Every version is tagged -beta regardless.
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: macapp/dist/*.dmg
+          files: |
+            macapp/dist/*.dmg
+            macapp/dist/latest.json
           draft: false
-          prerelease: true
+          prerelease: false
           fail_on_unmatched_files: true
 
-  # ------------------------------------------------------- update manifest
-  # An installed copy checks one JSON document to learn whether a newer build
-  # exists. The repository is private, so its release assets need a token to
-  # download and no distributed app can safely carry one - a token in the
-  # bundle is a token every tester can extract, and it would grant read access
-  # to the whole repository. So the builds are copied to object storage the
-  # project owns and the manifest points there instead. See relay/updater.py.
-  #
-  # Needs the build job: publishing a manifest that names a build which
-  # failed would offer testers a download that 404s. If it fails, no
-  # manifest is published and everyone
-  # stays on the version they have, which is the safe outcome.
-  publish-update:
-    name: Publish the update manifest
-    needs: [macos]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Collect the built asset
-        uses: actions/download-artifact@v5
-        with:
-          path: assets
-          merge-multiple: true
-
-      - name: Show what is being published
-        run: ls -lh assets
-
-      - name: Build latest.json from the real files
-        # The size and SHA-256 are read off the bytes that were actually
-        # built. A hand-written manifest is how you ship the previous
-        # release's checksum and give every tester a failed verification.
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          python tools/publish_update.py \
-            --assets assets \
-            --base "${{ vars.UPDATE_BASE_URL }}" \
-            --version "$version" \
-            --notes "$(gh release view "$GITHUB_REF_NAME" --json body --jq .body | head -c 3000)" \
-            --out latest.json
-          cat latest.json
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Upload the builds, then the manifest
-        # Order matters: the manifest is what tells an app an update exists, so
-        # it goes last. Published first, a tester who checked in that window
-        # would be sent to a URL that does not exist yet.
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          BUCKET: ${{ secrets.R2_BUCKET }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          aws s3 cp assets "s3://$BUCKET/$version/" \
-            --recursive --endpoint-url "$ENDPOINT" \
-            --exclude "*" --include "*.dmg"
-          aws s3 cp latest.json "s3://$BUCKET/latest.json" \
-            --endpoint-url "$ENDPOINT" \
-            --content-type application/json --cache-control "max-age=300"
-          echo "published $version"

@@ -404,11 +404,6 @@
   </h2>
   <div class="panel-body" id="update-body">
       <div class="row">
-        <input id="update-code" type="password" autocomplete="off" spellcheck="false"
-               placeholder="Update code you were sent">
-        <button id="btn-update-code" type="button">Save</button>
-      </div>
-      <div class="row">
         <button id="btn-update-check" type="button">Check for updates</button>
         <button id="btn-update-get" type="button" hidden>Download</button>
         <button id="btn-update-install" type="button" hidden>Install and restart</button>
@@ -2042,8 +2037,6 @@
       var get = $('btn-update-get'), install = $('btn-update-install');
       badge.textContent = u.current || '\u2014';
       get.hidden = install.hidden = true;
-      if (u.has_access_code) markSecretSaved('update-code');
-      $('btn-update-check').disabled = !u.has_access_code;
       notes.hidden = !u.notes;
       notes.textContent = u.notes || '';
       trust.hidden = !u.trust_note;
@@ -2067,24 +2060,19 @@
           ? 'Version ' + u.available + ' is ready. Stop the event to install it.'
           : 'Version ' + u.available + ' is ready to install.';
         install.disabled = !u.can_install;
-      } else if (!u.has_access_code) {
-        sub.textContent = 'Paste the update code you were sent to check for '
-          + 'updates. Each tester gets their own.';
       } else {
         sub.textContent = 'Up to date.';
       }
     }
 
-    function updateAction(action, button, extra) {
+    function updateAction(action, button) {
       var was = button.textContent;
-      var body = {action: action};
-      if (extra) Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
       button.disabled = true;
       button.textContent = 'Working\u2026';
       return fetch('/api/update', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body)
+        body: JSON.stringify({action: action})
       }).then(jsonOrThrow).then(renderUpdate).catch(function (err) {
         $('update-sub').textContent = String(err.message || err);
       }).then(function () {
@@ -2092,17 +2080,6 @@
         button.textContent = was;
       });
     }
-
-    $('btn-update-code').onclick = function () {
-      var box = $('update-code');
-      var code = box.value.trim();
-      updateAction('code', this, {code: code}).then(function () {
-        box.value = '';
-        if (code) markSecretSaved('update-code');
-        else restorePlaceholder('update-code');
-      });
-    };
-    $('update-code').oninput = function () { restorePlaceholder('update-code'); };
 
     $('btn-update-check').onclick = function () { updateAction('check', this); };
     $('btn-update-get').onclick = function () { updateAction('download', this); };

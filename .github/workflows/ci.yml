@@ -47,20 +47,5 @@ jobs:
       - name: Unit tests (including fake ProPresenter)
         run: python -m unittest discover -s tests -q
 
-      - name: Set up Node for the update gate
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Update-gate tests
-        # infra/update-gate/worker.js decides who may download a build. Every
-        # case in its tests is a way somebody gets one they were not given,
-        # and the failures are silent - a gate that says yes too often looks
-        # exactly like a gate that works.
-        # The shell expands this to real files. `node --test <dir>` only
-        # discovers a directory on newer Node; on 22 it tries to *run* the
-        # directory as a module and fails with MODULE_NOT_FOUND.
-        run: node --test infra/update-gate/*.test.mjs
-
       - name: Smoke test
         run: python tools/smoke_test.py "$GITHUB_WORKSPACE"
