@@ -590,6 +590,11 @@ def save_audio_device(path: Path, device: str) -> None:
     save_section(path, "[capture]", {"device": device})
 
 
+def save_audio_gain(path: Path, gain_db: int) -> None:
+    """Write the operator's input boost into [capture] gain_db, in place."""
+    save_section(path, "[capture]", {"gain_db": int(gain_db)})
+
+
 def save_translate_settings(path: Path, provider: str, offer_languages: list[str]) -> None:
     """Write provider into [translate] and the target list into [languages],
     in place. The Azure key itself never comes near this file; it lives in

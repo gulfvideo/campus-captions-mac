@@ -169,6 +169,25 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.app._input_lost)
 
 
+class GainTests(unittest.TestCase):
+    """The boost for a quiet mixer feed: doubles amplitude at +6 dB, clips at
+    full scale instead of wrapping, and +0 leaves the samples untouched."""
+
+    def test_six_db_doubles_and_full_scale_clips(self):
+        import numpy as np
+        quiet = np.array([1000, -1000, 20000, -20000], dtype=np.int16)
+        out = audio_mod.apply_gain(quiet, 6)
+        self.assertEqual(np.int16, out.dtype)
+        self.assertAlmostEqual(2.0, out[0] / 1000, places=1)
+        self.assertEqual(32767, out[2])        # clipped, not wrapped negative
+        self.assertEqual(-32768, out[3])
+
+    def test_zero_db_is_the_same_array(self):
+        import numpy as np
+        samples = np.array([1, 2, 3], dtype=np.int16)
+        self.assertIs(samples, audio_mod.apply_gain(samples, 0))
+
+
 class RescanTests(unittest.IsolatedAsyncioTestCase):
     """The Refresh button. PortAudio reads the device list once, at init, so a
     refresh that only re-reads it shows a device that is gone and misses one

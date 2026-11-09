@@ -91,6 +91,7 @@ class RelayState:
     host: dict = field(default_factory=dict)  # capture machine's CPU/memory, see capture/host.py
     device: str | None = None
     device_index: int | None = None
+    audio_gain_db: int = 0
     audio_devices: list[dict] = field(default_factory=list)
     stream_open: bool = False
     audio_level: float = 0.0
@@ -169,6 +170,9 @@ class RelayState:
         device_index = msg.get("device_index")
         if isinstance(device_index, int) and not isinstance(device_index, bool):
             self.device_index = device_index
+        gain = msg.get("audio_gain_db")
+        if isinstance(gain, int) and not isinstance(gain, bool):
+            self.audio_gain_db = max(0, min(24, gain))
         devices = msg.get("audio_devices")
         if isinstance(devices, list):
             cleaned = []
@@ -299,6 +303,7 @@ class RelayState:
                 "blocked_word_count": self.blocked_word_count,
                 "device": self.device,
                 "device_index": self.device_index,
+                "audio_gain_db": self.audio_gain_db,
                 "device_busy": self.device_busy,
                 "audio_restarts": self.audio_restarts,
                 "audio_devices": self.audio_devices,

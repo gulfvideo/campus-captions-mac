@@ -239,6 +239,21 @@ def _pick_rate(dev: dict) -> int:
     return int(dev["default_samplerate"])
 
 
+# Software boost applied to every block before it is measured or queued, in
+# dB. A mixer feed that arrives quiet (a WING aux at line level into a USB
+# interface expecting mic level) is otherwise under-recognised, and there is
+# no knob on the desk for it mid-service. Clips at full scale, which the meter
+# then shows as clipping - the honest answer to too much boost.
+GAIN_DB = 0
+
+
+def apply_gain(mono: np.ndarray, gain_db: float) -> np.ndarray:
+    if not gain_db:
+        return mono
+    boosted = mono.astype(np.float32) * (10.0 ** (gain_db / 20.0))
+    return np.clip(boosted, -32768, 32767).astype(np.int16)
+
+
 class AudioInput:
     """Reads a device and hands out 16-bit PCM blocks plus a live level.
 
@@ -289,6 +304,7 @@ class AudioInput:
             # this device, as opposed to silence in place of it.
             if mono.any():
                 self.nonzero_blocks += 1
+            mono = apply_gain(mono, GAIN_DB)
             # RMS of int16 normalised to 0..1, for the status page meter.
             samples = mono.astype(np.float32) / 32768.0
             self.level = float(math.sqrt(float(np.mean(samples * samples)) + 1e-12))

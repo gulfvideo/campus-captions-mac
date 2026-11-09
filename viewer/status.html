@@ -184,6 +184,11 @@
               </select>
               <button class="pill" id="btn-refresh-devices" type="button">Refresh</button>
             </div>
+            <div class="check-line">
+              <label for="audio-gain" class="subtitle">Boost <span id="audio-gain-label">+0 dB</span></label>
+              <input id="audio-gain" type="range" min="0" max="24" step="1" value="0" disabled
+                     style="flex:1 1 120px; max-width: 260px">
+            </div>
             <span class="subtitle" id="audio-sub">&nbsp;</span>
           </div>
         </div>
@@ -510,7 +515,25 @@
     select.disabled = !source.connected || !backends.length;
   }
 
+  // The capture client reports the gain it is applying on every status push.
+  // While the operator drags, and until the client reports the value they
+  // released on, the slider keeps their value rather than snapping back.
+  var gainDragging = false, pendingGain = null, pendingGainTimer = null;
+  function renderGain(source) {
+    var slider = $('audio-gain');
+    slider.disabled = !source.connected;
+    if (gainDragging) return;
+    var db = Number.isInteger(source.audio_gain_db) ? source.audio_gain_db : 0;
+    if (pendingGain !== null) {
+      if (db !== pendingGain) return;
+      pendingGain = null;
+    }
+    slider.value = String(db);
+    $('audio-gain-label').textContent = '+' + db + ' dB';
+  }
+
   function renderDevices(source) {
+    renderGain(source);
     var select = $('audio-device');
     var devices = Array.isArray(source.audio_devices) ? source.audio_devices : [];
     var signature = devices.map(function (d) {
@@ -1008,6 +1031,22 @@
     };
     $('btn-refresh-devices').onclick = function () {
       control('refresh_audio_devices', 'Refresh audio devices');
+    };
+    $('audio-gain').oninput = function () {
+      gainDragging = true;
+      $('audio-gain-label').textContent = '+' + this.value + ' dB';
+    };
+    // A drag that ends where it started fires no change event, so the flag
+    // is cleared on the gesture ending, not only on a change.
+    $('audio-gain').onpointerup = $('audio-gain').onkeyup = $('audio-gain').onblur =
+      function () { gainDragging = false; };
+    $('audio-gain').onchange = function () {
+      var db = Number(this.value);
+      gainDragging = false;
+      pendingGain = db;
+      clearTimeout(pendingGainTimer);
+      pendingGainTimer = setTimeout(function () { pendingGain = null; }, 6000);
+      control('set_audio_gain', 'Input boost +' + db + ' dB', { gain_db: db });
     };
     $('audio-device').onchange = function () {
       var index = Number(this.value);

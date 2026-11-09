@@ -243,6 +243,7 @@ inputs, backends, and the Deepgram key at runtime.
 | `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, if this machine cannot run it (`apple_speech` off macOS), or if it is `deepgram` with no API key set |
 | `set_deepgram_key` | set `DEEPGRAM_API_KEY` (the `key` field) in the environment and save it into `.env` on disk; takes effect on the next `open_stream`, no restart needed |
 | `set_profanity_filter` | set the boolean `enabled` field on the backend's built-in profanity filter (bleeps common strong language); takes effect on the next line, no reopen |
+| `set_audio_gain` | software boost on the input, integer `gain_db` 0-24; applied to the next block, saved to `[capture] gain_db` so it survives a restart |
 | `relay_moving` | sent by the relay itself, never on an operator's request (`/api/control` refuses it): the relay is about to restart on the integer `port`. A capture client whose relay is on this machine rewrites its relay URL and reconnects there instead of retrying the old port |
 
 `reload_keyterms` reloading the blocklist needs no reconnect because blocking

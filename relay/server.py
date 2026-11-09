@@ -1012,10 +1012,20 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             if not isinstance(enabled, bool):
                 raise HTTPException(status_code=400, detail="enabled must be a boolean")
             fields["enabled"] = enabled
+        elif action == "set_audio_gain":
+            gain = body.get("gain_db")
+            if isinstance(gain, bool) or not isinstance(gain, int) or not 0 <= gain <= 24:
+                raise HTTPException(status_code=400, detail="gain_db must be an integer 0-24")
+            fields["gain_db"] = gain
         delivered = hub.send_control(action, fields)
         print(f"[relay] control {action} -> {delivered} capture client(s)")
         if action == "select_audio_device":
             remember_audio_device(fields["device"])
+        elif action == "set_audio_gain":
+            try:
+                config_module.save_audio_gain(config_target(), fields["gain_db"])
+            except OSError as exc:
+                print(f"[relay] could not save the input gain to disk: {exc}")
         return JSONResponse(
             {"ok": True, "action": action, "delivered_to": delivered},
             headers=NO_STORE,

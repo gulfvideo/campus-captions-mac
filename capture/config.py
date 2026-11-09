@@ -45,6 +45,7 @@ def resolve_path(value: str) -> str:
 class CaptureConfig:
     backend: str = "auto"
     device: str = ""
+    gain_db: int = 0            # software boost applied to the input, 0-24 dB
     relay_url: str = "ws://127.0.0.1:8000/ws/source"
     source_token: str = ""
     start_open: bool = False
@@ -94,6 +95,10 @@ def load(path: Path | None = None) -> CaptureConfig:
     section = data.get("capture", {}) or {}
     cfg.backend = str(section.get("backend", cfg.backend))
     cfg.device = str(section.get("device", cfg.device))
+    try:
+        cfg.gain_db = max(0, min(24, int(section.get("gain_db", cfg.gain_db))))
+    except (TypeError, ValueError):
+        pass
     cfg.relay_url = str(section.get("relay_url", cfg.relay_url))
     cfg.start_open = bool(section.get("start_open", cfg.start_open))
 

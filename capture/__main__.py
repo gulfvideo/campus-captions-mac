@@ -45,6 +45,7 @@ class CaptureApp:
     def __init__(self, cfg, args):
         self.cfg = cfg
         self.args = args
+        audio_mod.GAIN_DB = int(getattr(cfg, "gain_db", 0) or 0)
         self.backend = create_backend(cfg.backend, cfg.backend_config)
         self.relay = RelayClient(cfg.relay_url, cfg.source_token,
                                  on_control=self.on_control)
@@ -371,6 +372,12 @@ class CaptureApp:
                     await self.backend.reload_keyterms()
                     self.backend.reload_wordlist()
                     print("[capture] keyterms and blocklist reloaded")
+                elif action == "set_audio_gain":
+                    gain = payload.get("gain_db")
+                    if isinstance(gain, int) and not isinstance(gain, bool) and 0 <= gain <= 24:
+                        audio_mod.GAIN_DB = gain
+                        self.cfg.gain_db = gain
+                        print(f"[capture] input gain {gain:+d} dB")
                 elif action == "set_profanity_filter":
                     enabled = bool(payload.get("enabled"))
                     self.backend.mask_profanity = enabled
@@ -514,6 +521,7 @@ class CaptureApp:
                 "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
                 "device": str(self.input.device),
                 "device_index": self.input.device.index,
+                "audio_gain_db": audio_mod.GAIN_DB,
                 "audio_devices": self.audio_devices,
                 "whisper": self.whisper_snapshot(),
                 "mask_profanity": self.backend.mask_profanity,
