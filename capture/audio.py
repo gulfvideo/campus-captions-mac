@@ -117,6 +117,20 @@ class DeviceChoice:
         return f"{self.name} [{self.hostapi}] @ {self.sample_rate} Hz"
 
 
+def rescan_devices() -> None:
+    """Make PortAudio look at CoreAudio again.
+
+    It reads the device list once, at initialisation. A device created since
+    is invisible, and one removed since is still listed - and opening its old
+    index fails with PaErrorCode -9986. Only tearing PortAudio down and
+    bringing it back refreshes the list, which invalidates every open stream,
+    so callers stop theirs first and reopen by name: indices renumber.
+    """
+    if AUDIO_AVAILABLE:
+        sd._terminate()
+        sd._initialize()
+
+
 def list_input_devices() -> list[dict]:
     if not AUDIO_AVAILABLE:
         return []

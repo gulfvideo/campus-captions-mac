@@ -10,6 +10,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -166,6 +167,45 @@ class RestartTests(unittest.IsolatedAsyncioTestCase):
         FakeInput.fails = False
         self.assertTrue(await self.app.restart_input(self.app._input_lost))
         self.assertIsNone(self.app._input_lost)
+
+
+class RescanTests(unittest.IsolatedAsyncioTestCase):
+    """The Refresh button. PortAudio reads the device list once, at init, so a
+    refresh that only re-reads it shows a device that is gone and misses one
+    that is new - which is how "cannot open Teams Rec: PaErrorCode -9986"
+    survived four refreshes."""
+
+    setUp = RestartTests.setUp
+    tearDown = RestartTests.tearDown
+
+    def patches(self, calls: list):
+        resolved = audio_mod.DeviceChoice(5, "WING", "Core Audio", 48000, 1)
+        return (
+            mock.patch.object(audio_mod, "rescan_devices",
+                              lambda: calls.append("rescan")),
+            mock.patch.object(audio_mod, "resolve_device",
+                              lambda spec: calls.append(spec) or resolved),
+            mock.patch.object(audio_mod, "list_input_devices", lambda: []),
+        )
+
+    async def test_a_live_input_is_reopened_by_name_after_the_rescan(self):
+        """Indices renumber when a device goes, so the old one is not reused."""
+        calls: list = []
+        self.app.input = FakeInput(self.device)       # index 3, named WING
+        self.app.input.started = True
+        a, b, c = self.patches(calls)
+        with a, b, c:
+            await self.app.rescan_audio_devices()
+        self.assertEqual(["rescan", "WING"], calls)
+        self.assertEqual(5, self.app.input.device.index)
+        self.assertTrue(self.app.input.started)
+
+    async def test_with_no_live_input_it_only_rescans(self):
+        calls: list = []
+        a, b, c = self.patches(calls)
+        with a, b, c:
+            await self.app.rescan_audio_devices()
+        self.assertEqual(["rescan"], calls)
 
 
 if __name__ == "__main__":

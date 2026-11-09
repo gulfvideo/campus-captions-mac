@@ -73,6 +73,22 @@ class CaptureApp:
     def refresh_audio_devices(self) -> None:
         self.audio_devices = audio_mod.list_input_devices()
 
+    async def rescan_audio_devices(self) -> None:
+        """The Refresh button: pick up devices added or removed since launch.
+
+        Re-initialising PortAudio kills the open stream, so it is stopped
+        first and reopened by name afterwards - a removed device renumbers
+        the ones after it, so the old index may now be something else.
+        """
+        live = self.input if isinstance(self.input, audio_mod.AudioInput) else None
+        if live:
+            live.stop()
+        audio_mod.rescan_devices()
+        if live:
+            self.input = audio_mod.SilentInput(live.device.sample_rate)
+            await self.switch_audio_device(live.device.name)
+        self.refresh_audio_devices()
+
     async def switch_audio_device(self, spec: str | int) -> None:
         """Change inputs without restarting the capture client.
 
@@ -362,7 +378,7 @@ class CaptureApp:
                 elif action == "select_audio_device":
                     await self.switch_audio_device(payload.get("device", ""))
                 elif action == "refresh_audio_devices":
-                    self.refresh_audio_devices()
+                    await self.rescan_audio_devices()
                     print("[capture] audio device list refreshed")
                 elif action == "select_backend":
                     await self.switch_backend(payload.get("backend", ""))
