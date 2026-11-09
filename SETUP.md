@@ -964,10 +964,9 @@ working title
 A multi-word phrase like `working title` is matched as that whole phrase, not
 each word separately, and matching is whole-word and case-insensitive, so
 `cash` on the list never touches `cashier`. Edit the file, then press
-**Reload keyterms & blocklist** on the Settings page (it reloads both files
-together) — no stream reopen needed, since blocking happens after
-transcription rather than during it. The profanity filter toggle is on that
-same **Keywords & profanity filter** panel.
+**Reload both lists** on the Settings page's **Captions → Profanity filter**
+panel (it reloads both files together) — no stream reopen needed, since
+blocking happens after transcription rather than during it.
 
 Separately, the **profanity filter** toggle on that same panel catches common
 strong language from a small built-in list, with nothing to maintain. Turning

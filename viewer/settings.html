@@ -402,6 +402,25 @@
   </div>
 </section>
 
+<section class="panel" id="panel-keywords">
+  <h2 class="panel-head">Profanity filter
+    <span class="badge" id="keywords-badge">&mdash;</span>
+  </h2>
+  <div class="panel-body" id="keywords-body">
+      <div class="disclosure-sub">
+        Bleeps common strong language with no list to maintain. Words that are
+        ordinary in a sermon &mdash; <code>hell</code>, <code>damn</code>, and
+        <code>ass</code> as in the animal &mdash; are deliberately not filtered.
+      </div>
+      <div class="row">
+        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
+        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
+        <button id="btn-keyterms" type="button">Reload both lists</button>
+      </div>
+      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
+    </div>
+</section>
+
 <section class="panel" id="panel-deepgram">
   <h2 class="panel-head">Deepgram API key
     <span class="badge" id="deepgram-badge">&mdash;</span>
@@ -489,7 +508,7 @@
     <div class="subhead">Apple on-device speech</div>
     <div class="fieldgrid">
       <div class="field">
-        <label for="apple-locale">Locale</label>
+        <label for="apple-locale">Spoken language</label>
         <input id="apple-locale" type="text" spellcheck="false" placeholder="en-US">
         <span class="hint">The language macOS recognises. Each one downloads a model
           the first time it is used. <b>Default en-US.</b></span>
@@ -502,27 +521,6 @@
       <span class="disclosure-sub" id="tuning-sub" style="flex:1 1 auto">&mdash;</span>
     </div>
   </div>
-</section>
-
-
-
-<section class="panel" id="panel-keywords">
-  <h2 class="panel-head">Profanity filter
-    <span class="badge" id="keywords-badge">&mdash;</span>
-  </h2>
-  <div class="panel-body" id="keywords-body">
-      <div class="disclosure-sub">
-        Bleeps common strong language with no list to maintain. Words that are
-        ordinary in a sermon &mdash; <code>hell</code>, <code>damn</code>, and
-        <code>ass</code> as in the animal &mdash; are deliberately not filtered.
-      </div>
-      <div class="row">
-        <button id="btn-profanity-enable" class="go">Enable profanity filter</button>
-        <button id="btn-profanity-disable" class="stop">Disable profanity filter</button>
-        <button id="btn-keyterms" type="button">Reload both lists</button>
-      </div>
-      <div class="disclosure-sub" id="keywords-sub">&mdash;</div>
-    </div>
 </section>
 </div>
 
@@ -583,7 +581,9 @@
       <div class="row"><button id="btn-slides-save" type="button">Save and apply</button></div>
       <div class="disclosure-sub" id="slides-status" role="status" aria-live="polite">&mdash;</div>
       <div class="disclosure-sub help" id="slides-help">
-        Enable Network/API access in ProPresenter and enter its displayed port.
+        This reads slides <i>from</i> ProPresenter for attendees' phones. Sending captions <i>to</i>
+ProPresenter is the separate <b>Outputs &rarr; ProPresenter (direct)</b> panel.
+Enable Network/API access in ProPresenter and enter its displayed port.
         Use 127.0.0.1 when ProPresenter runs on this same computer. To reach a different
         machine on the booth network, enter its private IP address and tick the local
         network box. Screen 1 is the first screen in the current Look.
@@ -638,7 +638,9 @@
       </div>
       <div class="disclosure-sub" id="pp-sub">&mdash;</div>
       <div class="disclosure-sub help" id="pp-hint">
-        In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note the port.
+        This sends captions <i>to</i> ProPresenter. Showing its slides on attendees' phones is the
+separate <b>Audience &rarr; Slides + Captions</b> panel.
+In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note the port.
         <b>Stage message</b> needs a stage layout with a Stage Message element on the screen that
         should show captions. <b>Message</b> needs a Message with the name above and one text token
         with the token name above &mdash; you design its look in ProPresenter; nothing else in the
