@@ -39,18 +39,21 @@ run by the staff already in the building.
 
 ## Positioning
 
-**The engines can run free and entirely on-device.** Apple's on-device
-speech recognition and Whisper both transcribe with no account, no API key,
-no per-hour billing and no network after the first model download.
+**Everything runs on the Mac.** Apple's on-device speech recognition and
+Whisper transcribe, and Apple's Translation framework translates, with no
+account, no API key, no subscription and no network after the first model
+download.
 
 Two claims follow that nobody billing by the hour can make: an event costs
 nothing marginal to caption, and the room's audio never has to leave the
 building. A captioning vendor cannot match a price of nothing. A cloud-only
 competitor cannot promise the audio stays local.
 
-Deepgram remains available for venues that want the lowest latency and accept
-cloud transcription under their own account — it is an option the operator
-chooses, not the floor the product stands on.
+**Decision (2026-11-09): on-device only.** The Deepgram speech backend and
+the Azure Translator provider were removed. Reasons: no subscriptions, and
+nothing leaves the Mac. Speech recognition is Apple's on-device Speech
+framework or local Whisper; translation is Apple's on-device Translation
+framework. There is no cloud option to opt into.
 
 ## Operating Context
 
@@ -75,10 +78,10 @@ chooses, not the floor the product stands on.
 
 **Shipped and working.** Capture client, relay, and the viewer surfaces —
 wall, phone, QR, status console, settings, setup wizard, audio tuner.
-Transcription backends: Apple on-device (macOS 26+), Whisper (any OS),
-Deepgram (paid, cloud), and a first-class mock/rehearsal backend that replays
-a script with no audio hardware, no key and no spend. Optional live
-translation with per-language replay buffers, so a phone joining mid-event
+Transcription backends: Apple on-device (macOS 26+), Whisper, and a
+first-class mock/rehearsal backend that replays a script with no audio
+hardware. Optional live translation, on-device with Apple's Translation
+framework, with per-language replay buffers, so a phone joining mid-event
 and selecting a language replays *that* language's history. Live caption push
 to YouTube, plus a timed `.srt` export of every committed line. Keyterm
 priming for campus proper nouns, and a blocklist. A macOS disk image.
@@ -146,9 +149,9 @@ be invented.
 2. **Never show a fault to a room.** Audience-facing surfaces have no
    spinners, error states or placeholders. When something breaks, the caption
    bar goes empty — not red.
-3. **Free and local is the default path, not the degraded one.** The
-   zero-cost, no-network configuration is the one a new venue lands on; paid
-   cloud transcription is an upgrade someone opts into.
+3. **Free and local is the only path.** Every engine runs on the Mac. There
+   is no paid tier and no cloud option; a feature that needs a subscription
+   does not ship.
 4. **Assume a volunteer, not an engineer.** Anything that cannot be
    recovered from without reading documentation is a defect.
 5. **Say what it is.** The product's own limits — unsigned installers,

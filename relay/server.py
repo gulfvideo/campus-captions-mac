@@ -39,7 +39,6 @@ import hashlib
 import hmac
 import io
 import os
-import sys
 import re
 import secrets
 import socket
@@ -411,21 +410,20 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # A plain (translator, worker) pair can't be swapped later without
     # `nonlocal` scattered across every closure that reads them, so they live
     # on this object instead: /api/translation below calls .apply() with a
-    # fresh key or language list, live, mid-event, no restart.
+    # fresh language list, live, mid-event, no restart.
 
     class TranslationState:
         def __init__(self, source_language: str, targets: list[str]):
             self.source_language = source_language
             self.targets = list(targets)
-            self.provider = "none"
-            self.translator: translate_module.AzureTranslator | translate_module.AppleTranslator | None = None
+            self.translator: translate_module.AppleTranslator | None = None
             self.worker: translate_module.TranslationWorker | None = None
 
         def _emit(self, lang: str, text: str, utterance_id: str,
                   t0: float | None = None, t: float | None = None) -> None:
             # The translated line inherits the source line's window, so its
             # .srt cue spans the time it was spoken rather than collapsing to
-            # the minimum duration at the moment Azure answered.
+            # the minimum duration at the moment the translation came back.
             msg = {"type": "final", "text": text, "lang": lang,
                    "utterance": utterance_id}
             if isinstance(t0, (int, float)):
@@ -434,13 +432,14 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 msg["t"] = round(float(t), 3)
             hub.broadcast(msg)
 
-        async def apply(self, provider: str, targets: list[str]) -> None:
+        async def apply(self, targets: list[str]) -> None:
             if self.worker is not None:
                 await self.worker.stop()
                 self.worker = None
             self.targets = list(targets)
-            self.provider = provider
-            self.translator = translate_module.create(provider, self.targets)
+            # In a thread: create() may compile the helper the first time.
+            self.translator = await asyncio.get_running_loop().run_in_executor(
+                None, translate_module.create, self.targets)
             if self.translator is not None:
                 self.worker = translate_module.TranslationWorker(
                     self.translator, self.source_language, self.targets, self._emit)
@@ -461,7 +460,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         def stats(self) -> dict:
             if self.worker is not None:
                 return self.worker.stats()
-            return {"provider": "none", "configured": self.provider,
+            return {"provider": "apple" if self.targets else "none",
                     "targets": list(self.targets)}
 
     translation = TranslationState(
@@ -560,7 +559,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             asyncio.create_task(status_loop()),
         ]
         slides.start()
-        await translation.apply(cfg.translate_provider, translation.targets)
+        await translation.apply(translation.targets)
         if cfg.tunnel_start_enabled and tunnel.configured:
             # Without a hostname nothing would be treated as public, so a
             # tunnel would expose the operator surface to the internet.
@@ -604,7 +603,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                   f"{', '.join(translation.worker.targets)} via {translation.translator.name}")
         elif translation.targets:
             print("[relay] translation NOT active - source language only "
-                  "(add an Azure Translator key on the status page)")
+                  "(the reason is logged above)")
         if additional_youtube:
             print(f"[relay] youtube live captions, extra languages -> "
                   f"{', '.join(sorted(additional_youtube))}")
@@ -873,8 +872,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
         `offset` (seconds) shifts every cue earlier, to take the recognizer's
         own delay back out: a line is recorded when it was committed, which
-        is roughly a second after it was said. 0.8 is a fair value for
-        Deepgram; leave it at 0 if the timing looks right already. `.txt`
+        is roughly a second after it was said. Try 0.8 if cues land late;
+        leave it at 0 if the timing looks right already. `.txt`
         also takes `?timestamps=0` for bare text with no time prefixes.
         """
         require_operator(request)
@@ -1005,8 +1004,6 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             if not isinstance(backend, str) or not (1 <= len(backend) <= 64):
                 raise HTTPException(status_code=400, detail="backend must be a short string")
             fields["backend"] = backend
-        elif action == "set_deepgram_key":
-            fields["key"] = text_field(body, "key", 200)
         elif action == "set_profanity_filter":
             enabled = body.get("enabled")
             if not isinstance(enabled, bool):
@@ -1200,11 +1197,6 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     # `kind` is "bool", "number" or one of the string tuples below.
     WHISPER_COMPUTE = ("int8", "int8_float16", "float16", "float32")
     BACKEND_OPTIONS = {
-        "deepgram": {
-            "diarize": ("bool", None, None),
-            "filler_words": ("bool", None, None),
-            "inaudible_below": ("number", 0.0, 1.0),
-        },
         "whisper": {
             "compute_type": (WHISPER_COMPUTE, None, None),
             "interim_interval": ("number", 0.2, 5.0),
@@ -1403,7 +1395,6 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "backends": [backend_support.describe(name)
                          for name in backend_support.supported()],
             "auto_backend": backend_support.resolve_auto(),
-            "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
             "event": {"title": cfg.event_title, "notice": cfg.event_notice},
             # The LAN address, not localhost: these are the three links the
             # wizard's last step tells the operator to hand out, and a phone
@@ -1450,7 +1441,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
         Only these two flags: every actual setting either of them touches is
         saved through the endpoint that already owns it (/api/control for
-        the microphone, backend and Deepgram key, /api/event for the title
+        the microphone and backend, /api/event for the title
         and notice), so there is one writer per setting and the wizard
         cannot drift from what the status and settings pages do. The tour
         writes no settings at all.
@@ -1593,8 +1584,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         to the capture client.
 
         {"token": "...", "hostname": "...", "enabled": true} - any subset.
-        The token goes into .env (save_env_var, same mechanism as the
-        Deepgram key); the hostname becomes `public_hostname` immediately
+        The token goes into .env (save_env_var); the hostname becomes
+        `public_hostname` immediately
         (see is_public()/require_local() above) and is saved into
         event.toml alongside the operator's on/off intent
         (save_tunnel_settings). Create the tunnel and its Public Hostname
@@ -1846,63 +1837,38 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     @app.post("/api/translation")
     async def api_translation(request: Request) -> JSONResponse:
-        """Relay-local, like /api/youtube-captions: the key and target
-        languages never reach the capture client, they only matter here
-        where finals get translated before fan-out.
+        """Relay-local, like /api/youtube-captions: the target languages
+        never reach the capture client, they only matter here where finals
+        get translated before fan-out.
 
-        {"provider": "apple"|"azure", "key": "...", "region": "...",
-         "languages": "es, fr"} - any subset.
-        The key/region go into .env (gitignored, never event.toml) via the
-        same save_env_var used for the Deepgram key; languages go into
-        event.toml so they survive a restart. Translation reconnects with
-        the new settings immediately - no restart needed to pick up a key
-        pasted mid-event.
+        {"languages": "es, fr"} - a string or a list; empty turns
+        translation off. Saved into event.toml so it survives a restart.
+        Translation restarts with the new list immediately.
         """
         require_operator(request)
         body = await read_json(request)
         body = body or {}
-        if not any(k in body for k in ("provider", "key", "region", "languages")):
+        if "languages" not in body:
+            raise HTTPException(status_code=400, detail="send languages")
+        raw = body.get("languages")
+        if isinstance(raw, list):
+            if not all(isinstance(tok, str) for tok in raw):
+                raise HTTPException(status_code=400, detail="languages must be strings")
+            raw = ",".join(raw)
+        if not isinstance(raw, str) or len(raw) > 200:
+            raise HTTPException(status_code=400, detail="languages must be a short string")
+        parsed = [tok.strip() for tok in raw.replace(";", ",").split(",") if tok.strip()]
+        if not all(transcript_module.SAFE_LANG.match(tok) for tok in parsed):
             raise HTTPException(status_code=400,
-                                detail="send provider, key, region, and/or languages")
-
-        provider = cfg.translate_provider
-        if "provider" in body:
-            provider = text_field(body, "provider", 16)
-            if provider not in ("apple", "azure"):
-                raise HTTPException(status_code=400, detail="provider must be apple or azure")
-        if provider in ("", "none"):
-            # Nothing chosen yet: a key means Azure, otherwise the Mac itself.
-            provider = ("azure" if os.environ.get("AZURE_TRANSLATOR_KEY", "").strip()
-                        else "apple" if sys.platform == "darwin" else "none")
-        cfg.translate_provider = provider
-
-        if "key" in body:
-            key = text_field(body, "key", 200)
-            config_module.save_env_var("AZURE_TRANSLATOR_KEY", key)
-            os.environ["AZURE_TRANSLATOR_KEY"] = key
-
-        if "region" in body:
-            region = text_field(body, "region", 64, allow_empty=True)
-            config_module.save_env_var("AZURE_TRANSLATOR_REGION", region)
-            os.environ["AZURE_TRANSLATOR_REGION"] = region
-
-        if "languages" in body:
-            raw = body.get("languages")
-            if not isinstance(raw, str) or len(raw) > 200:
-                raise HTTPException(status_code=400, detail="languages must be a short string")
-            parsed = [tok.strip() for tok in raw.replace(";", ",").split(",") if tok.strip()]
-            if not all(transcript_module.SAFE_LANG.match(tok) for tok in parsed):
-                raise HTTPException(status_code=400,
-                                    detail="languages must look like: es, fr, zh-Hans")
-            translation.targets = [lang for lang in parsed if lang != cfg.source_language]
+                                detail="languages must look like: es, fr, zh-Hans")
+        translation.targets = [lang for lang in parsed if lang != cfg.source_language]
 
         try:
-            config_module.save_translate_settings(
-                config_target(), provider, translation.targets)
+            config_module.save_translate_settings(config_target(), translation.targets)
         except OSError as exc:
             print(f"[relay] could not save translation settings to disk: {exc}")
 
-        await translation.apply(provider, translation.targets)
+        await translation.apply(translation.targets)
         print(f"[relay] translation {'active' if translation.worker else 'inactive'}"
               f" -> {', '.join(translation.targets) or '(no target languages set)'}")
         return JSONResponse({"ok": True, **translation.stats()}, headers=NO_STORE)

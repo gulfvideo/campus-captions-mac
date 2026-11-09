@@ -190,8 +190,7 @@ relay assigns those on the way out. Plus:
 ```json
 {"type":"status","t":1756590001.0,"audio_level":0.34,"audio_peak":0.71,
  "clipping":false,"stream_open":true,
- "backend":"deepgram","available_backends":["deepgram","whisper","mock"],
- "has_deepgram_key":true,
+ "backend":"apple_speech","available_backends":["apple_speech","whisper","mock"],
  "device":"Scarlett 2i2 (in 1)","device_index":3,
  "audio_devices":[{"index":3,"name":"Scarlett 2i2","hostapi":"Core Audio",
    "channels":2,"default_samplerate":48000,"is_default":true}],
@@ -200,8 +199,7 @@ relay assigns those on the way out. Plus:
 
 An `interim` or `final` from the capture client may also carry `speech_end`:
 unix seconds when the last word of that text was actually spoken, as best the
-backend knows (Deepgram reports where in the audio each result ends; the mock
-says "now"; a backend that cannot tell omits it). The relay measures caption
+backend knows (the mock says "now"; a backend that cannot tell omits it). The relay measures caption
 latency as its own receipt time minus `speech_end`, keeps a rolling window of
 200, and reports median and p95 in the status snapshot's `latency` block. The
 field itself never reaches viewers.
@@ -213,16 +211,14 @@ field itself never reaches viewers.
 
 Roughly 4× per second. `audio_level` is 0–1 RMS over the last frame and is
 reported whether or not the ASR stream is open, so the booth can confirm the
-microphone before any billable connection exists. `error` is a short human
+microphone before the stream is opened. `error` is a short human
 string for the status page only — it never reaches a viewer.
 `audio_devices` is the capture machine's current input list; `device_index`
 identifies the active one. `available_backends` is only the backends this
 machine can actually run (`capture/backends/support.py`'s `supported()`), not
 every name in the registry - so `apple_speech` is absent on a Mac older than 26,
 and the status page cannot offer a choice that could only ever report an
-error. `has_deepgram_key` is whether `DEEPGRAM_API_KEY` is currently set in
-the environment - never the key itself. They let the status page change
-inputs, backends, and the Deepgram key at runtime.
+error. They let the status page change inputs and backends at runtime.
 
 ---
 
@@ -234,28 +230,22 @@ inputs, backends, and the Deepgram key at runtime.
 
 | `action` | Effect |
 |---|---|
-| `open_stream` | connect the ASR backend — for Deepgram this starts billing |
+| `open_stream` | connect the ASR backend and start producing text |
 | `close_stream` | disconnect the backend, keep capturing audio levels |
 | `clear` | emit a `clear` to viewers |
-| `reload_keyterms` | re-read `config/keyterms.txt` (reopens the stream with the new list) and `config/blocklist.txt` (no reopen needed - see below) |
+| `reload_keyterms` | re-read `config/keyterms.txt` and `config/blocklist.txt`; no reopen, the next line uses them - see below |
 | `select_audio_device` | switch to the integer `device` index; reopen ASR automatically if needed |
 | `refresh_audio_devices` | query the capture machine's current input list again |
-| `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, if this machine cannot run it (`apple_speech` off macOS), or if it is `deepgram` with no API key set |
-| `set_deepgram_key` | set `DEEPGRAM_API_KEY` (the `key` field) in the environment and save it into `.env` on disk; takes effect on the next `open_stream`, no restart needed |
+| `select_backend` | switch to the named `backend`; reopen ASR automatically if needed; refused (backend unchanged) if the name is unknown, if this machine cannot run it (`apple_speech` off macOS) |
 | `set_profanity_filter` | set the boolean `enabled` field on the backend's built-in profanity filter (bleeps common strong language); takes effect on the next line, no reopen |
 | `set_audio_gain` | software boost on the input, integer `gain_db` 0-24; applied to the next block, saved to `[capture] gain_db` so it survives a restart |
 | `relay_moving` | sent by the relay itself, never on an operator's request (`/api/control` refuses it): the relay is about to restart on the integer `port`. A capture client whose relay is on this machine rewrites its relay URL and reconnects there instead of retrying the old port |
 
-`reload_keyterms` reloading the blocklist needs no reconnect because blocking
-happens in `ASRBackend._emit()`, after transcription, the same way on every
-backend - unlike keyterms, which a specific backend has to be told about at
-connect time.
+Blocking happens in `ASRBackend._emit()`, after transcription, the same way
+on every backend. Keyterms are each backend's own business: Whisper feeds
+them to the decoder as a spelling hint, Apple speech ignores them.
 
 Originates from the status or settings page via `POST /api/control`.
-`set_deepgram_key` is
-the one action whose field is a credential: `hub.py`'s own logging and the
-console prints in `capture/__main__.py` never include it, only that the
-action happened.
 
 Two further actions go through the same `POST /api/control` endpoint but are
 **handled by the relay itself and never reach the capture client** -
@@ -301,9 +291,8 @@ object once, plus a `relay` block.
   "source": {
     "connected": true,
     "peer": "127.0.0.1:51544",
-    "backend": "deepgram",
-    "available_backends": ["apple_speech", "deepgram", "whisper", "mock"],
-    "has_deepgram_key": true,
+    "backend": "apple_speech",
+    "available_backends": ["apple_speech", "whisper", "mock"],
     "device": "Scarlett 2i2 (in 1)",
     "device_index": 3,
     "audio_devices": [{"index": 3, "name": "Scarlett 2i2",
@@ -383,7 +372,7 @@ characters, a long line split into consecutive cues that share its time
 window, a duration a reader can manage (17 characters per second, at least
 1.2 s, at most 7 s), and an 80 ms gap between neighbours. Translated lines
 inherit the source line's window. `offset` (seconds, 0-10) shifts every cue
-earlier to take the recognizer's own delay back out; about 0.8 suits Deepgram.
+earlier to take the recognizer's own delay back out.
 
 All five formats are the same cue list (`relay/transcript.py`,
 `TranscriptRecorder.cues()`) rendered differently, so a cue has the same
@@ -415,7 +404,7 @@ POST /api/preflight    {}
                        "detail": "No wall view is connected.",
                        "action": "Open the wall URL in ProPresenter, OBS or vMix ..."},
                       ...],
-           "probes": {"api.deepgram.com": {"ok": 3, "failed": 0, "median_ms": 61, "worst_ms": 74, "error": null}},
+           "probes": {"upload.youtube.com": {"ok": 3, "failed": 0, "median_ms": 61, "worst_ms": 74, "error": null}},
            "ran_at": 1756590200.0, "duration_ms": 412}
   ->  401 without the operator token
 ```
@@ -498,9 +487,6 @@ POST /api/control    {"action": "select_audio_device", "device": 3}
 POST /api/control    {"action": "select_backend", "backend": "apple_speech"}
   ->  200 {"ok": true, "action": "select_backend", "delivered_to": 1}
   ->  400 if the action is unknown or backend is not a short string
-POST /api/control    {"action": "set_deepgram_key", "key": "..."}
-  ->  200 {"ok": true, "action": "set_deepgram_key", "delivered_to": 1}
-  ->  400 if the action is unknown or key is not a short string
 POST /api/control    {"action": "set_profanity_filter", "enabled": true}
   ->  200 {"ok": true, "action": "set_profanity_filter", "delivered_to": 1}
   ->  400 if enabled is not a boolean
@@ -574,7 +560,7 @@ forwarding it, so the wall blanks even when no capture client is connected.
   as `#rgb`/`#rrggbb` only.
 - `cloudflared` and the Apple speech helper are started with a minimal
   environment (`PATH`, `HOME`, locale, TLS certificate variables) rather than
-  the relay's, which holds the API keys.
+  the relay's, which holds the tokens.
 - The packaged macOS app keeps `event.toml`, `.env` and uploaded images in
   `~/Library/Application Support/Campus Captions/`, never inside the bundle.
 
@@ -687,31 +673,28 @@ goes out. Expect YouTube's own pipeline to add substantial further delay
 (their documentation for other captioning vendors cites 15+ seconds) on top of
 whatever latency the ASR backend itself has.
 
-## Adding an Azure Translator key live
+## Turning translation on live
 
 ```
-POST /api/translation    {"provider": "apple", "languages": "es, fr"}
-POST /api/translation    {"provider": "azure", "key": "...", "region": "eastus", "languages": "es, fr"}
+POST /api/translation    {"languages": "es, fr"}
+POST /api/translation    {"languages": ["es", "fr"]}
+POST /api/translation    {"languages": ""}
   ->  200 {"ok": true, "provider": "apple", "targets": ["es", "fr"], "calls": 0, ...}
-  ->  400 if none of provider/key/region/languages are present, provider is
-      not apple or azure, or languages doesn't look like a comma-separated
-      list of short codes (es, fr, zh-Hans)
+  ->  400 if languages is missing, or doesn't look like a comma-separated
+      list (or JSON list) of short codes (es, fr, zh-Hans)
 ```
 
-`provider`, `key`, `region`, and `languages` may be sent alone or together - the status
-page's Save button sends whichever fields are non-empty. Leaving `languages`
-out of the request means "don't touch the target list", not "clear it" -
-unlike the YouTube URL box above, there's no way to explicitly clear the
-language list from the GUI yet. Like `/api/youtube-captions`, this never
-touches the capture client: `key`/`region` are written to `.env`
-(`relay/config.py`'s `save_env_var`, same mechanism the Deepgram key on the
-status page uses) and `languages` to `config/event.toml`'s `[languages]`
-section (`save_translate_settings`), then the relay's `TranslationWorker` is
-torn down and rebuilt against the new settings immediately - a key pasted
-mid-event takes effect on the next committed caption line, no restart.
-Response fields mirror `relay/translate.py`'s `TranslationWorker.stats()` -
-`provider` reads `"none"` when no key has been set yet, even if `languages`
-was saved.
+`languages` is the whole request: an empty string or list turns translation
+off. Any other keys in the body are ignored. Like `/api/youtube-captions`,
+this never touches the capture client: `languages` goes to
+`config/event.toml`'s `[languages]` section (`save_translate_settings`), then
+the relay's `TranslationWorker` is torn down and rebuilt against the new list
+immediately - a language added mid-event takes effect on the next committed
+caption line, no restart. Response fields mirror `relay/translate.py`'s
+`TranslationWorker.stats()`: `provider` is `"apple"` while there are targets
+and `"none"` otherwise. Translation runs on this Mac with Apple's Translation
+framework; a language the Mac has not downloaded yet shows up as the last
+error until it is added in System Settings.
 
 ## Running a Cloudflare Tunnel live
 
@@ -728,7 +711,7 @@ POST /api/tunnel    {"enabled": true}
 `hostname`, `token`, and `enabled` may be sent alone or together. Like
 `/api/youtube-captions` and `/api/translation`, this never touches the
 capture client: `token` goes to `.env` as `CLOUDFLARE_TUNNEL_TOKEN`
-(`save_env_var`, same mechanism as the Deepgram key); `hostname` becomes
+(`save_env_var`); `hostname` becomes
 `RelayConfig.public_hostname` immediately - see "Exposing the relay
 publicly" above - and both `hostname` and the operator's on/off intent are
 saved into `config/event.toml` (`save_tunnel_settings`) so a restart comes

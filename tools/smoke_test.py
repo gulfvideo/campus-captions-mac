@@ -206,10 +206,6 @@ try:
     check("POST with bearer -> 200", st == 200, f"{st}")
 
     # --- input validation -----------------------------------------------------
-    st, h, b = http("POST", "/api/translation", body={"key": "abc\nAZURE_TRANSLATOR_ENDPOINT=http://evil"}, headers=bearer)
-    check("translation key with newline -> 400", st == 400 and b"control" in b, f"{st} {b[:100]}")
-    st, h, b = http("POST", "/api/control", body={"action": "set_deepgram_key", "key": "k\r\nX=1"}, headers=bearer)
-    check("deepgram key with CRLF -> 400", st == 400, f"{st}")
     st, h, b = http("POST", "/api/tunnel", body={"token": "t\nTUNNEL_URL=x"}, headers=bearer)
     check("tunnel token with newline -> 400", st == 400, f"{st}")
     st, h, b = http("POST", "/api/tunnel", body={"hostname": "bad host!"}, headers=bearer)

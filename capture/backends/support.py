@@ -1,7 +1,7 @@
 """Which ASR backends exist, what they are, and which ones this machine can run.
 
 Deliberately free of every heavy import. registry.py cannot answer these
-questions without importing all four backend modules, and through them numpy,
+questions without importing all three backend modules, and through them numpy,
 websockets and PortAudio - but two callers need the answers and must not pay
 that price:
 
@@ -102,35 +102,23 @@ class BackendInfo:
     name: str
     label: str
     summary: str
-    needs_key: bool = False      # unusable until a key is saved
-    billed: bool = False         # costs money per minute of open stream
-    recommended: bool = False    # the wizard pre-selects the first of these
-                                 # that this machine can run
 
 
 CATALOGUE: tuple[BackendInfo, ...] = (
     BackendInfo(
         "apple_speech", "Apple on-device speech",
         "Free, private, and needs no account - the audio never leaves this Mac. "
-        "Requires macOS 26 or newer.",
-        recommended=True),
-    BackendInfo(
-        "deepgram", "Deepgram (cloud)",
-        "The most accurate option, and the only one that can be told the names "
-        "and terms your event uses. Needs a Deepgram account, and bills for "
-        "every minute the caption stream is open.",
-        needs_key=True, billed=True, recommended=True),
+        "Requires macOS 26 or newer."),
     BackendInfo(
         "whisper", "Whisper (on this computer)",
         "Free, private, and once its model is downloaded it works with no "
-        "internet at all. Slower and less accurate than Deepgram.",
-        recommended=True),
+        "internet at all. Slower than Apple speech, and it can be told the "
+        "names and terms your event uses."),
     BackendInfo(
         "mock", "Practice mode (fake captions)",
-        "Plays a scripted transcript instead of listening. Nothing is recorded "
-        "and nothing is billed - use it to rehearse the wall and phone pages "
-        "before the event.",
-        recommended=True),
+        "Plays a scripted transcript instead of listening. Nothing is "
+        "recorded - use it to rehearse the wall and phone pages before the "
+        "event."),
 )
 
 BY_NAME: dict[str, BackendInfo] = {info.name: info for info in CATALOGUE}
@@ -158,17 +146,14 @@ def supported() -> list[str]:
 def resolve_auto() -> str:
     """What `backend = "auto"` means here.
 
-    The first *recommended* backend this machine can run that needs no
-    account: on a current Mac that is apple_speech, and everywhere else it
-    falls through to practice mode. Never deepgram - "auto" must not select
-    something that bills, and it has no key to bill with on a fresh install
-    anyway - and never whisper, whose wheels are an opt-in download. The
-    setup wizard is where a real choice gets made; this is only what a
-    machine comes up on before anyone has made one.
+    The first backend this machine can run: on a current Mac that is
+    apple_speech, and everywhere else it falls through to practice mode.
+    Never whisper, whose wheels are an opt-in download. The setup wizard is
+    where a real choice gets made; this is only what a machine comes up on
+    before anyone has made one.
     """
     for info in CATALOGUE:
-        if info.recommended and not info.needs_key and info.name != "whisper" \
-                and unsupported_reason(info.name) is None:
+        if info.name != "whisper" and unsupported_reason(info.name) is None:
             return info.name
     return "mock"
 
@@ -196,8 +181,6 @@ def describe(name: str) -> dict:
         "name": name,
         "label": info.label if info else name,
         "summary": info.summary if info else "",
-        "needs_key": bool(info and info.needs_key),
-        "billed": bool(info and info.billed),
         "supported": reason is None,
         "unsupported_reason": reason or "",
     }

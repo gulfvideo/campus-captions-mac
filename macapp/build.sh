@@ -6,7 +6,7 @@
 #   macapp/build.sh
 #
 # requirements-whisper.txt is included even though the source-tree README
-# calls it optional: there, skipping it keeps a Deepgram-only install lean,
+# calls it optional: there, skipping it keeps an Apple-speech-only install lean,
 # but the packaged app advertises "Whisper" as a clickable backend on the
 # status page with no terminal to `pip install` from - if the wheel isn't in
 # this venv when PyInstaller runs, picking it there just silently never opens.

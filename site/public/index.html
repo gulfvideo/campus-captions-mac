@@ -582,7 +582,7 @@ footer .end { margin-left: auto; }
     <div class="spec-row">
       <div class="spec-label">
         Cost / hour
-        <span>On the on-device engines. No account, no metering.</span>
+        <span>No account, no subscription, no metering.</span>
       </div>
       <div class="spec-figure" aria-label="Zero dollars and zero cents per hour">$0.00</div>
     </div>
@@ -599,7 +599,7 @@ footer .end { margin-left: auto; }
       <div>
         <h2 class="col-head">Requires</h2>
         <ul class="col-list">
-          <li>1 × Windows or Mac host</li>
+          <li>1 × Mac host (Apple silicon)</li>
           <li>1 × line-level feed from the desk</li>
           <li>LAN reachable by wall + phones</li>
           <li class="opt">Internet — optional</li>
@@ -631,14 +631,14 @@ footer .end { margin-left: auto; }
   <div class="wrap">
     <h2 class="statement">Speech recognition is a part you choose, not a vendor you hire.</h2>
     <p class="lede" style="margin-top:22px">
-      Two of the four engines run entirely on the machine in your booth. No account,
-      no API key, no per-minute billing, and after the first model download, no
-      network at all. That is the whole argument, and it is checkable.
+      Every engine runs entirely on the Mac in your booth. No account, no API key,
+      no subscription, and after the first model download, no network at all. That
+      is the whole argument, and it is checkable.
     </p>
 
     <div class="tbl-scroll" style="margin-top:34px">
       <table>
-        <caption>Deepgram is the only engine that bills, and the only one that sends audio anywhere. It is an option, not the floor.</caption>
+        <caption>Nothing bills, and nothing sends audio anywhere. Every engine is on-device.</caption>
         <thead>
           <tr>
             <th scope="col">Engine</th>
@@ -657,14 +657,8 @@ footer .end { margin-left: auto; }
           <tr>
             <th scope="row">Whisper</th>
             <td data-l="Cost / hr">$0.00</td>
-            <td data-l="Runs on">Win · Mac · Linux</td>
+            <td data-l="Runs on">Mac</td>
             <td data-l="Audio leaves the room"><span class="yes">No</span></td>
-          </tr>
-          <tr>
-            <th scope="row">Deepgram</th>
-            <td data-l="Cost / hr">Metered, your account</td>
-            <td data-l="Runs on">Any, online</td>
-            <td data-l="Audio leaves the room"><span class="no">Yes</span></td>
           </tr>
           <tr>
             <th scope="row">Rehearsal</th>
@@ -941,18 +935,19 @@ footer .end { margin-left: auto; }
     <details>
       <summary>Do we need internet?</summary>
       <div class="ans">
-        <p>Not for the captions, on either on-device engine. Audio never leaves the computer
-        and nothing is billed.</p>
+        <p>Not for the captions, and not for translation. Both run on the Mac; audio never
+        leaves the computer and nothing is billed. The one exception is the first time a
+        speech or translation language is used, when macOS downloads its model.</p>
         <p>You need the local network so the wall and phones can reach the relay. Internet is
-        only for the optional extras: the Deepgram engine, translation, pushing captions to
-        YouTube Live, or letting people outside the building connect.</p>
+        only for the optional extras: pushing captions to YouTube Live, or letting people
+        outside the building connect.</p>
       </div>
     </details>
 
     <details>
       <summary>What do we need to buy?</summary>
       <div class="ans">
-        <p>Most likely nothing. One Windows or Mac computer — the one already in the booth is
+        <p>Most likely nothing. One Mac — the one already in the booth is
         usually fine — and a feed from the desk you already run. If there is no spare output,
         a cheap USB interface covers it.</p>
       </div>
@@ -981,8 +976,8 @@ footer .end { margin-left: auto; }
     <details>
       <summary>What does the beta cost?</summary>
       <div class="ans">
-        <p>Nothing, and no price is set for afterwards. If you run the Deepgram engine you
-        pay Deepgram directly for your own usage; the on-device engines avoid even that.</p>
+        <p>Nothing, and no price is set for afterwards. There is no account to create and
+        no subscription behind any of it; every engine runs on your own Mac.</p>
       </div>
     </details>
   </div>

@@ -12,7 +12,6 @@ export const EVENT_STATES = [
 const BACKENDS = [
 	{ id: 'apple_speech', label: 'Apple on-device (local, free)' },
 	{ id: 'whisper', label: 'Whisper (local, offline)' },
-	{ id: 'deepgram', label: 'Deepgram (cloud, paid)' },
 	{ id: 'mock', label: 'Mock (rehearsal script)' },
 ]
 
@@ -46,14 +45,14 @@ export function getActions(self) {
 
 		open_stream: {
 			name: 'Captions: open ASR stream',
-			description: 'Starts recognition. On Deepgram this is where billing starts.',
+			description: 'Starts recognition.',
 			options: [],
 			callback: async () => send('/api/control', { action: 'open_stream' }, 'Open ASR stream'),
 		},
 
 		close_stream: {
 			name: 'Captions: close ASR stream',
-			description: 'Stops recognition. On Deepgram this is where billing stops.',
+			description: 'Stops recognition.',
 			options: [],
 			callback: async () => send('/api/control', { action: 'close_stream' }, 'Close ASR stream'),
 		},

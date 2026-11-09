@@ -38,9 +38,9 @@ BUILD_SCRIPT = NATIVE_DIR / "build.sh"
 SOURCE = NATIVE_DIR / "speech_helper.swift"
 
 # What the helper (and swiftc/codesign when building it) may see of this
-# process's environment. The capture client's environment carries the
-# Deepgram key, and in the packaged app the Azure key and tunnel token too;
-# a speech helper needs none of them. Mirrors relay/tunnel.py.
+# process's environment. The capture client's environment carries the relay
+# source token, and in the packaged app the tunnel token too; a speech helper
+# needs neither. Mirrors relay/tunnel.py.
 CHILD_ENV_KEYS = (
     "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "USER", "LOGNAME",
     "SSL_CERT_FILE", "SSL_CERT_DIR", "DEVELOPER_DIR", "SDKROOT",

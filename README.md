@@ -78,12 +78,12 @@ Two processes. The relay, then the capture client:
 .venv/bin/python -m capture
 ```
 
-`-m capture` defaults to the mock backend, so it needs no audio hardware and no
-API key. Useful flags:
+`-m capture` defaults to the mock backend, so it needs no audio hardware.
+Useful flags:
 
 ```bash
 .venv/bin/python -m capture --list-devices
-.venv/bin/python -m capture --backend deepgram --device "Scarlett"
+.venv/bin/python -m capture --backend apple_speech --device "Scarlett"
 .venv/bin/python -m capture --no-audio          # no input device at all
 ```
 
@@ -91,7 +91,7 @@ Then open the **status page** — <http://localhost:8000/status>. It shows
 whether audio is arriving, whether the ASR backend is producing text, how many
 viewers are connected, whether the ASR stream is open, and it carries the
 buttons to open and close that stream - everything an operator watches during
-an event. One-time setup - API keys, integrations, keyterms/blocklist, the
+an event. One-time setup - integrations, keyterms/blocklist, the
 welcome-screen wording and photo - lives on **Settings**
 (<http://localhost:8000/settings>, linked from the status page), so the page
 running all night isn't cluttered with things touched once before doors open.
@@ -106,9 +106,8 @@ The relay binds all interfaces, so phones on the same wifi use
 
 **The ASR stream starts closed.** Audio levels flow immediately so you can check
 the microphone, but no transcript is produced until someone presses *Open ASR
-stream*. This mirrors Deepgram billing, which is charged on connection time, not
-speech time — you can leave the whole system running through setup and rehearsal
-at no cost and open the stream a minute before the event.
+stream*. Leave the whole system running through setup and rehearsal and open
+the stream a minute before the event.
 
 ## ASR backends
 
@@ -117,8 +116,8 @@ transcript events out. The relay and the viewers never learn which backend is
 running — they only ever see the messages in `docs/MESSAGES.md`.
 
 ```python
-backend = create("deepgram", config)
-await backend.open(sample_rate=48000)   # a paid connection starts HERE
+backend = create("apple_speech", config)
+await backend.open(sample_rate=48000)   # recognition starts HERE
 await backend.send_audio(frames)
 async for event in backend.events(): ...
 await backend.close()                   # and stops HERE
@@ -127,7 +126,6 @@ await backend.close()                   # and stops HERE
 | Backend | File | Notes |
 |---|---|---|
 | `mock` | `capture/backends/mock.py` | replays `config/mock_script.txt`, ignores audio, costs nothing |
-| `deepgram` | `capture/backends/deepgram.py` | Nova-3 streaming, keyterm prompting, key from `.env` |
 | `apple_speech` | `capture/backends/apple_speech.py` | on-device SpeechAnalyzer, macOS 26+, free, no network after first model download |
 | `whisper` | `capture/backends/whisper.py` | on-device via faster-whisper, free, no macOS version requirement, needs `requirements-whisper.txt` |
 
@@ -141,12 +139,12 @@ check without tripping AMFI.
 
 `whisper` simulates streaming by re-decoding a buffer on a timer (Whisper
 itself transcribes whole clips, not a stream) - expect roughly a second more
-latency than Deepgram and less stable interims. Good for offline demos, a
+latency than `apple_speech` and less stable interims. Good for offline demos, a
 venue with no internet, or any machine `apple_speech` can't run on. Its
 dependencies are ~200MB and optional on purpose: `python -m pip install -r
 requirements-whisper.txt` only on a machine that actually uses it.
 
-**Adding another backend** is one new file next to those four, one line in
+**Adding another backend** is one new file next to those three, one line in
 `capture/backends/registry.py`, and one row in `capture/backends/support.py`'s
 `CATALOGUE` (the operator-facing name and description). `registry.py` asserts
 at import that the two agree. Nothing in the relay or the viewers changes.
@@ -161,8 +159,8 @@ authority for three things:
 
 - **`backend = "auto"`**, the shipped default in `config/event.example.toml`:
   the first free, no-account backend this machine can run — `apple_speech` on
-  a Mac new enough for it, `mock` everywhere else. Never `deepgram` (it bills)
-  and never `whisper` (its wheels are an opt-in download).
+  a Mac new enough for it, `mock` everywhere else. Never `whisper` (its
+  wheels are an opt-in download).
 - **What gets offered.** The setup wizard and the status page's picker list
   `supported()` only, so `apple_speech` is simply absent on a Mac older than 26.
 - **What happens to a config naming a backend this machine cannot run.** It is
@@ -176,8 +174,8 @@ on an older Mac came up on a backend that could only ever report an error.
 example never names a platform-bound backend again.
 
 The mock backend is first-class, not a stub: it obeys the same open/close
-lifecycle, so the whole operator flow can be rehearsed without hardware, an API
-key, or spend. In a script file, `#` starts a comment, a blank line is a pause,
+lifecycle, so the whole operator flow can be rehearsed without hardware. In a
+script file, `#` starts a comment, a blank line is a pause,
 and `[clear]` wipes the display the way an operator would between segments.
 
 `tools/mock_source.py` is a lighter alternative that speaks the source protocol
@@ -309,8 +307,7 @@ gitignored). The relay reads the `[relay]` section — host, port, and the
 
 Environment always wins, so the launcher can override without editing files:
 `CAPTIONS_HOST`, `CAPTIONS_PORT`, `CAPTIONS_SOURCE_TOKEN`,
-`CAPTIONS_OPERATOR_TOKEN`. No Deepgram key ever appears in a config file —
-that stays in the environment.
+`CAPTIONS_OPERATOR_TOKEN`.
 
 Running from source, `config/event.toml` and `.env` live in the checkout. The
 packaged macOS app keeps them, and any uploaded welcome photo or logo, in
@@ -358,7 +355,7 @@ a password:
 | `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |
 | `GET`/`POST /api/wordlist/{keyterms,blocklist}` | the two hand-maintained word lists as plain text; saving rewrites the file and reloads it into the capture client. The body is raw text, not JSON - a campus's worth of names runs past `MAX_JSON_BYTES` |
 | `POST /api/ui` | `{"window_mode": "app"\|"browser"}` - whether the app's own pages open in a chromeless window or a browser tab, saved to `[ui]` in `event.toml` |
-| `GET`/`POST /api/backend-options` | recognition tuning that used to be `event.toml`-only: Deepgram's `diarize`/`filler_words`/`inaudible_below`, Whisper's `compute_type`/`interim_interval`/`silence_commit`, and the Apple locale. Saved to disk *and* pushed to the running capture client, which rebuilds its backend |
+| `GET`/`POST /api/backend-options` | recognition tuning that used to be `event.toml`-only: Whisper's `compute_type`/`interim_interval`/`silence_commit`, and the Apple locale. Saved to disk *and* pushed to the running capture client, which rebuilds its backend |
 | `POST /api/relay` | `{"port": 8001}` - save the port and restart the relay on it; the capture client follows, see below |
 | `POST /api/preflight` | run the preflight check now: a verdict plus findings with what to do about each, see below |
 | `POST /api/propresenter` | direct ProPresenter caption output: settings, enable, probe, clear - relay-local, see below |
@@ -396,21 +393,19 @@ for it. `relay/youtube.py`'s `urls_from_env()` finds these.
 
 ## Translation and multiple languages
 
-Optional. Easiest path: paste an Azure Translator key and a target language
-list into the settings page's **Translation** panel - see SETUP.md
-3e for where to get a key. That's `POST /api/translation`, which writes the
-key to `.env` and the languages to `config/event.toml` and reconnects the
-translator immediately, no restart. Equivalently, by hand: set
-`[languages] offer = ["es", "fr"]` (or whatever codes) and
-`[translate] provider = "azure"` with `AZURE_TRANSLATOR_KEY` in `.env`.
-Either way, every **committed** line gets translated into each offered
-language -
-interims never are, since they change several times a second and would
-multiply the translation bill by roughly twenty for text nobody can read that
-fast anyway. `relay/translate.py`'s `Translator` interface makes the provider
-swappable (one class, one line in `create()`); it's best-effort by
-construction, so an Azure outage degrades to source-only rather than losing
-captions.
+Optional. Translation runs on the Mac with Apple's Translation framework:
+no account, nothing leaves the machine. Easiest path: type a target language
+list into the settings page's **Translation** panel - see SETUP.md 3e. That's
+`POST /api/translation` with `{"languages": "es, fr"}`, which writes the
+languages to `config/event.toml` and reconnects the translator immediately,
+no restart. Equivalently, by hand: set `[languages] offer = ["es", "fr"]`
+(or whatever codes). Either way, every **committed** line gets translated
+into each offered language - interims never are, since they change several
+times a second and would multiply the work by roughly twenty for text nobody
+can read that fast anyway. `relay/translate.py`'s `AppleTranslator` runs a
+Swift helper as a subprocess, so it needs macOS 26 and a language the Mac has
+downloaded; it's best-effort by construction, so a translation failure
+degrades to source-only rather than losing captions.
 
 This is also what `relay/hub.py`'s per-language plumbing exists for: each
 language is an independent broadcast stream with its own replay buffer
@@ -436,8 +431,8 @@ program has the device", which the capture client detects from PortAudio's
 open failure and reports as `device_busy`), the transcription backend, key
 and stream, the caption latency figures, the caption computer's CPU and
 memory and its busiest programs (`capture/host.py`, via psutil, reported as
-`host` in every status message), a TLS handshake to each service in use
-(Deepgram, Azure Translator, YouTube), and whether a wall, a phone and
+`host` in every status message), a TLS handshake to YouTube when caption push
+is on, and whether a wall, a phone and
 ProPresenter are actually connected. The thresholds are named at the top of
 the module; `docs/HOST-COMPATIBILITY.md` is where a venue's results go. The
 evaluation is a pure function of a snapshot, so `tests/test_preflight.py`
@@ -698,8 +693,8 @@ covers the shipped example and every config written before the wizard existed.
 *No config file at all* is not, since a booth whose `event.toml` was deleted
 mid-event should not be put in front of a wizard.
 
-The wizard saves nothing of its own beyond that one flag: the microphone, the
-backend and the Deepgram key all go through `/api/control`, and the title and
+The wizard saves nothing of its own beyond that one flag: the microphone and
+the backend go through `/api/control`, and the title and
 notice through `/api/event` — the endpoints the status and settings pages
 already use. One writer per setting, so the three pages cannot drift.
 
@@ -769,8 +764,8 @@ in a note to a volunteer lands where it says it will.
 
 **Nothing on this page requires a text editor.** The keyterms and blocklist
 files are edited in place (`/api/wordlist`), and the recognition settings that
-were `event.toml`-only - diarization, filler words, the inaudible threshold,
-Whisper's compute type and commit timings, the Apple locale - have real inputs
+were `event.toml`-only - Whisper's compute type and commit timings, the Apple
+locale - have real inputs
 that save to disk and apply to the running capture client without a restart
 (`/api/backend-options`). A backend reads its options when it opens a
 connection rather than per frame, so applying them rebuilds the backend the
@@ -805,7 +800,7 @@ docs/GIT-ETIQUETTE.md         how we write commits, and how to run the tests
 .gitmessage                   commit template - git config commit.template .gitmessage
 tools/hooks/pre-push          refuses a push that fails the smoke test
 
-.env.example                  copy to .env: Deepgram/Azure keys, YouTube URLs
+.env.example                  copy to .env: YouTube URLs, tunnel token
 config/event.example.toml     copy to event.toml and edit
 config/keyterms.txt           institution vocabulary, edited per event
 config/blocklist.txt          words/phrases stripped from every caption, edited per event
@@ -818,7 +813,7 @@ relay/hub.py                  fan-out, per-language replay buffers, sequencing
 relay/state.py                what the status page is told
 relay/config.py               config/event.toml + environment
 relay/youtube.py              pushes finals to YouTube Live caption URLs
-relay/translate.py            Translator interface + Azure provider
+relay/translate.py            Apple on-device translation + worker
 relay/transcript.py           per-language timed record -> .srt export
 
 capture/__main__.py           the capture client
@@ -826,7 +821,6 @@ capture/audio.py              device selection by index or name, level metering
 capture/relay_client.py       link to the relay, reconnects forever
 capture/backends/base.py      the ASR interface - read this one first
 capture/backends/mock.py      scripted backend
-capture/backends/deepgram.py  Nova-3 streaming
 capture/backends/apple_speech.py  on-device SpeechAnalyzer, macOS 26+
 capture/backends/native/      the Swift helper apple_speech.py subprocesses
 capture/backends/whisper.py   on-device via faster-whisper, any macOS version

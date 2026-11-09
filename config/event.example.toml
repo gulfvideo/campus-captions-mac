@@ -8,8 +8,7 @@ port = 8000
 # the relay generates one on first start and saves it to .env as
 # CAPTIONS_SOURCE_TOKEN, where the capture client reads it too. A token is
 # always required - the audience is on the booth network as well, so "no
-# token" was never safe. This is not a Deepgram key; that lives in the
-# environment only, never in this file.
+# token" was never safe.
 source_token = ""
 # Set this to the domain a tunnel (e.g. Cloudflare Tunnel) exposes this relay
 # on. Anyone reaching the relay through this exact hostname gets read-only
@@ -53,16 +52,6 @@ logo_alt = ""             # screen-reader name for the logo (config/logo.*), e.g
 # because the field was saved again with the same text.
 disclaimer = ""           # e.g. "Captions are auto-generated and may not be 100% accurate."
 
-[translate]
-# "azure" or "none". The key is read from AZURE_TRANSLATOR_KEY in .env - never
-# from this file. AZURE_TRANSLATOR_REGION is required for a regional resource.
-#
-# Only committed lines are translated, never in-progress ones: interims
-# change several times a second, so translating them would multiply the bill
-# by roughly twenty and produce text that rewrites itself faster than anyone
-# can read.
-provider = "none"
-
 # Direct caption output into ProPresenter over its network API (Settings ->
 # Network -> Enable Network; note the port). Read by the relay - see
 # relay/propresenter.py and SETUP.md 7a. Everything here can also be set from
@@ -93,40 +82,20 @@ keys = []                   # e.g. ["obs:abc123", "propresenter:def456"]
 # shipped file is right on every Mac. The setup wizard (opened
 # on first run, or /setup any time after) is where a real choice gets made
 # and written back here; the status page's picker changes it live.
-backend = "auto"      # auto | mock | deepgram | apple_speech | whisper
+backend = "auto"      # auto | mock | apple_speech | whisper
 device = ""                                        # index or name substring
 relay_url = "ws://127.0.0.1:8000/ws/source"
 mock_script = "config/mock_script.txt"
 
-# Applies after transcription, the same way on every backend - unlike
-# [deepgram]'s own keyterms_file/profanity_filter below, which are that
-# backend's own API-level features. Both boosted and blocked terms are
-# plain text files, one term or short phrase per line; editable live from
-# the status page's "Keywords & profanity filter" panel, which also
-# reloads them.
+# Applies after transcription, the same way on every backend. Blocked terms
+# are a plain text file, one term or short phrase per line; editable live
+# from the status page's "Keywords & profanity filter" panel, which also
+# reloads it.
 [keywords]
 blocklist_file = "config/blocklist.txt"
-profanity_filter = true         # bleep the built-in list; [deepgram]'s own is separate
+profanity_filter = true         # bleep the built-in list
 
-[deepgram]
-model = "nova-3"
-language = "en-US"
-keyterms_file = "config/keyterms.txt"
-# Speaker changes become ">>" at the start of the new speaker's words on
-# committed lines - the broadcast-caption convention. Names still have to
-# come from the operator (the status page's caption box). false to disable.
-diarize = true
-# A committed word the model itself doubts (confidence below this) is shown
-# as [inaudible] instead of a confident wrong guess. 0 disables.
-inaudible_below = 0.3
-# Verbatim is the accessible default: deaf attendees should receive what
-# hearing attendees hear. Turning the filter on changes that, so it is an
-# explicit choice here, never a surprise. This is Deepgram's own native
-# filter (deepgram-only); [keywords] above has a backend-agnostic one.
-profanity_filter = false
-filler_words = false
-
-# On-device, free, no key - but macOS 26+ only, and no keyterm boosting.
+# On-device, free, no account - but macOS 26+ only, and no keyterm boosting.
 # Running from source: first open() compiles capture/backends/native/speech_helper.swift
 # (needs the Xcode command line tools). In the packaged .app it ships prebuilt,
 # so no Xcode is needed there. Either way, the very first time a given locale
@@ -134,7 +103,7 @@ filler_words = false
 [apple_speech]
 locale = "en-US"
 
-# On-device Whisper. No network, no API key, no spend - good for demos, for a
+# On-device Whisper. No network, no account - good for demos, for a
 # venue with no internet, and for platforms other than macOS. Needs the
 # optional extras:
 #     python -m pip install -r requirements-whisper.txt

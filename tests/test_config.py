@@ -59,26 +59,26 @@ class SaveSectionTests(unittest.TestCase):
 
     def test_numbers_stay_numbers(self):
         """A float used to fall through _toml_literal's string branch and be
-        written quoted, so `inaudible_below = 0.45` came back as the string
+        written quoted, so `silence_commit = 0.45` came back as the string
         "0.45" and broke the first comparison the backend made against it.
         bool is checked here too, since bool is an int in Python and would
         otherwise be written as 1."""
-        config.save_section(self.path, "[deepgram]", {
-            "inaudible_below": 0.45,
+        config.save_section(self.path, "[whisper]", {
+            "silence_commit": 0.45,
             "interim_interval": 1.0,
             "lines": 2,
-            "diarize": False,
-            "filler_words": True,
-            "model": "nova-3",
+            "vad": False,
+            "verbose": True,
+            "model": "small.en",
         })
-        got = self.read()["deepgram"]
-        self.assertIsInstance(got["inaudible_below"], float)
-        self.assertEqual(got["inaudible_below"], 0.45)
+        got = self.read()["whisper"]
+        self.assertIsInstance(got["silence_commit"], float)
+        self.assertEqual(got["silence_commit"], 0.45)
         self.assertIsInstance(got["interim_interval"], float)
         self.assertIsInstance(got["lines"], int)
-        self.assertIs(got["diarize"], False)
-        self.assertIs(got["filler_words"], True)
-        self.assertEqual(got["model"], "nova-3")
+        self.assertIs(got["vad"], False)
+        self.assertIs(got["verbose"], True)
+        self.assertEqual(got["model"], "small.en")
 
     def test_non_finite_numbers_are_refused(self):
         # inf and nan are not TOML, and writing one would produce a config
@@ -211,7 +211,7 @@ class SaverRoundTripTests(unittest.TestCase):
     def test_every_saver_round_trips(self):
         config.save_youtube_url(self.path, "https://example.test/c", "es")
         config.save_audio_device(self.path, 'Scarlett 2i2 "Mic #2"')
-        config.save_translate_settings(self.path, "azure", ["es", "zh-Hans"])
+        config.save_translate_settings(self.path, ["es", "zh-Hans"])
         config.save_tunnel_settings(self.path, "captions.example.test", True)
         config.save_relay_port(self.path, 8123)
         config.save_event_settings(self.path, {"state": "live", "title": "Convocation"})
@@ -220,7 +220,6 @@ class SaverRoundTripTests(unittest.TestCase):
         self.assertEqual(data["youtube"], {"url": "https://example.test/c", "lang": "es"})
         # A '#' inside the quoted value must not be read as a comment.
         self.assertEqual(data["capture"]["device"], 'Scarlett 2i2 "Mic #2"')
-        self.assertEqual(data["translate"]["provider"], "azure")
         self.assertEqual(data["languages"]["offer"], ["es", "zh-Hans"])
         self.assertEqual(data["relay"]["public_hostname"], "captions.example.test")
         self.assertIs(data["tunnel"]["start_enabled"], True)      # bool, not "true"

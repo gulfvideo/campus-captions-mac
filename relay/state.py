@@ -2,8 +2,8 @@
 
 The relay deliberately knows nothing about which ASR backend is running. It
 records whatever the capture client reports - a backend name, a device name, a
-level, an open/closed flag - and never interprets it. Swapping Deepgram for a
-local backend later changes nothing in this file.
+level, an open/closed flag - and never interprets it. Swapping one backend
+for another changes nothing in this file.
 """
 
 from __future__ import annotations
@@ -83,7 +83,6 @@ class RelayState:
     # through: the relay makes no judgement about it, it only carries it to
     # the setup wizard and the settings page, which offer the download.
     whisper: dict = field(default_factory=dict)
-    has_deepgram_key: bool = False
     mask_profanity: bool = False
     blocked_word_count: int = 0
     device_busy: bool = False               # another program holds the audio input
@@ -132,7 +131,6 @@ class RelayState:
             self.audio_peak = max(0.0, min(1.0, float(peak)))
         self.clipping = bool(msg.get("clipping"))
         self.stream_open = bool(msg.get("stream_open"))
-        self.has_deepgram_key = bool(msg.get("has_deepgram_key"))
         self.mask_profanity = bool(msg.get("mask_profanity"))
         count = msg.get("blocked_word_count")
         if isinstance(count, int) and not isinstance(count, bool):
@@ -298,7 +296,6 @@ class RelayState:
                 "backend": self.backend,
                 "available_backends": self.available_backends,
                 "whisper": self.whisper,
-                "has_deepgram_key": self.has_deepgram_key,
                 "mask_profanity": self.mask_profanity,
                 "blocked_word_count": self.blocked_word_count,
                 "device": self.device,

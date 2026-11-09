@@ -13,7 +13,7 @@
 # unannounced sponsor, a working title that leaked early.
 #
 # Unlike keyterms.txt, this applies after transcription, the same way on
-# every backend - deepgram, whisper, apple_speech, and mock all use it.
+# every backend - whisper, apple_speech, and mock all use it.
 
 # --- example (delete before an event) --------------------------------------
 # working title

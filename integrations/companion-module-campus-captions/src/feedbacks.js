@@ -35,7 +35,7 @@ export function getFeedbacks(self) {
 			type: 'boolean',
 			name: 'ASR stream is open',
 			description:
-				'The tally light: recognition is running. On Deepgram this is also "the meter is running".',
+				'The tally light: recognition is running.',
 			defaultStyle: { bgcolor: RED, color: WHITE },
 			options: [],
 			callback: () => Boolean(snap()?.asr?.stream_open),
@@ -87,7 +87,6 @@ export function getFeedbacks(self) {
 					choices: [
 						{ id: 'apple_speech', label: 'Apple on-device' },
 						{ id: 'whisper', label: 'Whisper' },
-						{ id: 'deepgram', label: 'Deepgram' },
 						{ id: 'mock', label: 'Mock' },
 					],
 				},

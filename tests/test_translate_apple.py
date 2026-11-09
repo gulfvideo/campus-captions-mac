@@ -72,14 +72,14 @@ class AppleTranslatorTests(unittest.IsolatedAsyncioTestCase):
 
 class CreateTests(unittest.TestCase):
     def test_apple_is_a_provider_on_macos_only(self):
-        made = tr.create("apple", ["es"])
+        made = tr.create(["es"])
         if sys.platform == "darwin":
             self.assertIsInstance(made, tr.AppleTranslator)
         else:
             self.assertIsNone(made)
 
     def test_no_targets_means_no_translator(self):
-        self.assertIsNone(tr.create("apple", []))
+        self.assertIsNone(tr.create([]))
 
 
 if __name__ == "__main__":

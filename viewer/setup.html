@@ -92,7 +92,6 @@
     text-transform: uppercase; border-radius: 999px; padding: 2px 8px;
     margin-left: 7px; vertical-align: 1px;
   }
-  .tag.cost { background: #4a3a17; color: #e6bf68; }
   .tag.free { background: #1d3d29; color: #6cc98d; }
 
   /* ---- level meter ---- */
@@ -254,15 +253,6 @@ page.</p>
     <button id="whisper-download">Download the model</button>
   </div>
 
-  <div class="field" id="key-field" hidden>
-    <label for="dg-key">Deepgram API key</label>
-    <input id="dg-key" type="password" autocomplete="off" spellcheck="false"
-           placeholder="Paste the key from console.deepgram.com">
-    <p class="sub" id="key-hint" style="margin-top:8px">Create a free account at
-      <a href="https://console.deepgram.com" target="_blank" rel="noreferrer noopener">console.deepgram.com</a>,
-      make an API key, and paste it here. It is saved on this computer only.</p>
-  </div>
-
   <nav class="actions">
     <button id="back-2">Back</button>
     <span class="spacer"></span>
@@ -323,7 +313,6 @@ page.</p>
   var step = 0;
   var setup = null;          // /api/setup, fetched once
   var chosenBackend = null;
-  var keySaved = false;
   var sock = null, reconnTimer = null, attempts = 0, signedOut = false;
   var latest = null;         // most recent /api/status-shaped snapshot
   var deviceTouched = false; // don't fight the operator's own selection
@@ -469,11 +458,6 @@ page.</p>
       name.className = 'name';
       name.textContent = b.label;
 
-      var tag = document.createElement('span');
-      tag.className = 'tag ' + (b.billed ? 'cost' : 'free');
-      tag.textContent = b.billed ? 'costs money' : 'free';
-      name.appendChild(tag);
-
       var why = document.createElement('span');
       why.className = 'why';
       why.textContent = b.summary;
@@ -495,17 +479,7 @@ page.</p>
       var radio = labels[i].querySelector('input');
       labels[i].className = 'choice' + (radio && radio.checked ? ' picked' : '');
     }
-    var wantsKey = false;
-    (setup.backends || []).forEach(function (b) {
-      if (b.name === chosenBackend && b.needs_key) wantsKey = true;
-    });
-    $('key-field').hidden = !wantsKey;
     renderWhisper(latest && latest.source);
-    if (wantsKey && (setup.has_deepgram_key || keySaved)) {
-      $('key-hint').textContent =
-        'A key is already saved on this computer. Leave this blank to keep it, '
-        + 'or paste a new one to replace it.';
-    }
   }
 
   // Whisper ships inside the packaged app, but its speech model does not -
@@ -530,8 +504,7 @@ page.</p>
     }
     if (w.installed === false && w.installable === false) {
       status.textContent = 'Whisper is not included in this build of Campus '
-        + 'Captions. Use Deepgram or, on a Mac new enough for it, Apple '
-        + 'on-device speech.';
+        + 'Captions. Use Apple on-device speech instead.';
       button.disabled = true;
       return;
     }
@@ -621,19 +594,9 @@ page.</p>
   }
 
   function saveBackend() {
-    var chain = Promise.resolve();
-    var key = $('dg-key').value.trim();
-    if (key) {
-      // The key first: switching to deepgram without one is refused by the
-      // capture client, so saving in the other order would lose the switch.
-      chain = postJSON('/api/control', { action: 'set_deepgram_key', key: key })
-        .then(function () { keySaved = true; $('dg-key').value = ''; })
-        ['catch'](function () { toast('Could not save the Deepgram key.'); });
-    }
-    if (!chosenBackend) return chain;
-    return chain.then(function () {
-      return postJSON('/api/control', { action: 'select_backend', backend: chosenBackend });
-    })['catch'](function () { toast('Could not set the transcription backend.'); });
+    if (!chosenBackend) return Promise.resolve();
+    return postJSON('/api/control', { action: 'select_backend', backend: chosenBackend })
+      ['catch'](function () { toast('Could not set the transcription backend.'); });
   }
 
   function saveEvent() {
@@ -661,12 +624,6 @@ page.</p>
     renderDevices(source);
     renderMeter(snapshot || {});
     if (step === 2) renderWhisper(source);
-    // The wizard's Deepgram hint should stop saying "paste a key" the moment
-    // one is saved, whether it was saved here or on the settings page.
-    if (source.has_deepgram_key) {
-      setup.has_deepgram_key = true;
-      if (step === 2) paintChoice();
-    }
   }
 
   function connect() {

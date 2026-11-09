@@ -2,8 +2,8 @@
 
 A first-class backend, not a stub. Most development and every soak test runs
 against this one: no audio hardware, no API key, no spend, and repeatable
-output. It obeys the same open/close lifecycle as Deepgram so the operator flow
-can be rehearsed exactly as it will run on the night.
+output. It obeys the same open/close lifecycle as the real backends so the
+operator flow can be rehearsed exactly as it will run on the night.
 
 Script format (config/mock_script.txt):
 

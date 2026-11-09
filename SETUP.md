@@ -44,8 +44,8 @@ browser. Four steps, about two minutes:
    meter move while someone talks. This is the step that catches "we
    captioned the laptop's built-in mic all night".
 2. **Captions** — pick how speech is turned into text. Only the options this
-   computer can actually run are listed, and each says whether it costs money.
-   See sections 3, 3a and 3d for what to pick and why.
+   computer can actually run are listed. See sections 3, 3a and 3d for what
+   to pick and why.
 3. **Event** — the title and accessibility notice the audience sees on their
    phones before the program starts. Both optional.
 4. **Done** — the wall, phone and status addresses to hand out.
@@ -112,7 +112,7 @@ extensions, a restore-tabs prompt, or anything else from everyday browsing.
 
 ### Where your settings live
 
-Not inside the app. Settings, the API keys and the logs go in a per-user
+Not inside the app. Settings, the tokens and the logs go in a per-user
 folder, so an upgrade keeps them and nothing secret travels with a copy of the
 installer:
 
@@ -143,16 +143,10 @@ port = 8000
 source_token = ""     # leave empty: one is generated into .env on first start
 
 [capture]
-backend = "auto"          # auto | mock | deepgram | apple_speech | whisper
+backend = "auto"          # auto | mock | apple_speech | whisper
 device = ""                                        # index or part of a name
 relay_url = "ws://127.0.0.1:8000/ws/source"
 start_open = false                                 # leave false: see section 6
-
-[deepgram]
-model = "nova-3"
-language = "en-US"
-keyterms_file = "config/keyterms.txt"
-endpointing = 300
 
 [apple_speech]
 locale = "en-US"
@@ -172,40 +166,9 @@ what will work, so it is hard to end up there by accident.
 
 | | |
 |---|---|
-| `deepgram` | cloud, most accurate, learns your keyterms — section 3 |
 | `apple_speech` | on-device, free, macOS 26+ only — section 3a |
-| `whisper` | on-device, free, any OS, needs an extra install — section 3d |
+| `whisper` | on-device, free, older Macs, needs an extra install — section 3d |
 | `mock` | a scripted transcript, for rehearsal |
-
----
-
-## 3. The Deepgram API key
-
-The key lives in **`.env`** in the project folder, and nowhere else. It is
-gitignored, never written to a config file, never logged, and never sent to the
-relay or to any viewer.
-
-**From the Settings page (no text editor needed):** open the collapsed
-**Deepgram API key** section (click the row to expand it), paste the key, and
-press **Save**. This works while the capture client is already running — no
-restart needed — and writes it into `.env` for next time too.
-
-**By hand, if you'd rather:**
-
-1. Copy `.env.example` to `.env`.
-2. Put the key on the `DEEPGRAM_API_KEY` line:
-
-```
-DEEPGRAM_API_KEY=your_key_here
-```
-
-3. Save. The capture client picks it up at startup.
-
-Either way, if the key is missing when the capture client starts up already
-pointed at the Deepgram backend, it refuses to start and tells you exactly
-that rather than falling back silently. Switching to Deepgram from the status
-page's backend dropdown mid-session is gentler: it just refuses the switch
-with the same message, leaving whatever was running untouched.
 
 ---
 
@@ -232,9 +195,9 @@ The first time you open the ASR stream, two things happen automatically:
    `[apple_speech]` if it isn't already installed — the one moment this
    backend needs internet. The status page shows this as it happens.
 
-There is no keyterm/vocabulary boosting on this backend — that's a Deepgram-
-only feature for now. Pick `deepgram` instead if the event has a lot of names
-the model would otherwise get wrong.
+There is no keyterm/vocabulary boosting on this backend yet. Whisper (section
+3d) uses the keyterms file to bias spelling; pick it if the event has a lot of
+names the model would otherwise get wrong.
 
 ---
 
@@ -279,10 +242,9 @@ Two things about this that are YouTube's behavior, not this app's:
   look badly behind — that's expected, not a sign something is broken.
 
 The ingestion URL is tied to that one stream and resets if you end and restart
-it, so don't expect to reuse an old URL. It's not a secret the way the
-Deepgram key is (there's no cost if someone else has it, just the ability to
-post junk captions to the stream), so keeping it in `config/event.toml` rather
-than `.env` is fine.
+it, so don't expect to reuse an old URL. It's not much of a secret (there's
+no cost if someone else has it, just the ability to post junk captions to the
+stream), so keeping it in `config/event.toml` rather than `.env` is fine.
 
 ---
 
@@ -320,7 +282,7 @@ Enabling this sets `public_hostname` to whatever you entered, which is what
 actually changes the relay's behavior: anyone reaching the relay through that
 exact hostname only ever gets the phone view - `/status` and everything that
 can change what's happening (opening/closing the stream, switching backends,
-the Deepgram key field, the YouTube toggle) reject them with a plain 404, as
+the YouTube toggle) reject them with a plain 404, as
 if those routes didn't exist, even with the operator token. The operator
 dashboard stays usable from the booth LAN or localhost with the operator link
 (section 6). Two guard rails: the tunnel will not auto-start at boot until a
@@ -332,8 +294,7 @@ enabled - press Disable first.
 ## 3d. The Whisper backend (any macOS version)
 
 `backend = "whisper"` runs recognition entirely on-device via faster-whisper -
-no API key, no per-minute cost, and no macOS 26 requirement (unlike
-`apple_speech`).
+no account, no cost, and no macOS 26 requirement (unlike `apple_speech`).
 
 **Whisper needs its speech model downloaded once**, a few hundred megabytes.
 The installed app ships the Whisper software but not the model, so there is a
@@ -359,9 +320,9 @@ Troubleshooting), for `ModuleNotFoundError: No module named 'faster_whisper'`.
 The model (`[whisper] model`, default `base.en`, ~150MB) downloads on first
 use and is cached; for a machine with no internet at all, download it
 elsewhere and point `model_dir` at the cache. Expect roughly a second more
-latency than Deepgram, and less stable interim text - it's a good fit for
-demos, rehearsal, or a venue with no internet, not a first choice when
-Deepgram or Apple on-device are both available.
+latency than Apple on-device, and less stable interim text - it's the choice
+for a Mac too old for `apple_speech`, or for an event with a lot of names the
+keyterms list can help with (section 8).
 
 Whisper can also loop on ambiguous audio, repeating one phrase until the
 buffer commits. Two guards run against that: faster-whisper's own temperature
@@ -375,55 +336,38 @@ a loop reach the wall, it is worth reporting with the `.srt`.
 
 ## 3e. Multiple languages and live translation
 
-Optional. Open `/settings`, expand **Translation**, pick a provider, list the
-languages to translate into (e.g. `es, fr, zh-Hans`), and press Save. No
-restart needed, even mid-event.
+Optional. Translation runs on this Mac with Apple's Translation framework:
+free, offline, nothing leaves the machine, no account. It needs macOS 26.
 
-**Apple, on this Mac** is the default: free, offline, nothing leaves the
-machine, no account. It needs macOS 26. A language the Mac has not downloaded
-yet is added under **System Settings &rarr; General &rarr; Language & Region
-&rarr; Translation Languages**; until then the Settings page names it as the
-last error and the other languages still go out.
+Open `/settings`, expand **Translation**, list the languages to translate
+into (e.g. `es, fr, zh-Hans`), and press Save. No restart needed, even
+mid-event. An empty list turns translation off.
 
-**Azure Translator** is the alternative when you want Microsoft's models:
+A language the Mac has not downloaded yet is added under **System Settings
+&rarr; General &rarr; Language & Region &rarr; Translation Languages**; until
+then the Settings page names it as the last error and the other languages
+still go out.
 
-1. Get a key: [portal.azure.com](https://portal.azure.com) &rarr; Create a
-   resource &rarr; search "Translator" &rarr; Create (a free tier exists) &rarr;
-   once it deploys, open the resource &rarr; **Keys and Endpoint** &rarr; copy
-   **Key 1** and the **Region**.
-2. Choose Azure in the Settings page, paste the key (and region, if shown),
-   and press Save.
+The language list goes into `config/event.toml`, so it survives a relay
+restart. Under the hood this is `POST /api/translation` - see
+`docs/MESSAGES.md` if you'd rather script it.
 
-The key goes into `.env` (gitignored) and the provider and language list into
-`config/event.toml`, so all of it survives a relay restart. Under the hood this
-is `POST /api/translation` - see `docs/MESSAGES.md` if you'd rather script it.
-
-Prefer hand-editing the config? The same settings live in `config/event.toml`:
+Prefer hand-editing the config? The same setting lives in `config/event.toml`:
 
 ```toml
 [languages]
 source = "en"
 offer = ["es", "fr"]     # languages to translate into
-
-[translate]
-provider = "apple"       # "apple", "azure" or "none"
-```
-
-and `.env`:
-
-```
-AZURE_TRANSLATOR_KEY=your_key_here
-AZURE_TRANSLATOR_REGION=eastus     # only for a regional resource
 ```
 
 Every **finished** caption line gets translated into each offered language
-(never in-progress lines - they'd multiply the bill roughly twentyfold for
-text that rewrites itself faster than anyone can read). The phone view grows
-a language button once there are two or more working languages; each is an
+(never in-progress lines - they rewrite themselves faster than anyone can
+read, so translating them would be wasted work). The phone view grows a
+language button once there are two or more working languages; each is an
 independent stream, so someone who picks Spanish partway through still sees
-Spanish history on reconnect, not English. If Azure is unreachable or the key
-is wrong, captions keep working in the source language only - translation
-failing never takes down the event.
+Spanish history on reconnect, not English. If translation fails, captions
+keep working in the source language only - translation failing never takes
+down the event.
 
 ---
 
@@ -538,9 +482,8 @@ Requirements to give IT if you need to ask:
 - viewers and the relay must be on the same LAN/VLAN, or routed to each other
 - **client isolation must be off** on the wifi the phones use, or phones cannot
   reach the relay at all — this is the single most common campus-wifi failure
-- no outbound internet access is needed by the relay or the viewers
-- the capture client needs outbound HTTPS/WSS to `api.deepgram.com:443`, and
-  only when the Deepgram backend is running
+- no outbound internet access is needed by the relay, the capture client or
+  the viewers
 
 Everything else is self-contained: the viewer pages load no fonts, scripts or
 images from the internet.
@@ -588,10 +531,8 @@ system default and says so on the status page rather than starting deaf.
 The same status page has a **Transcription backend** dropdown, next to the
 device picker, for swapping backends without restarting anything. It lists
 only what this computer can run, so `apple_speech` is simply absent on a PC. Switching pauses an open stream and reopens it on
-the new backend, the same way changing the audio device does. Deepgram only
-appears usable if `DEEPGRAM_API_KEY` is set — picking it without a key is
-refused and the running backend is left untouched. This runtime choice also
-lasts until the program is closed; put `backend = "..."` in `event.toml` if it
+the new backend, the same way changing the audio device does. This runtime
+choice lasts until the program is closed; put `backend = "..."` in `event.toml` if it
 should be the default next time.
 
 The sample rate is whatever the device opens at — 16 kHz if it supports it,
@@ -618,7 +559,7 @@ generated on first start.
 
 The status page is what you watch during the event: four status tiles, the
 backend/device pickers, the stream buttons, and the event state. Everything
-you set up once before doors open - API keys, YouTube, the tunnel, keyterms
+you set up once before doors open - YouTube, the tunnel, keyterms
 and the blocklist, the welcome-screen wording and photo - lives on the
 **Settings** page instead (linked from the top right of the status page), so
 the page you're glancing at all night isn't crowded with things you won't
@@ -652,9 +593,8 @@ something tied to the welcome screen specifically. Blank disables it.
 **During the program**, expand the collapsed **Send a caption by hand** panel
 for what the recognizer cannot hear: **[Applause]**, **[Laughter]**,
 **[Music]**, **[Inaudible]**, or anything you type. Type a name and press
-**Speaker change** to put `>> Name:` on the next line. With the Deepgram
-backend, a change of voice is marked with `>>` automatically; the name still
-has to come from you. It's collapsed by default so it stays out of the way
+**Speaker change** to put `>> Name:` on the next line. It's collapsed by
+default so it stays out of the way
 until you actually need it - the disclosure remembers whether you left it
 open, same as every other collapsible section here.
 
@@ -663,23 +603,21 @@ Four tiles:
 | Tile | Green means |
 |---|---|
 | **Audio input** | speech is arriving from the device. Amber **Clipping** means the level is too hot - turn the gain down at the board or interface; the transcript suffers otherwise |
-| **Captions** | the backend is producing text. The small line underneath shows caption latency - how long after words are spoken they reach the relay - as a median and a 95th percentile over the last couple of hundred lines. Deepgram and the mock report it; a backend that cannot say when words were spoken shows "not measured" rather than a guess |
-| **ASR stream** | the connection is open — **and billing** |
+| **Captions** | the backend is producing text. The small line underneath shows caption latency - how long after words are spoken they reach the relay - as a median and a 95th percentile over the last couple of hundred lines. The mock reports it; a backend that cannot say when words were spoken shows "not measured" rather than a guess |
+| **ASR stream** | the recognizer is open and listening |
 | **Viewers** | how many wall and phone views are connected |
 
 **The ASR stream starts closed.** Audio levels flow immediately, so you can
-check the microphone and set levels with nothing running up a bill. Deepgram
-charges for connection time, not speech time, which means an open stream during
-a 90-minute rehearsal costs the same as 90 minutes of the event.
+check the microphone and set levels before a word of rehearsal reaches the
+wall or anyone's phone.
 
 So the running order is:
 
 1. Start the system when you get into the booth. Audio tile goes green as soon
    as someone speaks into the mic. Stream stays closed.
-2. Frame the wall view in ProPresenter, sort out levels, rehearse. Still closed,
-   still costing nothing.
+2. Frame the wall view in ProPresenter, sort out levels, rehearse. Still closed.
 3. A minute before the event starts, press **Open ASR stream**.
-4. At the end, press **Close ASR stream**. Billing stops there.
+4. At the end, press **Close ASR stream**.
 
 **Clear captions** blanks the wall immediately — use it between segments, or if
 something is transcribed that should not stay on screen. It also empties the
@@ -707,7 +645,7 @@ What it checks, and what the words mean:
 | **Audio input**: another program has the device | Quit the program that has it open, or pick a different input. |
 | **Audio level** silent | Say something into the mic, or check the send from the desk, and run again. |
 | **Audio level** clipping | Turn the gain down until the meter peaks near "good". |
-| **Transcription**: no Deepgram key / mock backend | Add the key under Settings; pick a real backend for the service. |
+| **Transcription**: mock backend | Fine for a rehearsal. Pick Apple speech or Whisper for the service. |
 | **Caption latency** slow | Look at the network and computer findings; that is where the time goes. |
 | **This computer** busy | Close what you can. If it stays over 90% CPU, or under 300 MB free, captions belong on another computer or an appliance - the verdict says so. |
 | **Network to …** slow or unreachable | Check the internet connection, firewall or proxy. Wired beats wifi. |
@@ -945,23 +883,20 @@ convocation
 Put in what the model will otherwise get wrong: people's names, building names,
 program names, local jargon, hymn and book titles. Ordinary English words do not
 need to be there. A few dozen well-chosen terms beat hundreds of speculative
-ones. The cap is 200.
+ones; Whisper reads the first 40.
 
-Terms are sent to Deepgram when the stream opens. To change them mid-event, edit
-the file and press **Reload keyterms & blocklist** on the Settings page — that
-reopens the stream with the new list, so captions stop for about a second. Do
-it between segments, not mid-sentence.
-
-Keyterm prompting is a Nova-3 feature. On an older model the same file is sent
-as keyword boosting instead, automatically.
+The Whisper backend reads the list when the stream opens and uses it to bias
+spelling. The Apple backend does not use it yet. To change the list mid-event,
+edit the file and press **Reload keyterms & blocklist** on the Settings page;
+the next line uses the new list.
 
 ## 8a. Blocking words and the profanity filter
 
 `config/blocklist.txt` — same shape as keyterms.txt (one term or short phrase
 per line, `#` comments, blank lines ignored), but for words to strip out of
 every caption instead of boost. Unlike keyterms, this works the same way on
-every backend, not just Deepgram — a word or phrase on this list never
-reaches any viewer, on apple_speech, whisper, deepgram, or mock.
+every backend — a word or phrase on this list never reaches any viewer, on
+apple_speech, whisper, or mock.
 
 ```
 # --- example ---
@@ -980,10 +915,7 @@ strong language from a small built-in list, with nothing to maintain. Turning
 it on replaces a caught word with `[bleep]` rather than deleting it — the
 broadcast-captioning convention for telling a deaf reader that something was
 said there without exposing the word itself. It is off by default: verbatim
-is the accessible choice, the same reasoning as Deepgram's own
-`profanity_filter` in `config/event.toml` — a separate, backend-specific
-setting from this one, since Deepgram's filters at the API level rather than
-after the fact.
+is the accessible choice.
 
 ---
 
@@ -996,10 +928,8 @@ Roughly 30 minutes before doors.
 - [ ] Relay host is on, on the network, at its expected IP address
 - [ ] `Start Captions.command` run — window shows `--- ready ---`
 - [ ] Status page open in the booth, via the launcher's link (`/status?token=…`)
-- [ ] the status page shows the backend you intend for a real event — usually
-      `deepgram`, never `mock`
-- [ ] `.env` has the Deepgram key — the capture client says
-      `DEEPGRAM_API_KEY found` at startup
+- [ ] the status page shows the backend you intend for a real event —
+      `apple_speech` or `whisper`, never `mock`
 
 **Audio**
 
@@ -1029,7 +959,7 @@ Roughly 30 minutes before doors.
 
 **Afterwards**
 
-- [ ] Press **Close ASR stream** — this is what stops the billing
+- [ ] Press **Close ASR stream**
 - [ ] Close the launcher window
 
 ---

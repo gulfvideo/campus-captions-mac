@@ -6,7 +6,7 @@ script as interims committed into finals.
 
 It exists so the relay, the viewers and the status page can be exercised end to
 end - including the open/close stream lifecycle - before the real capture client
-lands in stage 3. Like the real Deepgram backend, it starts with the ASR stream
+lands in stage 3. Like the real backends, it starts with the ASR stream
 CLOSED: audio levels flow, no transcript does, until an operator presses "Open
 ASR stream" on the status page.
 
@@ -122,8 +122,7 @@ class MockSource:
             action = msg.get("action")
             print(f"   control: {action}")
             if action == "open_stream":
-                # The real Deepgram backend opens its socket here - this is the
-                # moment billing starts.
+                # The real backends start recognising here.
                 self.stream_open = True
             elif action == "close_stream":
                 self.stream_open = False

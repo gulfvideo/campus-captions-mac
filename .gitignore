@@ -1,5 +1,5 @@
 # ---- secrets & per-machine config -------------------------------------
-# Deepgram key lives here, never in the repo
+# tokens live here, never in the repo
 .env
 .env.*
 !.env.example

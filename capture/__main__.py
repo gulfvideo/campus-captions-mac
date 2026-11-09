@@ -2,11 +2,11 @@
 
     python -m capture --list-devices
     python -m capture                          # mock backend, no hardware needed
-    python -m capture --backend deepgram --device "Scarlett"
+    python -m capture --backend whisper --device "Scarlett"
 
 The ASR stream starts closed. Audio levels flow to the status page immediately
-so the booth can check the microphone; no transcript is produced, and for
-Deepgram nothing is billed, until an operator presses "Open ASR stream".
+so the booth can check the microphone; no transcript is produced until an
+operator presses "Open ASR stream".
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import os
 from pathlib import Path
 
 from . import audio as audio_mod
@@ -225,11 +224,6 @@ class CaptureApp:
             # working backend out for one that cannot open.
             print(f"[capture] cannot switch to {name}: {reason}")
             return
-        if name == "deepgram":
-            if not os.environ.get("DEEPGRAM_API_KEY", "").strip():
-                print("[capture] cannot switch to deepgram: DEEPGRAM_API_KEY is not set")
-                return
-
         was_open = self.backend.wants_open
         if was_open:
             print(f"[capture] closing {self.cfg.backend} stream to switch backend")
@@ -248,9 +242,9 @@ class CaptureApp:
     async def apply_backend_options(self, options: dict) -> None:
         """Take new recognition settings and make them live.
 
-        These used to be event.toml-only - diarization, filler words, the
-        Whisper commit timings, the Apple locale - which meant a text editor
-        and a restart to change how the recognizer behaves. The relay has
+        These used to be event.toml-only - the Whisper commit timings, the
+        Apple locale - which meant a text editor and a restart to change how
+        the recognizer behaves. The relay has
         already written them to disk; this is the half that makes the running
         backend use them without waiting for the next launch.
 
@@ -361,8 +355,7 @@ class CaptureApp:
                     if self.backend.error:
                         print(f"[capture] open failed: {self.backend.error}")
                     else:
-                        print(f"[capture] {self.cfg.backend} stream OPEN"
-                              + (" (billing)" if self.cfg.backend == "deepgram" else ""))
+                        print(f"[capture] {self.cfg.backend} stream OPEN")
                 elif action == "close_stream":
                     await self.backend.close()
                     print(f"[capture] {self.cfg.backend} stream closed")
@@ -402,16 +395,6 @@ class CaptureApp:
                         self.cfg.relay_url = new_url
                         self.relay.move(new_url)
                         print(f"[capture] relay moving to port {port}; following")
-                elif action == "set_deepgram_key":
-                    key = str(payload.get("key", "")).strip()
-                    if key and config_mod.has_control_chars(key):
-                        print("[capture] ignored Deepgram key: contains control characters")
-                    elif key:
-                        # Save first: if the write is refused, the environment
-                        # never learns a key that would not survive a restart.
-                        config_mod.save_env_var("DEEPGRAM_API_KEY", key)
-                        os.environ["DEEPGRAM_API_KEY"] = key
-                        print("[capture] Deepgram API key updated")  # never the key itself
             except Exception as exc:
                 print(f"[capture] control {action} failed: {exc!r}")
 
@@ -518,7 +501,6 @@ class CaptureApp:
                 # older Mac is offering a choice that can only ever report
                 # an error.
                 "available_backends": backend_support.supported(),
-                "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
                 "device": str(self.input.device),
                 "device_index": self.input.device.index,
                 "audio_gain_db": audio_mod.GAIN_DB,
@@ -582,13 +564,6 @@ class CaptureApp:
         self.device_busy = bool(hint)
         if hint:
             self.audio_error += f" - {hint}"
-        if self.cfg.backend == "deepgram":
-            # Deepgram with no audio would bill for silence. Refuse.
-            raise SystemExit(
-                f"[capture] cannot open audio input: {failure}\n"
-                f"          run 'python -m capture --list-devices' to see "
-                f"this machine's inputs."
-            )
         self.input = audio_mod.SilentInput()
         print(f"[capture] no audio input ({failure}); continuing for the "
               f"{self.cfg.backend} backend")
@@ -630,8 +605,7 @@ def main() -> None:
     parser.add_argument("--relay", default=None, help="relay source websocket URL")
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--open", action="store_true",
-                        help="open the ASR stream at startup (for deepgram this "
-                             "starts billing immediately)")
+                        help="open the ASR stream at startup")
     parser.add_argument("--no-audio", action="store_true",
                         help="run with no input device at all")
     args = parser.parse_args()
@@ -657,15 +631,6 @@ def main() -> None:
         cfg.relay_url = args.relay
 
     print(f"[capture] backend={cfg.backend} relay={cfg.relay_url}")
-    if cfg.needs_api_key:
-        if not os.environ.get("DEEPGRAM_API_KEY", "").strip():
-            raise SystemExit(
-                "[capture] DEEPGRAM_API_KEY is not set.\n"
-                "          put it in .env next to this project, or set it in "
-                "the environment.\n"
-                "          see .env.example"
-            )
-        print("[capture] DEEPGRAM_API_KEY found")
 
     app = CaptureApp(cfg, args)
     try:

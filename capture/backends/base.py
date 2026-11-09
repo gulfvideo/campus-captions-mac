@@ -8,13 +8,13 @@ line to registry.py; nothing else in the project changes.
 Lifecycle is explicit on purpose:
 
     backend = SomeBackend(config)
-    await backend.open(sample_rate=48000)     # a paid connection starts HERE
+    await backend.open(sample_rate=48000)     # the recognizer starts HERE
     await backend.send_audio(frames)          # repeatedly
     await backend.close()                     # and stops HERE
 
 Nothing opens a stream implicitly. The capture client runs with the microphone
-live and the stream closed all through setup and rehearsal, because Deepgram
-bills connection time, not speech time.
+live and the stream closed all through setup and rehearsal, so nothing is
+transcribed until an operator asks for it.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def is_profane(token: str) -> bool:
 
 def load_wordlist(path: Path) -> list[str]:
     """One term per line, '#' comments and blank lines ignored - same shape
-    as deepgram.py's load_keyterms, for words to remove instead of boost."""
+    as keyterms.txt, for words to remove instead of boost."""
     if not path.exists():
         return []
     terms = []
@@ -109,9 +109,9 @@ class TranscriptEvent:
     """One piece of transcript. `is_final` is the only thing that commits a line.
 
     `speech_end` is the wall-clock moment the last word in this text was
-    actually spoken, when the backend can work that out (Deepgram reports
-    where in the audio stream each result ends). It is what caption latency
-    is measured from: the relay compares it to the time the text arrived.
+    actually spoken, when the backend can work that out from where in the
+    audio stream each result ends. It is what caption latency is measured
+    from: the relay compares it to the time the text arrived.
     None means "not known for this backend" and no latency is claimed.
     """
 
@@ -145,10 +145,9 @@ class ASRBackend(ABC):
         self._open = False
         self._error: str | None = None
         self.blocklist_file = Path(self.config.get("blocklist_file", "config/blocklist.txt"))
-        # Named distinctly from DeepgramBackend's own `profanity_filter` (its
-        # native API-level filter, deepgram-only): that one and this one both
-        # read `self.config`, and deepgram.py's __init__ runs after this one,
-        # so a shared attribute name would let it silently clobber this.
+        # Named "mask_profanity", not "profanity_filter": a backend with its
+        # own native filter reads the same `self.config`, and its __init__
+        # runs after this one, so a shared name would let it clobber this.
         self.mask_profanity = bool(self.config.get("mask_profanity", False))
         self._blocked_terms: list[str] = load_wordlist(self.blocklist_file)
         self._block_pattern = _compile_block_pattern(self._blocked_terms)

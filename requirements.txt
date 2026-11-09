@@ -4,9 +4,7 @@
 #   python3 -m venv .venv
 #   .venv/bin/python -m pip install -r requirements.txt
 #
-# There is no Deepgram SDK here on purpose: the backend speaks Deepgram's
-# streaming websocket directly through `websockets`, which keeps the connection
-# lifecycle explicit and avoids the SDK's own transitive pins.
+# `websockets` is the capture client's link to the relay (capture/relay_client.py).
 
 # --- direct ---------------------------------------------------------------
 certifi==2026.10.23        # the CA store the packaged app uses; see relay/config.py

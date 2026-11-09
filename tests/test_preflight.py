@@ -13,10 +13,10 @@ from relay import preflight  # noqa: E402
 
 
 def snapshot(**over) -> dict:
-    """A healthy setup: Deepgram open and producing, good audio, a quiet
+    """A healthy setup: Apple speech open and producing, good audio, a quiet
     computer, a wall and a phone connected, event live."""
     base = {
-        "source": {"connected": True, "backend": "deepgram", "has_deepgram_key": True,
+        "source": {"connected": True, "backend": "apple_speech",
                    "device": "Scarlett 2i2", "device_busy": False, "error": None},
         "audio": {"state": "live"},
         "asr": {"stream_open": True, "state": "producing"},
@@ -36,7 +36,10 @@ def snapshot(**over) -> dict:
     return base
 
 
-GOOD_PROBE = {"api.deepgram.com": {"ok": 3, "failed": 0, "median_ms": 60, "worst_ms": 80, "error": None}}
+# Transcription and translation run on the Mac, so a healthy setup probes
+# nothing unless YouTube captions are configured.
+GOOD_PROBE: dict = {}
+YOUTUBE = {"youtube": {"configured": True}}
 
 
 def status_of(report: dict, cid: str) -> str | None:
@@ -99,10 +102,6 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(status_of(preflight.evaluate(snapshot(audio={"state": "clipping"}), GOOD_PROBE),
                                    "audio-level"), "warn")
 
-    def test_missing_deepgram_key_fails(self):
-        report = preflight.evaluate(snapshot(source={"has_deepgram_key": False}), GOOD_PROBE)
-        self.assertEqual(status_of(report, "transcription"), "fail")
-
     def test_mock_backend_is_a_warning(self):
         report = preflight.evaluate(snapshot(source={"backend": "mock"}), {})
         self.assertEqual(status_of(report, "transcription"), "warn")
@@ -117,12 +116,12 @@ class VerdictTests(unittest.TestCase):
         fail = preflight.evaluate(snapshot(latency={"final": {"samples": 5, "median": 5.0, "p95": 8.0}}), GOOD_PROBE)
         self.assertEqual(status_of(fail, "latency"), "fail")
 
-    def test_unreachable_provider_fails_and_slow_one_warns(self):
-        down = {"api.deepgram.com": {"ok": 0, "failed": 3, "median_ms": None, "worst_ms": None,
-                                     "error": "TimeoutError: timed out"}}
-        self.assertEqual(status_of(preflight.evaluate(snapshot(), down), "net-transcription"), "fail")
-        slow = {"api.deepgram.com": {"ok": 3, "failed": 0, "median_ms": 900, "worst_ms": 1400, "error": None}}
-        self.assertEqual(status_of(preflight.evaluate(snapshot(), slow), "net-transcription"), "warn")
+    def test_unreachable_youtube_fails_and_slow_one_warns(self):
+        down = {"upload.youtube.com": {"ok": 0, "failed": 3, "median_ms": None, "worst_ms": None,
+                                       "error": "TimeoutError: timed out"}}
+        self.assertEqual(status_of(preflight.evaluate(snapshot(**YOUTUBE), down), "net-youtube"), "fail")
+        slow = {"upload.youtube.com": {"ok": 3, "failed": 0, "median_ms": 900, "worst_ms": 1400, "error": None}}
+        self.assertEqual(status_of(preflight.evaluate(snapshot(**YOUTUBE), slow), "net-youtube"), "warn")
 
     def test_no_outputs_are_warnings_with_what_to_open(self):
         report = preflight.evaluate(snapshot(viewers={"wall": 0, "phone": 0}), GOOD_PROBE)

@@ -1,7 +1,7 @@
 """Capture client configuration: config/event.toml, .env, environment, flags.
 
 Precedence, lowest to highest: defaults -> event.toml -> .env -> environment ->
-command line. The Deepgram key only ever comes from .env or the environment.
+command line.
 """
 
 from __future__ import annotations
@@ -51,10 +51,6 @@ class CaptureConfig:
     start_open: bool = False
     backend_config: dict = field(default_factory=dict)
     config_path: Path | None = None
-
-    @property
-    def needs_api_key(self) -> bool:
-        return self.backend == "deepgram"
 
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
@@ -122,10 +118,9 @@ def load(path: Path | None = None) -> CaptureConfig:
         "mock_jitter": section.get("mock_jitter", 0.35),
         "mock_loop": section.get("mock_loop", True),
     })
-    backend_config.update(data.get("deepgram", {}) or {})
     backend_config.update(data.get("apple_speech", {}) or {})
-    # [whisper] keys are prefixed so they cannot collide with [deepgram] - both
-    # sections have a "model", and everything lands in one flat dict.
+    # [whisper] keys are prefixed so they cannot collide with another
+    # section's - everything lands in one flat dict.
     backend_config.update({
         f"whisper_{key}": value
         for key, value in (data.get("whisper", {}) or {}).items()
@@ -144,9 +139,8 @@ def load(path: Path | None = None) -> CaptureConfig:
     keywords_section = data.get("keywords", {}) or {}
     backend_config["blocklist_file"] = str(
         keywords_section.get("blocklist_file", "config/blocklist.txt"))
-    # "mask_profanity", not "profanity_filter": [deepgram] already has its own
-    # key by that name (a native API-level filter, unrelated to this one),
-    # and both land in this same flat dict.
+    # Stored as "mask_profanity", not "profanity_filter": a backend section
+    # may carry its own key by that name, and both land in this flat dict.
     backend_config["mask_profanity"] = bool(keywords_section.get("profanity_filter", False))
     for key in ("keyterms_file", "blocklist_file", "mock_script"):
         if isinstance(backend_config.get(key), str):
@@ -157,6 +151,9 @@ def load(path: Path | None = None) -> CaptureConfig:
 
     cfg.backend = os.environ.get("CAPTIONS_BACKEND", cfg.backend)
     cfg.device = os.environ.get("CAPTIONS_DEVICE", cfg.device)
+    if cfg.backend == "deepgram":
+        print("[capture] the deepgram backend was removed; using auto")
+        cfg.backend = "auto"
     # Last, so it sees the final answer from every source above. "auto" (the
     # shipped default) becomes whichever backend this machine can actually
     # run, and a named backend this machine cannot run - apple_speech on a

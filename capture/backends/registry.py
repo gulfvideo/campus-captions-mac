@@ -9,14 +9,12 @@ from __future__ import annotations
 
 from .apple_speech import AppleSpeechBackend
 from .base import ASRBackend
-from .deepgram import DeepgramBackend
 from .mock import MockBackend
 from .support import BY_NAME, supported, unsupported_reason  # noqa: F401 - re-exported
 from .whisper import LocalWhisperBackend
 
 BACKENDS: dict[str, type[ASRBackend]] = {
     "mock": MockBackend,
-    "deepgram": DeepgramBackend,
     "apple_speech": AppleSpeechBackend,
     "whisper": LocalWhisperBackend,
 }

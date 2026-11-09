@@ -371,7 +371,7 @@
     <span class="badge" id="keyterms-badge">&mdash;</span>
   </h2>
   <div class="panel-body">
-    <div class="disclosure-sub">Speakers, buildings, hymns &mdash; anything the recognizer would otherwise guess at. Type it, pick where it belongs, press Add. Deepgram is told this list directly; Whisper uses the first few dozen; the Apple backend ignores it.</div>
+    <div class="disclosure-sub">Speakers, buildings, hymns &mdash; anything the recognizer would otherwise guess at. Type it, pick where it belongs, press Add. Whisper uses the first few dozen; the Apple backend ignores it.</div>
     <div class="row termadd">
       <input id="keyterms-new" type="text" autocomplete="off" spellcheck="false"
              placeholder="e.g. Dr. Amara Vasquez" aria-label="New term">
@@ -421,21 +421,6 @@
     </div>
 </section>
 
-<section class="panel" id="panel-deepgram">
-  <h2 class="panel-head">Deepgram API key
-    <span class="badge" id="deepgram-badge">&mdash;</span>
-  </h2>
-  <div class="panel-body" id="deepgram-body">
-      <div class="row">
-        <input id="deepgram-key" type="password" autocomplete="off" spellcheck="false"
-               placeholder="Paste your Deepgram API key">
-        <button id="btn-deepgram-show" type="button">Show</button>
-        <button id="btn-deepgram-save" type="button">Save</button>
-      </div>
-      <div class="disclosure-sub" id="deepgram-sub">&mdash;</div>
-    </div>
-</section>
-
 <section class="panel" id="panel-whisper">
   <h2 class="panel-head">Whisper speech model
     <span class="badge" id="whisper-badge">&mdash;</span>
@@ -458,25 +443,6 @@
       &mdash; an open caption stream is closed and reopened to pick them up. Each
       setting only affects the backend it belongs to, so the ones for a backend
       you do not use can be ignored.
-    </div>
-
-    <div class="subhead">Deepgram</div>
-    <div class="fieldgrid">
-      <div class="field">
-        <label for="dg-inaudible">Mark as [inaudible] below</label>
-        <input id="dg-inaudible" type="number" min="0" max="1" step="0.05">
-        <span class="hint">A committed word the model doubts this much is shown as
-          [inaudible] rather than a confident wrong guess. 0 turns it off.
-          <b>Default 0.3.</b></span>
-      </div>
-      <div class="field">
-        <label>Transcript style</label>
-        <label class="check"><input id="dg-diarize" type="checkbox">
-          Mark speaker changes with &gt;&gt;</label>
-        <label class="check"><input id="dg-filler" type="checkbox">
-          Keep filler words (um, uh)</label>
-        <span class="hint">Defaults: speaker changes on, filler words off.</span>
-      </div>
     </div>
 
     <div class="subhead">Whisper</div>
@@ -526,37 +492,21 @@
 
 <div class="tabpanel" id="tabpanel-audience" role="tabpanel"
      aria-labelledby="tab-audience" hidden>
-<section class="panel" id="panel-azure">
+<section class="panel" id="panel-translation">
   <h2 class="panel-head">Translation
-    <span class="badge" id="azure-badge">&mdash;</span>
+    <span class="badge" id="translation-badge">&mdash;</span>
   </h2>
-  <div class="panel-body" id="azure-body">
+  <div class="panel-body" id="translation-body">
       <div class="disclosure-sub" id="translation-sub">&mdash;</div>
-      <div class="row">
-        <select id="translate-provider">
-          <option value="apple">Apple, on this Mac (free, no key)</option>
-          <option value="azure">Azure Translator (needs a key)</option>
-        </select>
-      </div>
-      <div class="row" id="azure-key-row">
-        <input id="azure-key" type="password" autocomplete="off" spellcheck="false"
-               placeholder="Azure Translator API key">
-        <button id="btn-azure-show" type="button">Show</button>
-      </div>
-      <div class="row">
-        <input id="azure-region" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Region (optional)" style="flex:0 1 160px">
-        <button id="btn-azure-save" type="button">Save</button>
-      </div>
       <div class="disclosure-sub" id="lang-grid-label">Translate into:</div>
       <div class="langgrid" id="lang-grid" role="group" aria-labelledby="lang-grid-label"></div>
-      <div class="disclosure-sub help" id="azure-hint">
-        Apple translates on this Mac with no account. A language it has not downloaded yet is
+      <div class="row">
+        <button id="btn-translation-save" type="button">Save</button>
+      </div>
+      <div class="disclosure-sub help" id="translation-hint">
+        Translation runs on this Mac with no account. A language it has not downloaded yet is
         added under <b>System Settings &rarr; General &rarr; Language &amp; Region &rarr; Translation
-        Languages</b>. For Azure, get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
-        &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
-        <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
-        list the languages to translate into, then Save &mdash; no restart needed.
+        Languages</b>. Tick the languages to translate into, then Save &mdash; no restart needed.
       </div>
     </div>
 </section>
@@ -807,10 +757,10 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
   }
 
   var youtubeUrlDirty = false, youtubeConfigured = false;
-  var azureLangsDirty = false, tunnelHostnameDirty = false;
+  var langsDirty = false, tunnelHostnameDirty = false;
 
-  // Every language Apple Translation offers on macOS 26; Azure covers all of
-  // them too. A code saved in event.toml that is not listed here is still
+  // Every language Apple Translation offers on macOS 26.
+  // A code saved in event.toml that is not listed here is still
   // shown, ticked, so an operator's choice is never silently dropped.
   var LANGS = [
     ['es', 'Spanish'], ['fr', 'French'], ['pt', 'Portuguese'],
@@ -841,7 +791,7 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
         var box = document.createElement('input');
         box.type = 'checkbox';
         box.value = l[0];
-        box.onchange = function () { azureLangsDirty = true; };
+        box.onchange = function () { langsDirty = true; };
         label.appendChild(box);
         label.appendChild(document.createTextNode(l[1]));
         grid.appendChild(label);
@@ -897,9 +847,6 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
   // than "zero".
   var tuning = null;
   var TUNING_FIELDS = [
-    ['deepgram', 'inaudible_below', 'dg-inaudible', 'number'],
-    ['deepgram', 'diarize', 'dg-diarize', 'bool'],
-    ['deepgram', 'filler_words', 'dg-filler', 'bool'],
     ['whisper', 'compute_type', 'wh-compute', 'text'],
     ['whisper', 'interim_interval', 'wh-interim', 'number'],
     ['whisper', 'silence_commit', 'wh-silence', 'number'],
@@ -1183,8 +1130,7 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
       badge.textContent = 'not included';
       badge.className = 'badge';
       sub.textContent = 'Whisper is not included in this build of Campus '
-        + 'Captions. Use Deepgram or, on a Mac new enough for it, Apple '
-        + 'on-device speech.';
+        + 'Captions. Use Apple on-device speech instead.';
       button.disabled = true;
       return;
     }
@@ -1229,37 +1175,19 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     }
   }
 
-  function renderDeepgram(source) {
-    source = source || {};
-    var hasKey = !!source.has_deepgram_key;
-    var badge = $('deepgram-badge');
-    badge.textContent = hasKey ? 'Key saved' : 'Not set';
-    badge.className = 'badge' + (hasKey ? ' live' : '');
-    $('deepgram-sub').textContent = hasKey
-      ? 'A key is saved on this machine — the Deepgram backend is ready to use.'
-      : 'Only needed if you pick Deepgram under Transcription backend on the status page. Get a key at console.deepgram.com.';
-    $('deepgram-key').disabled = false;
-    $('btn-deepgram-save').disabled = false;
-  }
-
   function renderTranslation(s) {
-    var translation = s.translation || { provider: 'none', targets: [] };
-    var active = translation.provider && translation.provider !== 'none';
-    var badge = $('azure-badge');
-    badge.textContent = active ? 'Translating · ' + (translation.targets || []).length + ' language(s)' : 'Not set up';
+    var translation = s.translation || { targets: [] };
+    var targets = translation.targets || [];
+    var active = targets.length > 0;
+    var badge = $('translation-badge');
+    badge.textContent = active ? 'Translating · ' + targets.length + ' language(s)' : 'Off';
     badge.className = 'badge' + (active ? ' live' : '');
     $('translation-sub').textContent = !active
-      ? 'No translation active yet — pick a provider and list target languages below.'
-      : 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') +
+      ? 'Translation is off — tick the languages to translate into below.'
+      : 'Translating on this Mac into: ' + targets.join(', ') +
         (translation.error ? ' — last error: ' + translation.error : '') + '.';
-    var providerBox = $('translate-provider');
-    if (document.activeElement !== providerBox) {
-      providerBox.value = active ? translation.provider : (translation.configured || 'apple');
-    }
-    $('azure-key-row').hidden = providerBox.value !== 'azure';
-    $('btn-azure-save').disabled = $('azure-key').disabled =
-      $('azure-region').disabled = false;
-    if (!azureLangsDirty) renderLangGrid(translation.targets || []);
+    $('btn-translation-save').disabled = false;
+    if (!langsDirty) renderLangGrid(targets);
   }
 
   function renderYoutube(youtube) {
@@ -1672,7 +1600,6 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     renderNetwork(s.relay);
     renderEventConfig(s.event);
     renderWindowMode(s.relay || {});
-    renderDeepgram(s.source || {});
     renderWhisper(s.source || {});
     renderTranslation(s);
     renderYoutube(s.youtube);
@@ -1691,9 +1618,7 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     EVENT_FIELDS.forEach(function (field) { eventBox(field).disabled = true; });
     $('btn-event-save').disabled = $('event-image').disabled = $('btn-event-image-remove').disabled =
       $('event-logo').disabled = $('btn-event-logo-remove').disabled = true;
-    $('btn-deepgram-save').disabled = $('deepgram-key').disabled = true;
-    $('btn-azure-save').disabled = $('azure-key').disabled =
-      $('azure-region').disabled = true;
+    $('btn-translation-save').disabled = true;
     $('btn-youtube-enable').disabled = $('btn-youtube-disable').disabled = true;
     $('btn-youtube-save').disabled = $('youtube-url').disabled = true;
     $('btn-tunnel-save').disabled = $('btn-tunnel-enable').disabled =
@@ -1793,37 +1718,22 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     })['catch'](function (e) { toast(label + ' — ' + e.message); });
   }
 
-  function saveDeepgramKey() {
-    var key = $('deepgram-key').value.trim();
-    if (!key) { toast('Deepgram key — paste a key first'); return; }
-    control('set_deepgram_key', 'Deepgram API key', { key: key });
-    $('deepgram-key').value = '';
-    markSecretSaved('deepgram-key');
-  }
-
   function saveTranslationSettings() {
-    var key = $('azure-key').value.trim();
-    var region = $('azure-region').value.trim();
     var langs = langBoxes().filter(function (b) { return b.checked; })
       .map(function (b) { return b.value; }).join(', ');
-    var body = { provider: $('translate-provider').value, languages: langs };
-    if (key) body.key = key;
-    if (region) body.region = region;
     fetch('/api/translation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ languages: langs })
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
       return r.json();
     }).then(function (out) {
-      azureLangsDirty = false;
-      if (key) { $('azure-key').value = ''; markSecretSaved('azure-key'); }
-      $('azure-region').value = '';
-      toast(out.provider && out.provider !== 'none'
-        ? 'Translation — ' + out.provider + ' into ' + (out.targets || []).join(', ')
-        : 'Translation — saved, but not active yet (need at least one language' +
-          (body.provider === 'azure' ? ' and a key' : '') + ')');
+      langsDirty = false;
+      var targets = out.targets || [];
+      toast(targets.length
+        ? 'Translation — into ' + targets.join(', ')
+        : 'Translation — off');
     })['catch'](function (e) { toast('Translation — ' + e.message); });
   }
 
@@ -2145,29 +2055,7 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     };
     fetch('/api/update').then(jsonOrThrow).then(renderUpdate).catch(function () {});
 
-    $('btn-deepgram-save').onclick = saveDeepgramKey;
-    $('btn-deepgram-show').onclick = function () {
-      var box = $('deepgram-key');
-      var showing = box.type === 'text';
-      box.type = showing ? 'password' : 'text';
-      this.textContent = showing ? 'Show' : 'Hide';
-    };
-    $('deepgram-key').onkeydown = function (e) { if (e.key === 'Enter') saveDeepgramKey(); };
-    $('deepgram-key').oninput = function () { restorePlaceholder('deepgram-key'); };
-
-    $('btn-azure-save').onclick = saveTranslationSettings;
-    $('translate-provider').onchange = function () {
-      $('azure-key-row').hidden = this.value !== 'azure';
-    };
-    $('btn-azure-show').onclick = function () {
-      var box = $('azure-key');
-      var showing = box.type === 'text';
-      box.type = showing ? 'password' : 'text';
-      this.textContent = showing ? 'Show' : 'Hide';
-    };
-    $('azure-key').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
-    $('azure-key').oninput = function () { restorePlaceholder('azure-key'); };
-    $('azure-region').onkeydown = function (e) { if (e.key === 'Enter') saveTranslationSettings(); };
+    $('btn-translation-save').onclick = saveTranslationSettings;
 
     $('btn-youtube-enable').onclick = function () { setYoutubeEnabled(true); };
     $('btn-youtube-disable').onclick = function () { setYoutubeEnabled(false); };

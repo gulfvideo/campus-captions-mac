@@ -1,8 +1,8 @@
 # Optional: the local on-device ASR backend (backend = "whisper").
 #
 # Not in requirements.txt on purpose. These pull ~200 MB and are only needed on
-# a machine that runs ASR offline - the booth install stays lean if it uses
-# Deepgram. Install alongside the main requirements:
+# a Mac that uses Whisper instead of Apple's built-in speech recognition.
+# Install alongside the main requirements:
 #
 #   .venv/bin/python -m pip install -r requirements-whisper.txt
 #

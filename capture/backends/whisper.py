@@ -23,7 +23,7 @@ Whisper transcribes a whole clip. Streaming is simulated:
       resets
 
 So finals land at natural pauses, which is where a caption line wants to break
-anyway. Expect roughly a second of latency behind Deepgram, and less stable
+anyway. Expect a second or so more latency than Apple speech, and less stable
 interims - the whole window is re-decoded each pass, so early words can change.
 Good for a demo, for rehearsal, and for a venue with no internet. Test it before
 trusting it on a live wall.
@@ -147,7 +147,7 @@ def install_package(on_progress=None) -> None:
     into, and its Whisper is either bundled or genuinely unavailable.
 
     This exists because a source install has no faster-whisper: it is ~200 MB
-    of wheels that a Deepgram-only booth should not pay for, so it is not in
+    of wheels that a booth on Apple speech should not pay for, so it is not in
     requirements.txt. That left the operator with a backend the app offered,
     a Download button it disabled, and an instruction to open a terminal -
     the exact step this project is meant to remove.
@@ -365,7 +365,7 @@ class LocalWhisperBackend(ASRBackend):
             self._task = None
         self._reset_buffer()
         # The model stays loaded on purpose: reopening is then instant, and
-        # unlike Deepgram an idle local model costs nothing.
+        # an idle local model costs nothing.
 
     async def send_audio(self, frames: bytes) -> None:
         if not self._open or not frames:
@@ -401,9 +401,8 @@ class LocalWhisperBackend(ASRBackend):
     async def reload_keyterms(self) -> None:
         """Whisper has no keyterm API, but initial_prompt biases spelling.
 
-        Same file, same button on the status page, same purpose as Deepgram's
-        keyterm prompting - names come out spelled the way the institution
-        spells them.
+        Same file, same button on the status page - names come out spelled
+        the way the institution spells them.
         """
         self._prompt = self._load_prompt()
 

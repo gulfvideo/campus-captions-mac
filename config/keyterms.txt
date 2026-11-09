@@ -5,8 +5,6 @@
 # editing, press "Reload keyterms" on the status page.
 #
 # How each backend uses it:
-#   deepgram      keyterm prompting (Nova-3) - all terms, cap 200. A reload
-#                 reopens the stream; in-flight lines are drained first.
 #   whisper       the first 40 terms become the decoder's prompt. The library
 #                 cuts a long prompt from the FRONT, so put the most important
 #                 names at the TOP of this file.
@@ -18,7 +16,7 @@
 # words do not need to be here.
 #
 # Keep the list to what this event actually needs. A few dozen well-chosen
-# terms work better than hundreds of speculative ones. The hard cap is 200.
+# terms work better than hundreds of speculative ones.
 
 # Empty on purpose - add this event's own terms. The headings below are a
 # suggested shape, not a requirement; delete them if they are not useful.

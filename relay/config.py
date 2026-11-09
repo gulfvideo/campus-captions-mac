@@ -1,7 +1,8 @@
 """Relay configuration: config/event.toml, overridable by environment.
 
-Stage 3 adds [capture] and [deepgram] sections to the same file; the relay
-reads [relay], [youtube], [languages] and [translate], and ignores the rest.
+The capture client's sections ([capture], [whisper], [apple_speech]) share
+the same file; the relay reads [relay], [youtube] and [languages], and
+ignores the rest.
 """
 
 from __future__ import annotations
@@ -29,8 +30,8 @@ def use_bundled_certs() -> None:
 
     The packaged app's OpenSSL looks for its CA store at the path compiled
     into the Python it was built with - python.org's, in CI - which does not
-    exist on a tester's Mac, so every HTTPS connection (updates, Deepgram,
-    Azure) fails certificate verification. OpenSSL reads this variable.
+    exist on a tester's Mac, so every HTTPS connection (updates, YouTube)
+    fails certificate verification. OpenSSL reads this variable.
     """
     if not os.environ.get("SSL_CERT_FILE"):
         import certifi
@@ -44,9 +45,9 @@ if FROZEN:
 def _data_dir() -> Path:
     """Where per-machine state lives in the packaged app: event.toml, .env,
     uploaded images, logs. Never inside the bundle - it is signed, shared as
-    a download, and replaced on every update, so a Deepgram key written into
-    it would break the signature and travel with the next copy someone
-    passes around.
+    a download, and replaced on every update, so a token written into it
+    would break the signature and travel with the next copy someone passes
+    around.
 
     Each platform's own conventional location, so the folder is where the
     operator's OS (and its backup tool) already expects an app's settings to
@@ -225,8 +226,8 @@ def load_env_file(path: Path = ENV_FILE) -> int:
 # A .env line is "KEY=VALUE" and nothing else, so a key or value carrying a
 # newline (or any other control character) would smuggle extra lines into the
 # file - and load_env_file() would faithfully load those as real variables on
-# the next start, including ones like AZURE_TRANSLATOR_ENDPOINT that decide
-# where a key gets sent. Refused at the write, whatever the caller checked.
+# the next start, including ones like CAPTIONS_OPERATOR_TOKEN that decide
+# who may control the relay. Refused at the write, whatever the caller checked.
 ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
@@ -305,10 +306,9 @@ class RelayConfig:
     youtube_lang: str = "en-US"
     youtube_start_enabled: bool = False
 
-    # [languages] / [translate]
+    # [languages]
     source_language: str = "en"
     offer_languages: tuple[str, ...] = ()
-    translate_provider: str = "none"
 
     # [event] - the welcome screen and where the event is; see relay/event.py.
     # The state is persisted too, so a relay restart mid-event resumes "live"
@@ -457,8 +457,6 @@ def load(path: Path | None = None) -> RelayConfig:
             keys = (data.get("overlay", {}) or {}).get("keys") or []
             if isinstance(keys, list):
                 cfg.overlay_keys = parse_overlay_keys(keys)
-            cfg.translate_provider = str(
-                (data.get("translate", {}) or {}).get("provider", cfg.translate_provider))
 
             ui = data.get("ui", {}) or {}
             mode = str(ui.get("window_mode", cfg.window_mode)).strip().lower()
@@ -595,22 +593,18 @@ def save_audio_gain(path: Path, gain_db: int) -> None:
     save_section(path, "[capture]", {"gain_db": int(gain_db)})
 
 
-def save_translate_settings(path: Path, provider: str, offer_languages: list[str]) -> None:
-    """Write provider into [translate] and the target list into [languages],
-    in place. The Azure key itself never comes near this file; it lives in
-    .env, via save_env_var, same as the Deepgram key. This only saves *which*
-    languages to translate into, so a relay restart picks up what the status
-    page's translation panel set.
+def save_translate_settings(path: Path, offer_languages: list[str]) -> None:
+    """Write the target list into [languages], in place, so a relay restart
+    picks up what the status page's translation panel set. An old [translate]
+    section in the file is left alone and ignored on load.
     """
-    save_section(path, "[translate]", {"provider": provider})
     save_section(path, "[languages]", {"offer": list(offer_languages)})
 
 
 def save_tunnel_settings(path: Path, hostname: str, start_enabled: bool) -> None:
     """Write hostname into [relay] public_hostname and the operator's on/off
     intent into [tunnel] start_enabled, in place. The tunnel token itself
-    never comes near this file; it lives in .env via save_env_var, same as
-    the Deepgram key.
+    never comes near this file; it lives in .env via save_env_var.
     """
     save_section(path, "[relay]", {"public_hostname": hostname})
     save_section(path, "[tunnel]", {"start_enabled": bool(start_enabled)})

@@ -32,9 +32,10 @@ service.
   to run.
 - **Memory budget.** Warns under 1 GB free, recommends another computer
   under 300 MB free.
-- **Network.** Deepgram, Azure Translator and YouTube are probed with a TLS
-  handshake three times each. Over 400 ms typical, or any failed attempt,
-  is a warning; wired beats wifi here every time.
+- **Network.** YouTube caption ingestion, when it is set up, is probed with
+  a TLS handshake three times. Over 400 ms typical, or any failed attempt,
+  is a warning; wired beats wifi here every time. Nothing else needs the
+  internet.
 
 ## Not yet covered
 

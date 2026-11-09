@@ -40,10 +40,10 @@ class PlatformSupportTests(unittest.TestCase):
         self.assertNotIn("apple_speech", support.supported())
 
     def test_the_always_available_backends_are_offered_everywhere(self):
-        # Deepgram is a web API and Whisper is a pip install; neither is
-        # bound to an operating system, so both must always be offerable.
-        # mock has to be, or resolve_auto() has nothing to fall back to.
-        for name in ("mock", "deepgram", "whisper"):
+        # Whisper is a pip install, not bound to an operating system, so it
+        # must always be offerable. mock has to be, or resolve_auto() has
+        # nothing to fall back to.
+        for name in ("mock", "whisper"):
             self.assertIn(name, support.supported())
 
     def test_unknown_backend_is_reported_not_raised(self):
@@ -61,12 +61,6 @@ class ResolveTests(unittest.TestCase):
     def test_auto_never_picks_something_this_machine_cannot_run(self):
         self.assertIsNone(support.unsupported_reason(support.resolve_auto()))
 
-    def test_auto_never_picks_a_backend_that_bills(self):
-        # "auto" is what an install comes up on before anyone has chosen.
-        # Landing on a paid backend by default would be a bill nobody asked
-        # for - and on a fresh machine there is no key to bill with anyway.
-        self.assertFalse(support.BY_NAME[support.resolve_auto()].billed)
-
     def test_auto_never_picks_a_backend_needing_an_optional_install(self):
         self.assertNotEqual(support.resolve_auto(), "whisper")
 
@@ -77,7 +71,7 @@ class ResolveTests(unittest.TestCase):
         self.assertIsNone(support.unsupported_reason(support.resolve("apple_speech")))
 
     def test_a_runnable_backend_is_left_alone(self):
-        self.assertEqual(support.resolve("deepgram"), "deepgram")
+        self.assertEqual(support.resolve("whisper"), "whisper")
         self.assertEqual(support.resolve("mock"), "mock")
 
     def test_empty_and_auto_both_mean_auto(self):
@@ -90,11 +84,11 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(support.resolve("nonsense"), "nonsense")
 
     def test_describe_shape(self):
-        described = support.describe("deepgram")
-        self.assertEqual(described["name"], "deepgram")
-        self.assertTrue(described["needs_key"])
-        self.assertTrue(described["billed"])
+        described = support.describe("whisper")
+        self.assertEqual(described["name"], "whisper")
+        self.assertTrue(described["label"])
         self.assertTrue(described["supported"])
+        self.assertEqual(described["unsupported_reason"], "")
 
 
 class ShippedConfigTests(unittest.TestCase):

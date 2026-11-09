@@ -52,8 +52,8 @@ QUIC_FAILURES_BEFORE_FALLBACK = 3
 _cached_binary: str | None = None
 
 # What a child process gets to see. The relay's own environment holds the
-# Deepgram key, the Azure key, the operator token and the YouTube ingestion
-# URLs; cloudflared needs none of them, and cloudflared also reads every one
+# operator token and the YouTube ingestion URLs; cloudflared needs neither,
+# and cloudflared also reads every one
 # of its own flags from TUNNEL_* variables, so a leaked TUNNEL_* would
 # reconfigure it. Pass only what a process needs to run at all.
 CHILD_ENV_KEYS = (

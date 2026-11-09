@@ -34,16 +34,12 @@ MEM_FAIL_AVAILABLE_MB = 300
 # Caption latency targets (C-01): median <= 2 s, p95 <= 3 s.
 LATENCY_WARN_P95 = 3.0
 LATENCY_FAIL_P95 = 6.0
-# Network: a TLS handshake to the provider, which is what the caption stream
-# starts with. Median round trips above this make interims visibly late.
+# Network: a TLS handshake to YouTube, when captions are pushed there.
+# Median round trips above this make the pushed captions visibly late.
 NET_WARN_MS = 400
 NET_TRIES = 3
 NET_TIMEOUT = 3.0
 
-PROVIDER_HOSTS = {
-    "deepgram": ("api.deepgram.com", "Deepgram"),
-}
-TRANSLATOR_HOST = ("api.cognitive.microsofttranslator.com", "Azure Translator")
 YOUTUBE_HOST = ("upload.youtube.com", "YouTube caption ingestion")
 
 STATUS_ORDER = {"fail": 0, "warn": 1, "skip": 2, "ok": 3}
@@ -107,7 +103,6 @@ def evaluate(snapshot: dict, probes: dict[str, dict] | None = None,
     latency = (snapshot.get("latency") or {}).get("final")
     host = snapshot.get("host") or {}
     viewers = snapshot.get("viewers") or {}
-    translation = snapshot.get("translation") or {}
     youtube = snapshot.get("youtube") or {}
     event = snapshot.get("event") or {}
     checks: list[dict] = []
@@ -165,17 +160,13 @@ def evaluate(snapshot: dict, probes: dict[str, dict] | None = None,
                 checks.append(_check("audio-level", "Audio level", "skip",
                                      f"Audio state: {state or 'unknown'}."))
 
-    # 2. Transcription: backend, key, stream, latency.
+    # 2. Transcription: backend, stream, latency.
     backend = source.get("backend") or ""
     if source.get("connected"):
-        if backend == "deepgram" and not source.get("has_deepgram_key"):
-            checks.append(_check("transcription", "Transcription", "fail",
-                                 "The Deepgram backend is selected but no API key is saved.",
-                                 "Paste the key under Settings > Deepgram API key."))
-        elif backend == "mock":
+        if backend == "mock":
             checks.append(_check("transcription", "Transcription", "warn",
                                  "The mock backend is selected: it plays a script, not the room.",
-                                 "Fine for a rehearsal. Pick Deepgram or an on-device backend for the service."))
+                                 "Fine for a rehearsal. Pick Apple speech or Whisper for the service."))
         else:
             if asr.get("state") == "producing":
                 checks.append(_check("transcription", "Transcription", "ok",
@@ -198,12 +189,11 @@ def evaluate(snapshot: dict, probes: dict[str, dict] | None = None,
                     f"line{'s' if samples != 1 else ''}.")
             if p95 >= LATENCY_FAIL_P95:
                 checks.append(_check("latency", "Caption latency", "fail", text,
-                                     "That is too slow to follow. Check the network to the provider "
-                                     "below and how busy this computer is."))
+                                     "That is too slow to follow. Check how busy this computer is."))
             elif p95 >= LATENCY_WARN_P95:
                 checks.append(_check("latency", "Caption latency", "warn", text,
-                                     "Target is 2 s typical, 3 s at worst. See the network and "
-                                     "computer checks below."))
+                                     "Target is 2 s typical, 3 s at worst. See the computer "
+                                     "check below."))
             else:
                 checks.append(_check("latency", "Caption latency", "ok", text))
         elif asr.get("stream_open"):
@@ -243,14 +233,9 @@ def evaluate(snapshot: dict, probes: dict[str, dict] | None = None,
 
     # 4. Network to the services this setup depends on.
     wanted: list[tuple[str, str, str]] = []
-    if backend in PROVIDER_HOSTS:
-        wanted.append(("net-transcription", "Network to " + PROVIDER_HOSTS[backend][1],
-                       PROVIDER_HOSTS[backend][0]))
-    elif backend in ("apple_speech", "whisper"):
+    if backend in ("apple_speech", "whisper"):
         checks.append(_check("net-transcription", "Network for transcription", "ok",
                              f"The {backend} backend runs on this computer; captions need no internet."))
-    if translation.get("provider") and translation.get("provider") != "none":
-        wanted.append(("net-translation", "Network to " + TRANSLATOR_HOST[1], TRANSLATOR_HOST[0]))
     if youtube.get("configured"):
         wanted.append(("net-youtube", "Network to " + YOUTUBE_HOST[1], YOUTUBE_HOST[0]))
     for cid, title, hostname in wanted:
@@ -342,14 +327,7 @@ def evaluate(snapshot: dict, probes: dict[str, dict] | None = None,
 async def run(snapshot: dict, propresenter: dict | None = None) -> dict:
     """Gather the live inputs (network probes) and evaluate. A few seconds."""
     started = time.perf_counter()
-    source = snapshot.get("source") or {}
     hosts: list[str] = []
-    backend = source.get("backend") or ""
-    if backend in PROVIDER_HOSTS:
-        hosts.append(PROVIDER_HOSTS[backend][0])
-    translation = snapshot.get("translation") or {}
-    if translation.get("provider") and translation.get("provider") != "none":
-        hosts.append(TRANSLATOR_HOST[0])
     if (snapshot.get("youtube") or {}).get("configured"):
         hosts.append(YOUTUBE_HOST[0])
     probes = await run_probes(hosts) if hosts else {}
