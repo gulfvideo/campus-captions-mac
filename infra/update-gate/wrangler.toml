@@ -22,4 +22,4 @@ bucket_name = "campus-captions-updates"
 
 [[kv_namespaces]]
 binding = "CODES"
-id = "PASTE_THE_ID_FROM_wrangler_kv_namespace_create"
+id = "938167089ef0489bb738ba3c86837813"
