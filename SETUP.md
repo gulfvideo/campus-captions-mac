@@ -374,21 +374,28 @@ a loop reach the wall, it is worth reporting with the `.srt`.
 
 ## 3e. Multiple languages and live translation
 
-Optional, and the easiest way to set it up is the Settings page - open
-`/settings`, expand **Translation (Azure)**, and you'll find a spot to
-paste an Azure Translator key:
+Optional. Open `/settings`, expand **Translation**, pick a provider, list the
+languages to translate into (e.g. `es, fr, zh-Hans`), and press Save. No
+restart needed, even mid-event.
+
+**Apple, on this Mac** is the default: free, offline, nothing leaves the
+machine, no account. It needs macOS 26. A language the Mac has not downloaded
+yet is added under **System Settings &rarr; General &rarr; Language & Region
+&rarr; Translation Languages**; until then the Settings page names it as the
+last error and the other languages still go out.
+
+**Azure Translator** is the alternative when you want Microsoft's models:
 
 1. Get a key: [portal.azure.com](https://portal.azure.com) &rarr; Create a
    resource &rarr; search "Translator" &rarr; Create (a free tier exists) &rarr;
    once it deploys, open the resource &rarr; **Keys and Endpoint** &rarr; copy
    **Key 1** and the **Region**.
-2. Paste the key (and region, if shown) into the Settings page, list the
-   languages to translate into (e.g. `es, fr, zh-Hans`), and press Save.
+2. Choose Azure in the Settings page, paste the key (and region, if shown),
+   and press Save.
 
-That's it - no restart needed, even mid-event. The key goes into `.env`
-(gitignored) and the language list into `config/event.toml`, so both survive
-a relay restart. Under the hood this is `POST /api/translation` - see
-`docs/MESSAGES.md` if you'd rather script it.
+The key goes into `.env` (gitignored) and the provider and language list into
+`config/event.toml`, so all of it survives a relay restart. Under the hood this
+is `POST /api/translation` - see `docs/MESSAGES.md` if you'd rather script it.
 
 Prefer hand-editing the config? The same settings live in `config/event.toml`:
 
@@ -398,7 +405,7 @@ source = "en"
 offer = ["es", "fr"]     # languages to translate into
 
 [translate]
-provider = "azure"       # or "none"
+provider = "apple"       # "apple", "azure" or "none"
 ```
 
 and `.env`:

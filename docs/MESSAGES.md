@@ -688,13 +688,15 @@ whatever latency the ASR backend itself has.
 ## Adding an Azure Translator key live
 
 ```
-POST /api/translation    {"key": "...", "region": "eastus", "languages": "es, fr"}
-  ->  200 {"ok": true, "provider": "azure", "targets": ["es", "fr"], "calls": 0, ...}
-  ->  400 if none of key/region/languages are present, or languages doesn't
-      look like a comma-separated list of short codes (es, fr, zh-Hans)
+POST /api/translation    {"provider": "apple", "languages": "es, fr"}
+POST /api/translation    {"provider": "azure", "key": "...", "region": "eastus", "languages": "es, fr"}
+  ->  200 {"ok": true, "provider": "apple", "targets": ["es", "fr"], "calls": 0, ...}
+  ->  400 if none of provider/key/region/languages are present, provider is
+      not apple or azure, or languages doesn't look like a comma-separated
+      list of short codes (es, fr, zh-Hans)
 ```
 
-`key`, `region`, and `languages` may be sent alone or together - the status
+`provider`, `key`, `region`, and `languages` may be sent alone or together - the status
 page's Save button sends whichever fields are non-empty. Leaving `languages`
 out of the request means "don't touch the target list", not "clear it" -
 unlike the YouTube URL box above, there's no way to explicitly clear the

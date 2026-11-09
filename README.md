@@ -395,7 +395,7 @@ for it. `relay/youtube.py`'s `urls_from_env()` finds these.
 ## Translation and multiple languages
 
 Optional. Easiest path: paste an Azure Translator key and a target language
-list into the settings page's **Translation (Azure)** panel - see SETUP.md
+list into the settings page's **Translation** panel - see SETUP.md
 3e for where to get a key. That's `POST /api/translation`, which writes the
 key to `.env` and the languages to `config/event.toml` and reconnects the
 translator immediately, no restart. Equivalently, by hand: set

@@ -39,6 +39,7 @@ import hashlib
 import hmac
 import io
 import os
+import sys
 import re
 import secrets
 import socket
@@ -416,7 +417,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         def __init__(self, source_language: str, targets: list[str]):
             self.source_language = source_language
             self.targets = list(targets)
-            self.translator: translate_module.AzureTranslator | None = None
+            self.provider = "none"
+            self.translator: translate_module.AzureTranslator | translate_module.AppleTranslator | None = None
             self.worker: translate_module.TranslationWorker | None = None
 
         def _emit(self, lang: str, text: str, utterance_id: str,
@@ -437,6 +439,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 await self.worker.stop()
                 self.worker = None
             self.targets = list(targets)
+            self.provider = provider
             self.translator = translate_module.create(provider, self.targets)
             if self.translator is not None:
                 self.worker = translate_module.TranslationWorker(
@@ -458,7 +461,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         def stats(self) -> dict:
             if self.worker is not None:
                 return self.worker.stats()
-            return {"provider": "none", "targets": list(self.targets)}
+            return {"provider": "none", "configured": self.provider,
+                    "targets": list(self.targets)}
 
     translation = TranslationState(
         cfg.source_language,
@@ -1805,7 +1809,8 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         languages never reach the capture client, they only matter here
         where finals get translated before fan-out.
 
-        {"key": "...", "region": "...", "languages": "es, fr"} - any subset.
+        {"provider": "apple"|"azure", "key": "...", "region": "...",
+         "languages": "es, fr"} - any subset.
         The key/region go into .env (gitignored, never event.toml) via the
         same save_env_var used for the Deepgram key; languages go into
         event.toml so they survive a restart. Translation reconnects with
@@ -1815,8 +1820,20 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         require_operator(request)
         body = await read_json(request)
         body = body or {}
-        if not any(k in body for k in ("key", "region", "languages")):
-            raise HTTPException(status_code=400, detail="send key, region, and/or languages")
+        if not any(k in body for k in ("provider", "key", "region", "languages")):
+            raise HTTPException(status_code=400,
+                                detail="send provider, key, region, and/or languages")
+
+        provider = cfg.translate_provider
+        if "provider" in body:
+            provider = text_field(body, "provider", 16)
+            if provider not in ("apple", "azure"):
+                raise HTTPException(status_code=400, detail="provider must be apple or azure")
+        if provider in ("", "none"):
+            # Nothing chosen yet: a key means Azure, otherwise the Mac itself.
+            provider = ("azure" if os.environ.get("AZURE_TRANSLATOR_KEY", "").strip()
+                        else "apple" if sys.platform == "darwin" else "none")
+        cfg.translate_provider = provider
 
         if "key" in body:
             key = text_field(body, "key", 200)
@@ -1837,13 +1854,13 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 raise HTTPException(status_code=400,
                                     detail="languages must look like: es, fr, zh-Hans")
             translation.targets = [lang for lang in parsed if lang != cfg.source_language]
-            try:
-                config_module.save_translate_settings(
-                    config_target(), "azure", translation.targets)
-            except OSError as exc:
-                print(f"[relay] could not save translation languages to disk: {exc}")
 
-        provider = "azure" if os.environ.get("AZURE_TRANSLATOR_KEY", "").strip() else "none"
+        try:
+            config_module.save_translate_settings(
+                config_target(), provider, translation.targets)
+        except OSError as exc:
+            print(f"[relay] could not save translation settings to disk: {exc}")
+
         await translation.apply(provider, translation.targets)
         print(f"[relay] translation {'active' if translation.worker else 'inactive'}"
               f" -> {', '.join(translation.targets) or '(no target languages set)'}")

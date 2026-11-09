@@ -9,7 +9,10 @@ Translation runs in the relay rather than the capture client because the relay
 is where fan-out and the per-language replay buffers already live. One source
 line becomes one HTTP request covering every target language at once.
 
-Keys come from the environment, never from a config file:
+Two providers. "apple" is Apple's on-device Translation framework through a
+small Swift helper (capture/backends/native/translate_helper.swift): free,
+offline, nothing leaves the Mac. "azure" is Microsoft Translator over HTTPS;
+its keys come from the environment, never from a config file:
     AZURE_TRANSLATOR_KEY, AZURE_TRANSLATOR_REGION
 """
 
@@ -18,10 +21,16 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
+from pathlib import Path
+
+from .config import FROZEN, ROOT
+from .tunnel import child_env
 
 AZURE_DEFAULT_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 REQUEST_TIMEOUT = 8.0
@@ -168,7 +177,117 @@ class AzureTranslator:
         }
 
 
-def create(provider: str, targets: list[str]) -> AzureTranslator | None:
+NATIVE_DIR = (Path(sys._MEIPASS, "capture", "backends", "native") if FROZEN
+              else ROOT / "capture" / "backends" / "native")
+HELPER = NATIVE_DIR / "build" / "translate_helper"
+SOURCE = NATIVE_DIR / "translate_helper.swift"
+HELPER_TIMEOUT = 20.0        # the first line loads the model; later ones take ~0.3 s
+
+
+def _ensure_helper() -> str | None:
+    """Build the helper from source if it is missing or stale; an error or None.
+    The packaged app ships it prebuilt and has nothing to compile with."""
+    if HELPER.exists() and (FROZEN or not SOURCE.exists()
+                            or HELPER.stat().st_mtime >= SOURCE.stat().st_mtime):
+        return None
+    if FROZEN:
+        return "translate_helper is missing from this app bundle"
+    try:
+        result = subprocess.run([str(NATIVE_DIR / "build.sh")], capture_output=True,
+                                text=True, timeout=180, env=child_env())
+    except FileNotFoundError:
+        return "Xcode command line tools not found (swiftc unavailable)"
+    except subprocess.TimeoutExpired:
+        return "building translate_helper timed out"
+    if result.returncode != 0:
+        return f"failed to build translate_helper: {result.stderr.strip()[-500:]}"
+    return None
+
+
+class AppleTranslator:
+    """Same contract as AzureTranslator, answered by the on-device helper.
+
+    The helper is started on the first line and restarted if it dies. One
+    request in flight at a time is all TranslationWorker ever sends."""
+
+    name = "apple"
+
+    def __init__(self):
+        self._proc: asyncio.subprocess.Process | None = None
+        self._next_id = 0
+        self._cache: OrderedDict[tuple, dict[str, str]] = OrderedDict()
+        self.calls = 0
+        self.characters = 0
+        self.failures = 0
+        self.last_error = None
+        self.healthy = True
+
+    _cached = AzureTranslator._cached
+    _store = AzureTranslator._store
+    _fail = AzureTranslator._fail
+    stats = AzureTranslator.stats
+
+    async def _start(self) -> None:
+        error = await asyncio.get_running_loop().run_in_executor(None, _ensure_helper)
+        if error:
+            raise RuntimeError(error)
+        self._proc = await asyncio.create_subprocess_exec(
+            str(HELPER), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL, env=child_env())
+        ready = await asyncio.wait_for(self._proc.stdout.readline(), HELPER_TIMEOUT)
+        if b'"ready"' not in ready:
+            raise RuntimeError("translate_helper did not start")
+
+    async def _ask(self, text: str, source: str, targets: list[str]) -> dict:
+        if self._proc is None or self._proc.returncode is not None:
+            await self._start()
+        self._next_id += 1
+        line = json.dumps({"id": self._next_id, "text": text, "source": source,
+                           "targets": targets}) + "\n"
+        self._proc.stdin.write(line.encode("utf-8"))
+        await self._proc.stdin.drain()
+        raw = await asyncio.wait_for(self._proc.stdout.readline(), HELPER_TIMEOUT)
+        if not raw:
+            raise RuntimeError("translate_helper exited")
+        reply = json.loads(raw)
+        if reply.get("id") != self._next_id:
+            raise RuntimeError("translate_helper answered out of order")
+        return reply
+
+    async def translate(self, text: str, source: str,
+                        targets: list[str]) -> dict[str, str]:
+        text = text.strip()[:MAX_CHARS]
+        if not text or not targets:
+            return {}
+        key = (text, source, tuple(sorted(targets)))
+        hit = self._cached(key)
+        if hit is not None:
+            return dict(hit)
+        try:
+            reply = await self._ask(text, source, targets)
+        except Exception as exc:
+            self._fail(f"{exc.__class__.__name__}: {exc}")
+            if self._proc is not None and self._proc.returncode is None:
+                self._proc.kill()
+            self._proc = None
+            return {}
+        result = {k: v for k, v in (reply.get("translations") or {}).items()
+                  if isinstance(k, str) and isinstance(v, str)}
+        errors = reply.get("errors") or {}
+        self.calls += 1
+        self.characters += len(text)
+        if errors:
+            # A language the Mac cannot do is reported, but the ones it can
+            # still go out - and the line is not retried, so it is cached.
+            self._fail("; ".join(str(v) for v in errors.values())[:300])
+        else:
+            self.last_error = None
+            self.healthy = True
+        self._store(key, result)
+        return result
+
+
+def create(provider: str, targets: list[str]) -> AzureTranslator | AppleTranslator | None:
     """Build a translator, or None when translation is not configured.
 
     Returning None is a normal state, not an error: it is what a single-language
@@ -177,6 +296,12 @@ def create(provider: str, targets: list[str]) -> AzureTranslator | None:
     provider = (provider or "none").strip().lower()
     if provider in ("", "none") or not targets:
         return None
+    if provider == "apple":
+        if sys.platform != "darwin":
+            print("[relay] Apple translation needs macOS - captions will be "
+                  "source language only")
+            return None
+        return AppleTranslator()
     if provider == "azure":
         key = os.environ.get("AZURE_TRANSLATOR_KEY", "").strip()
         if not key:
@@ -202,7 +327,7 @@ class TranslationWorker:
     failing degrades to source-only rather than losing captions.
     """
 
-    def __init__(self, translator: AzureTranslator, source: str,
+    def __init__(self, translator: AzureTranslator | AppleTranslator, source: str,
                  targets: list[str], emit):
         self.translator = translator
         self.source = source

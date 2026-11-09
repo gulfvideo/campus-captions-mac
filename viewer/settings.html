@@ -541,12 +541,18 @@
 <div class="tabpanel" id="tabpanel-audience" role="tabpanel"
      aria-labelledby="tab-audience" hidden>
 <section class="panel" id="panel-azure">
-  <h2 class="panel-head">Translation (Azure)
+  <h2 class="panel-head">Translation
     <span class="badge" id="azure-badge">&mdash;</span>
   </h2>
   <div class="panel-body" id="azure-body">
       <div class="disclosure-sub" id="translation-sub">&mdash;</div>
       <div class="row">
+        <select id="translate-provider">
+          <option value="apple">Apple, on this Mac (free, no key)</option>
+          <option value="azure">Azure Translator (needs a key)</option>
+        </select>
+      </div>
+      <div class="row" id="azure-key-row">
         <input id="azure-key" type="password" autocomplete="off" spellcheck="false"
                placeholder="Azure Translator API key">
         <button id="btn-azure-show" type="button">Show</button>
@@ -559,7 +565,9 @@
         <button id="btn-azure-save" type="button">Save</button>
       </div>
       <div class="disclosure-sub help" id="azure-hint">
-        Get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
+        Apple translates on this Mac with no account. A language it has not downloaded yet is
+        added under <b>System Settings &rarr; General &rarr; Language &amp; Region &rarr; Translation
+        Languages</b>. For Azure, get a key: <b>portal.azure.com</b> &rarr; Create a resource &rarr; search &ldquo;Translator&rdquo;
         &rarr; Create (a free tier is available) &rarr; once it deploys, open the resource &rarr;
         <b>Keys and Endpoint</b> &rarr; copy <b>Key 1</b> and the <b>Region</b>. Paste the key above,
         list the languages to translate into, then Save &mdash; no restart needed.
@@ -1192,9 +1200,14 @@
     badge.textContent = active ? 'Translating · ' + (translation.targets || []).length + ' language(s)' : 'Not set up';
     badge.className = 'badge' + (active ? ' live' : '');
     $('translation-sub').textContent = !active
-      ? 'No translation active yet — add an Azure Translator key and target languages below.'
+      ? 'No translation active yet — pick a provider and list target languages below.'
       : 'Translating via ' + translation.provider + ' into: ' + (translation.targets || []).join(', ') +
         (translation.error ? ' — last error: ' + translation.error : '') + '.';
+    var providerBox = $('translate-provider');
+    if (document.activeElement !== providerBox) {
+      providerBox.value = active ? translation.provider : (translation.configured || 'apple');
+    }
+    $('azure-key-row').hidden = providerBox.value !== 'azure';
     $('btn-azure-save').disabled = $('azure-key').disabled =
       $('azure-region').disabled = $('azure-langs').disabled = false;
     var langsBox = $('azure-langs');
@@ -1746,11 +1759,7 @@
     var key = $('azure-key').value.trim();
     var region = $('azure-region').value.trim();
     var langs = $('azure-langs').value.trim();
-    if (!key && !region && !langs) {
-      toast('Azure Translator — enter a key and/or target languages first');
-      return;
-    }
-    var body = {};
+    var body = { provider: $('translate-provider').value };
     if (key) body.key = key;
     if (region) body.region = region;
     if (langs) body.languages = langs;
@@ -1766,9 +1775,10 @@
       if (key) { $('azure-key').value = ''; markSecretSaved('azure-key'); }
       $('azure-region').value = '';
       toast(out.provider && out.provider !== 'none'
-        ? 'Azure Translator — translating into ' + (out.targets || []).join(', ')
-        : 'Azure Translator — saved, but not active yet (need a key and at least one language)');
-    })['catch'](function (e) { toast('Azure Translator — ' + e.message); });
+        ? 'Translation — ' + out.provider + ' into ' + (out.targets || []).join(', ')
+        : 'Translation — saved, but not active yet (need at least one language' +
+          (body.provider === 'azure' ? ' and a key' : '') + ')');
+    })['catch'](function (e) { toast('Translation — ' + e.message); });
   }
 
   function setYoutubeEnabled(enabled) {
@@ -2100,6 +2110,9 @@
     $('deepgram-key').oninput = function () { restorePlaceholder('deepgram-key'); };
 
     $('btn-azure-save').onclick = saveTranslationSettings;
+    $('translate-provider').onchange = function () {
+      $('azure-key-row').hidden = this.value !== 'azure';
+    };
     $('btn-azure-show').onclick = function () {
       var box = $('azure-key');
       var showing = box.type === 'text';

@@ -46,6 +46,12 @@ if _helper.exists():
 else:
     print("[spec] WARNING: no speech_helper - apple_speech will not work "
           "in this bundle")
+_translate = ROOT / "capture" / "backends" / "native" / "build" / "translate_helper"
+if _translate.exists():
+    datas.append((str(_translate), "capture/backends/native/build"))
+else:
+    print("[spec] WARNING: no translate_helper - Apple translation will not "
+          "work in this bundle")
 
 hiddenimports = [
     "uvicorn.logging",

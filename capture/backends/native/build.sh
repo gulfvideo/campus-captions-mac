@@ -23,3 +23,10 @@ swiftc -O -parse-as-library "$here/speech_helper.swift" \
 codesign --force --sign - --options runtime --entitlements "$here/Speech.entitlements" "$bin"
 
 echo "built $bin"
+
+# The translation helper needs no entitlement: Apple's Translation framework
+# runs on-device with no permission prompt.
+tbin="$out/translate_helper"
+swiftc -O -parse-as-library "$here/translate_helper.swift" -o "$tbin"
+codesign --force --sign - --options runtime "$tbin"
+echo "built $tbin"
