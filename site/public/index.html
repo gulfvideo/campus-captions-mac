@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Campus Captions — $0.00 per hour, and the audio never leaves the building</title>
-<meta name="description" content="Live captioning for chapel, lectures, ceremonies and services. Runs on one computer you already own, on transcription engines that cost nothing and work offline. Currently in private beta.">
+<meta name="description" content="Live captioning for chapel, lectures, ceremonies and services. A free, open-source Mac app that runs on the Mac you already own, on transcription engines that cost nothing and work offline. Currently in private beta.">
 <meta property="og:title" content="Campus Captions">
 <meta property="og:description" content="Captioning that costs $0.00 per hour and never sends your room's audio anywhere. Wall, phones and stream from one capture.">
 <meta property="og:type" content="website">
@@ -563,7 +563,7 @@ footer .end { margin-left: auto; }
       </span>
       <span class="brand-name">Campus Captions</span>
     </a>
-    <a class="header-link" href="#request">Request access</a>
+    <a class="header-link" href="#download">Download for Mac</a>
   </div>
 </header>
 
@@ -574,7 +574,7 @@ footer .end { margin-left: auto; }
   <article class="rider">
     <div class="rider-top">
       <h1 class="rider-title">Campus Captions</h1>
-      <span class="rider-rev mono">Rev. Beta — not for sale</span>
+      <span class="rider-rev mono">Beta — free, open source, Mac only</span>
     </div>
 
     <p class="rider-what"><b>Live captioning for events</b> — wall · phones · stream</p>
@@ -599,7 +599,7 @@ footer .end { margin-left: auto; }
       <div>
         <h2 class="col-head">Requires</h2>
         <ul class="col-list">
-          <li>1 × Mac host (Apple silicon)</li>
+          <li>1 × Apple silicon Mac in the booth</li>
           <li>1 × line-level feed from the desk</li>
           <li>LAN reachable by wall + phones</li>
           <li class="opt">Internet — optional</li>
@@ -617,9 +617,9 @@ footer .end { margin-left: auto; }
     </div>
 
     <div class="rider-foot">
-      <span class="stamp">Private beta · adding venues slowly</span>
-      <a class="act" href="#request">
-        Request beta access
+      <span class="stamp">Open beta · built for Apple silicon</span>
+      <a class="act" href="#download">
+        Download for Mac
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7.5h10M8 3.5l4 4-4 4"/></svg>
       </a>
     </div>
@@ -796,10 +796,10 @@ footer .end { margin-left: auto; }
 
     <div class="rows">
       <div class="row">
-        <div class="row-key">Installers unsigned</div>
-        <div class="row-body"><p>Neither build is code-signed, so each shows a one-time
-        operating-system warning the first time it runs on a given machine. Installation
-        is not frictionless and we will not pretend otherwise.</p></div>
+        <div class="row-key">Installer unsigned</div>
+        <div class="row-body"><p>The app is not notarized with Apple, so macOS shows a
+        one-time warning the first time it opens on a given Mac. Control-click the app and
+        choose Open. Installation is not frictionless and we will not pretend otherwise.</p></div>
       </div>
       <div class="row">
         <div class="row-key">Accuracy varies</div>
@@ -814,9 +814,10 @@ footer .end { margin-left: auto; }
         set up. On the local network it just works.</p></div>
       </div>
       <div class="row">
-        <div class="row-key">No price</div>
-        <div class="row-body"><p>It is not for sale and no price has been set. Inventing one
-        before the beta tells us what this is worth would be guessing at your expense.</p></div>
+        <div class="row-key">Mac only</div>
+        <div class="row-body"><p>There is no Windows or Linux build, and none is planned.
+        Everything it does — speech, translation, the relay — leans on what macOS already
+        ships. Apple's own engine needs macOS 26; Whisper covers older Macs.</p></div>
       </div>
     </div>
 
@@ -830,14 +831,44 @@ footer .end { margin-left: auto; }
   </div>
 </section>
 
-<!-- ========== REQUEST ACCESS ========== -->
-<section id="request">
+<!-- ========== DOWNLOAD ========== -->
+<section id="download">
   <div class="wrap">
-    <h2 class="sec-head">Request beta access<span class="note aside">We add venues slowly, on purpose</span></h2>
+    <h2 class="sec-head">Download for Mac<span class="note aside">Free · open source · Apple silicon</span></h2>
 
     <p class="lede">
-      Tell us about your room. We are taking on a small number of sites so each one gets
-      actual attention, and we will be straight with you about whether it is a fit.
+      One disk image from GitHub. Open it, drag Campus Captions to Applications, and
+      Control-click → Open the first time. No Python, no terminal, no account.
+    </p>
+
+    <div class="rows" style="margin-top:30px">
+      <div class="row">
+        <div class="row-key">Latest build</div>
+        <div class="row-body"><p><a href="https://github.com/gulfvideo/campus-captions-mac/releases/download/v0.3.12-beta/CampusCaptions-0.3.12-beta-AppleSilicon.dmg">CampusCaptions-0.3.12-beta-AppleSilicon.dmg</a>
+        — 82 MB. Every release is on the
+        <a href="https://github.com/gulfvideo/campus-captions-mac/releases/latest">Releases page</a>; the installed app checks there for updates itself.</p></div>
+      </div>
+      <div class="row">
+        <div class="row-key">Needs</div>
+        <div class="row-body"><p>An Apple silicon Mac. Apple's speech engine needs macOS 26 or
+        newer; on an older Mac pick Whisper in Settings instead. The first time a language
+        is used, macOS downloads its model, so have internet once.</p></div>
+      </div>
+      <div class="row">
+        <div class="row-key">Setting up</div>
+        <div class="row-body"><p>The <a href="https://github.com/gulfvideo/campus-captions-mac/blob/main/SETUP.md">setup guide</a>
+        covers audio from the desk, ProPresenter, the firewall, and a pre-event checklist.</p></div>
+      </div>
+      <div class="row">
+        <div class="row-key">Source</div>
+        <div class="row-body"><p>MIT licensed on
+        <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a>. Read it, build it, open an issue.</p></div>
+      </div>
+    </div>
+
+    <p class="lede" style="margin-top:46px">
+      Running it somewhere? Tell us about the room and we will let you know when a release
+      matters to you.
     </p>
 
     <div class="form-wrap" style="margin-top:30px">
@@ -896,10 +927,10 @@ footer .end { margin-left: auto; }
 
         <div class="submit-row">
           <button class="act" type="submit" id="submit">
-            Send request
+            Send
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7.5h10M8 3.5l4 4-4 4"/></svg>
           </button>
-          <p class="small" style="margin:0;max-width:30ch">Used to contact you about the beta. Nothing else, and nobody else.</p>
+          <p class="small" style="margin:0;max-width:30ch">Used to contact you about Campus Captions. Nothing else, and nobody else.</p>
           <p class="form-msg" id="form-msg" role="status" aria-live="polite"></p>
         </div>
       </form>
@@ -909,10 +940,10 @@ footer .end { margin-left: auto; }
           <span class="tick" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13.5 10.5 19 21 7.5"/></svg>
           </span>
-          Request received
+          Thanks, got it
         </h3>
-        <p class="lede">We will be in touch. If your events are coming up soon, say so when
-        you hear from us and we will move you up the list.</p>
+        <p class="lede">We will be in touch when there is something worth hearing about. If an
+        event is coming up soon and you need a hand, say so when you hear from us.</p>
       </div>
     </div>
   </div>
@@ -974,10 +1005,20 @@ footer .end { margin-left: auto; }
     </details>
 
     <details>
-      <summary>What does the beta cost?</summary>
+      <summary>What does it cost?</summary>
       <div class="ans">
-        <p>Nothing, and no price is set for afterwards. There is no account to create and
-        no subscription behind any of it; every engine runs on your own Mac.</p>
+        <p>Nothing. It is free and open source under the MIT licence. There is no account to
+        create and no subscription behind any of it; every engine runs on your own Mac.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Does it run on Windows?</summary>
+      <div class="ans">
+        <p>No. Campus Captions is a Mac app, built for Apple silicon, and the speech and
+        translation engines it uses are Apple's own. There is no Windows or Linux build.
+        <a href="#download">Download it for Mac</a>, or read the source on
+        <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a>.</p>
       </div>
     </details>
   </div>
@@ -988,8 +1029,8 @@ footer .end { margin-left: auto; }
 <footer>
   <div class="wrap">
     <span>Campus Captions</span>
-    <span>Rev. Beta</span>
-    <span class="end"><a href="#request">Request access</a></span>
+    <span>Beta · macOS · MIT</span>
+    <span class="end"><a href="#download">Download for Mac</a> · <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a></span>
   </div>
 </footer>
 
@@ -1105,7 +1146,7 @@ footer .end { margin-left: auto; }
       done.querySelector('h3').focus();
     }).catch(function (err) {
       btn.disabled = false;
-      label.nodeValue = 'Send request ';
+      label.nodeValue = 'Send ';
       fail(err.message + ' Try again in a moment.');
     });
   });
