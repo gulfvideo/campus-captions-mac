@@ -7,8 +7,8 @@ device and no Speech Recognition permission, so the menu bar app cannot be
 started there; what this catches instead is the failure a frozen build is
 actually prone to, an import that only resolves on the developer's machine.
 
-The macOS twin of tools/windows_build_check.py. The platform assertions are
-mirror images: apple_speech must be *offered* on a Mac new enough for it, and
+The platform assertions: apple_speech must be *offered* on a Mac new enough
+for it, and
 `auto` must resolve to it there rather than dropping to practice mode.
 
 Exits non-zero with a message on failure, so a broken build never reaches a

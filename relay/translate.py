@@ -9,9 +9,6 @@ Translation runs in the relay rather than the capture client because the relay
 is where fan-out and the per-language replay buffers already live. One source
 line becomes one HTTP request covering every target language at once.
 
-The provider sits behind `Translator` so swapping Azure for something else - or
-for a local model - is one new class and one line in `create()`.
-
 Keys come from the environment, never from a config file:
     AZURE_TRANSLATOR_KEY, AZURE_TRANSLATOR_REGION
 """
@@ -59,23 +56,10 @@ CACHE_SIZE = 512
 MAX_CHARS = 2000
 
 
-class Translator:
-    """Interface. `translate` returns {language: text}; missing keys just mean
-    that language failed, and the source line has already gone out regardless."""
+class AzureTranslator:
+    """`translate` returns {language: text}; missing keys just mean that
+    language failed, and the source line has already gone out regardless."""
 
-    name = "none"
-    healthy = True
-    last_error: str | None = None
-
-    async def translate(self, text: str, source: str,
-                        targets: list[str]) -> dict[str, str]:
-        raise NotImplementedError
-
-    async def close(self) -> None:
-        return None
-
-
-class AzureTranslator(Translator):
     name = "azure"
 
     def __init__(self, key: str, region: str = "",
@@ -184,7 +168,7 @@ class AzureTranslator(Translator):
         }
 
 
-def create(provider: str, targets: list[str]) -> Translator | None:
+def create(provider: str, targets: list[str]) -> AzureTranslator | None:
     """Build a translator, or None when translation is not configured.
 
     Returning None is a normal state, not an error: it is what a single-language
@@ -218,7 +202,7 @@ class TranslationWorker:
     failing degrades to source-only rather than losing captions.
     """
 
-    def __init__(self, translator: Translator, source: str,
+    def __init__(self, translator: AzureTranslator, source: str,
                  targets: list[str], emit):
         self.translator = translator
         self.source = source
@@ -258,7 +242,6 @@ class TranslationWorker:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        await self.translator.close()
 
     async def _run(self) -> None:
         while True:
@@ -280,6 +263,5 @@ class TranslationWorker:
                 "translated_lines": self.translated,
                 "queue": self.queue.qsize(),
                 "dropped": self.dropped}
-        if hasattr(self.translator, "stats"):
-            base.update(self.translator.stats())
+        base.update(self.translator.stats())
         return base

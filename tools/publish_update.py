@@ -16,7 +16,6 @@ Asset names come from the release workflow:
 
     CampusCaptions-<version>-AppleSilicon.dmg  -> macos-arm64
     CampusCaptions-<version>-Intel.dmg         -> macos-x86_64
-    CampusCaptions-Setup-<version>.exe         -> windows-x86_64
 """
 
 from __future__ import annotations
@@ -35,7 +34,6 @@ from launcher.version import VERSION  # noqa: E402
 PATTERNS = (
     ("-AppleSilicon.dmg", "macos-arm64"),
     ("-Intel.dmg", "macos-x86_64"),
-    (".exe", "windows-x86_64"),
 )
 
 
@@ -81,7 +79,7 @@ def build(assets: Path, base: str, version: str, notes: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets", type=Path, required=True,
-                        help="directory holding the built .dmg / .exe files")
+                        help="directory holding the built .dmg files")
     parser.add_argument("--base", default="https://updates.gulfvideo.io",
                         help="public base URL the files will be served from")
     parser.add_argument("--version", default=VERSION)

@@ -20,12 +20,6 @@ service.
 
 ## Known constraints
 
-- **Windows exclusive mode.** A program that has the input device open in
-  WASAPI exclusive mode (OBS or vMix with *exclusive* ticked, some DAWs)
-  blocks every other program from it. The preflight reports this as
-  "Another program has the audio input" with the setting to untick. The
-  usual fix is Settings › System › Sound › the device › Advanced › untick
-  *Allow applications to take exclusive control*.
 - **macOS shares inputs freely** between programs; the exception is a
   virtual device whose owning application has not started yet, which reads
   as digital silence rather than "busy".

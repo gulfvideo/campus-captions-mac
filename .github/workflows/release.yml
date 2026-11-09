@@ -1,15 +1,10 @@
 # Builds the downloadable apps and attaches them to the GitHub release for
 # the tag that triggered it.
 #
-# This exists because the project has no build machine it can rely on for
-# either platform. A release is cut by pushing a v* tag; some minutes later
-# the Releases page carries a Windows installer and a macOS zip that a
-# volunteer can download and double-click, with no Python, no Xcode and no
-# checkout anywhere in the story.
-#
-# The two jobs are independent on purpose: no `needs:` between them, so a
-# macOS runner without the SDK the Swift speech helper wants cannot stop the
-# Windows installer from reaching the release, and vice versa.
+# This exists because the project has no build machine it can rely on. A
+# release is cut by pushing a v* tag; some minutes later the Releases page
+# carries a macOS disk image that a volunteer can download and double-click,
+# with no Python, no Xcode and no checkout anywhere in the story.
 #
 # Run it by hand from the Actions tab (workflow_dispatch) to test a build
 # without cutting a release - that path uploads each app as a workflow
@@ -174,7 +169,7 @@ jobs:
         # and dragging one icon onto Applications is the gesture Mac users
         # already know, and it lands the app somewhere permanent. A zip
         # leaves the app loose in Downloads and makes "extract this first" a
-        # step - the same step the Windows installer exists to remove.
+        # step.
         run: |
           version=$(.venv/bin/python3 -c "from launcher.version import VERSION; print(VERSION)")
           macapp/make_dmg.sh "macapp/dist/CampusCaptions-$version-${{ matrix.label }}.dmg"
@@ -219,9 +214,9 @@ jobs:
   # to the whole repository. So the builds are copied to object storage the
   # project owns and the manifest points there instead. See relay/updater.py.
   #
-  # Needs both platform jobs, unlike them needing each other: publishing a
-  # manifest that names a build which failed would offer testers a download
-  # that 404s. If either job fails, no manifest is published and everyone
+  # Needs the build job: publishing a manifest that names a build which
+  # failed would offer testers a download that 404s. If it fails, no
+  # manifest is published and everyone
   # stays on the version they have, which is the safe outcome.
   publish-update:
     name: Publish the update manifest
@@ -241,7 +236,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: assets
-          merge-multiple: true      # all three land in one directory
+          merge-multiple: true      # both architectures land in one directory
 
       - name: Show what is being published
         run: ls -lh assets
@@ -276,7 +271,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           aws s3 cp assets "s3://$BUCKET/$version/" \
             --recursive --endpoint-url "$ENDPOINT" \
-            --exclude "*" --include "*.dmg" --include "*.exe"
+            --exclude "*" --include "*.dmg"
           aws s3 cp latest.json "s3://$BUCKET/latest.json" \
             --endpoint-url "$ENDPOINT" \
             --content-type application/json --cache-control "max-age=300"

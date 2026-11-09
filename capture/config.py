@@ -6,74 +6,24 @@ command line. The Deepgram key only ever comes from .env or the environment.
 
 from __future__ import annotations
 
-import logging
 import os
-import re
-import sys
 import tomllib
 import urllib.parse
 from dataclasses import dataclass, field
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # Not `from .backends import ...`: that package's registry imports every
 # backend module, and websockets/numpy/PortAudio behind them. This one is
 # deliberately dependency-free - see its docstring.
 from .backends import support as backend_support
-
-# Repo root when run from source; the PyInstaller bundle's resource directory
-# (where the .spec's `datas` land) when frozen into the packaged app.
-FROZEN = bool(getattr(sys, "frozen", False))
-ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent.parent
-APP_NAME = "Campus Captions"
-
-
-def _data_dir() -> Path:
-    """Where per-machine state lives in the packaged app: event.toml, .env,
-    uploaded images, logs. Never inside the bundle - it is signed, shared as
-    a download, and replaced on every update, so a Deepgram key written into
-    it would break the signature and travel with the next copy someone
-    passes around.
-
-    Each platform's own conventional location, so the folder is where the
-    operator's OS (and its backup tool) already expects an app's settings to
-    be. Running from source it is simply the checkout.
-    """
-    if not FROZEN:
-        return ROOT
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA", "").strip()
-        return Path(base or Path.home() / "AppData" / "Local") / APP_NAME
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / APP_NAME
-    base = os.environ.get("XDG_DATA_HOME", "").strip()
-    return Path(base or Path.home() / ".local" / "share") / APP_NAME
-
-
-def _log_dir() -> Path:
-    """The packaged app has no terminal to print to and `sys._MEIPASS` is a
-    temp directory that's gone by the next launch, so its logs go in a
-    standard per-user location instead - Console.app finds ~/Library/Logs/*
-    on its own, and the Windows tray app's "Show Logs" opens this folder.
-    Running from source, next to the code."""
-    if not FROZEN:
-        return ROOT / "logs"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Logs" / APP_NAME
-    # Windows and Linux have no equivalent per-user log convention that a
-    # tool would find on its own, so they go beside the config the tray
-    # app's menu already opens.
-    return _data_dir() / "logs"
-
-
-# Per-machine state lives outside the bundle - see relay/config.py for why,
-# and keep these two in step. The relay (same process in the packaged app)
-# creates event.toml there on first run; this side only ever reads config
-# and writes .env.
-DATA_DIR = _data_dir()
-DEFAULT_CONFIG = DATA_DIR / "config" / "event.toml"
-EXAMPLE_CONFIG = ROOT / "config" / "event.example.toml"
-ENV_FILE = DATA_DIR / ".env"
+# relay/config.py is standard-library only, so the data-folder rules and the
+# .env helpers are shared with it rather than mirrored here. The relay (same
+# process in the packaged app) creates event.toml there on first run; this
+# side only ever reads config and writes .env.
+from relay.config import (  # noqa: F401 - re-exported
+    APP_NAME, DATA_DIR, DEFAULT_CONFIG, ENV_FILE, EXAMPLE_CONFIG, FROZEN, ROOT,
+    has_control_chars, load_env_file, save_env_var, setup_logging, write_private,
+)
 
 
 def resolve_path(value: str) -> str:
@@ -89,132 +39,6 @@ def resolve_path(value: str) -> str:
         if candidate.exists():
             return str(candidate)
     return str(DATA_DIR / p)
-
-
-class _Tee:
-    """Mirrors stdout/stderr into a logger while leaving the original stream
-    untouched, so a terminal run still shows live output exactly as before."""
-
-    def __init__(self, stream, logger: logging.Logger):
-        self._stream = stream
-        self._logger = logger
-
-    def write(self, data: str) -> int:
-        try:
-            n = self._stream.write(data)
-        except Exception:
-            n = len(data)
-        text = data.strip()
-        if text:
-            self._logger.info(text)
-        return n
-
-    def flush(self) -> None:
-        try:
-            self._stream.flush()
-        except Exception:
-            pass
-
-    def isatty(self) -> bool:
-        try:
-            return self._stream.isatty()
-        except Exception:
-            return False
-
-
-_logging_ready = False
-
-
-def setup_logging(name: str = "capture") -> None:
-    """Mirror this process's stdout/stderr into a rotating log file - see
-    relay/config.py's copy of this function for why it's duplicated rather
-    than shared. Idempotent: safe to call every time load() runs.
-    """
-    global _logging_ready
-    if _logging_ready:
-        return
-    _logging_ready = True
-    try:
-        log_dir = _log_dir()
-        log_dir.mkdir(parents=True, exist_ok=True)
-        handler = RotatingFileHandler(
-            log_dir / f"{name}.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8")
-    except OSError:
-        return  # best-effort - a missing log must never stop the app
-    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S"))
-    logger = logging.getLogger(f"campus-captions.{name}")
-    logger.setLevel(logging.INFO)
-    logger.addHandler(handler)
-    logger.propagate = False
-    sys.stdout = _Tee(sys.stdout, logger)
-    sys.stderr = _Tee(sys.stderr, logger)
-    logger.info(f"----- {name} starting, pid={os.getpid()} -----")
-
-
-def load_env_file(path: Path = ENV_FILE) -> int:
-    """Read KEY=VALUE lines into the environment without overwriting it.
-
-    Hand-rolled so the capture client has no dependency on a dotenv package,
-    and so the booth can keep the Deepgram key in one obvious gitignored file.
-    """
-    if not path.exists():
-        return 0
-    loaded = 0
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
-            loaded += 1
-    return loaded
-
-
-# Mirrors relay/config.py: a value with a newline in it would become extra
-# KEY=VALUE lines that load_env_file() loads for real on the next start -
-# and CAPTIONS_RELAY_URL / CAPTIONS_SOURCE_TOKEN from the environment outrank
-# event.toml, so that is a way to redirect this client. Refused at the write.
-ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-
-
-def has_control_chars(value: str) -> bool:
-    return any(ch < " " or ch == "\x7f" for ch in value)
-
-
-def write_private(path: Path, text: str) -> None:
-    """Owner-only (0600) file write; advisory on Windows."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text)
-
-
-def save_env_var(key: str, value: str, path: Path = ENV_FILE) -> None:
-    """Write key=value into .env, in place, preserving every other line.
-
-    Lets the status page's "add your Deepgram key" field work without anyone
-    opening a text editor. Mirrors load_env_file's hand-rolled parsing rather
-    than pulling in python-dotenv's writer for one line. Raises ValueError
-    rather than writing anything that could not be read back as one line.
-    """
-    if not isinstance(key, str) or not ENV_KEY_RE.match(key):
-        raise ValueError(f"refusing to write .env key {key!r}")
-    if not isinstance(value, str) or has_control_chars(value):
-        raise ValueError(f"refusing to write {key}: value contains control characters")
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    for i, raw in enumerate(lines):
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        if line.split("=", 1)[0].strip() == key:
-            lines[i] = f"{key}={value}"
-            break
-    else:
-        lines.append(f"{key}={value}")
-    write_private(path, "\n".join(lines) + "\n")
 
 
 @dataclass
@@ -253,7 +77,7 @@ def relay_url_with_port(url: str, port: int, local_only: bool = False) -> str:
 
 
 def load(path: Path | None = None) -> CaptureConfig:
-    setup_logging()
+    setup_logging("capture")
     load_env_file()
     cfg = CaptureConfig()
     chosen = path or (DEFAULT_CONFIG if DEFAULT_CONFIG.exists() else EXAMPLE_CONFIG)
@@ -330,9 +154,9 @@ def load(path: Path | None = None) -> CaptureConfig:
     cfg.device = os.environ.get("CAPTIONS_DEVICE", cfg.device)
     # Last, so it sees the final answer from every source above. "auto" (the
     # shipped default) becomes whichever backend this machine can actually
-    # run, and a named backend this machine cannot run - apple_speech on
-    # Windows, which is what a fresh clone used to give everyone - is
-    # substituted rather than left to fail at the first Open ASR stream.
+    # run, and a named backend this machine cannot run - apple_speech on a
+    # Mac older than 26, say - is substituted rather than left to fail at the
+    # first Open ASR stream.
     requested = cfg.backend
     cfg.backend = backend_support.resolve(requested)
     if cfg.backend != requested and requested != "auto":

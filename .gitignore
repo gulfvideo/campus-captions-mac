@@ -36,8 +36,7 @@ build/
 dist/
 # A built or unzipped bundle landing in the repo root - 70MB+ of binary that
 # must never reach a commit. `build/` and `dist/` above already cover
-# macapp/ and winapp/ output, including the generated Windows VERSIONINFO
-# resource (winapp/build/version_info.txt) and the installer .exe.
+# macapp/ output.
 *.app/
 __MACOSX/
 *.egg-info/

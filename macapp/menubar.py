@@ -1,9 +1,8 @@
 """Menu bar launcher for the packaged Campus Captions.app.
 
 The relay and the capture client run on background threads of this process -
-see launcher/embedded.py, which winapp/tray.py uses in exactly the same way.
-Everything here is the macOS half: the menu bar item, its icons, and the
-alerts.
+see launcher/embedded.py. Everything here is the front end: the menu bar
+item, its icons, and the alerts.
 
 A beta tester has no terminal window to watch, so this shows a menu bar icon
 instead: proof it's running, and a place to open the pages or quit.

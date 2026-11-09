@@ -173,7 +173,7 @@ def _script_hash(script: bytes) -> str:
 
     Browsers hash the script *as parsed*, and the HTML parser turns every
     CR LF and lone CR into LF before anything else sees the text. A checkout
-    with CRLF line endings (Windows, with git's autocrlf) therefore served a
+    with CRLF line endings (git's autocrlf) therefore served a
     hash of the raw bytes that matched nothing, and every page's script was
     silently blocked. Normalising here makes the hash line-ending independent.
     """
@@ -416,7 +416,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         def __init__(self, source_language: str, targets: list[str]):
             self.source_language = source_language
             self.targets = list(targets)
-            self.translator: translate_module.Translator | None = None
+            self.translator: translate_module.AzureTranslator | None = None
             self.worker: translate_module.TranslationWorker | None = None
 
         def _emit(self, lang: str, text: str, utterance_id: str,

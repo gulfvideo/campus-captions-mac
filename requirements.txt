@@ -1,8 +1,8 @@
-# Exact versions installed and tested on Python 3.14.6 / Windows 11.
+# Exact versions installed and tested on Python 3.14.6.
 # Every one of these had a cp314 wheel, so no build tools are needed.
 #
-#   python -m venv .venv
-#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#   python3 -m venv .venv
+#   .venv/bin/python -m pip install -r requirements.txt
 #
 # There is no Deepgram SDK here on purpose: the backend speaks Deepgram's
 # streaming websocket directly through `websockets`, which keeps the connection

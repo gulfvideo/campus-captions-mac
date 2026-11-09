@@ -1,14 +1,11 @@
 """Live audio input.
 
 Device selection is by index *or* name substring, because the show machine's
-device list does not match a laptop's. Windows lists the same physical input
-several times - once per host API (MME, DirectSound, WASAPI) - so an index that
-is right on one machine is wrong on another, and they renumber when hardware is
+device list does not match a laptop's: indices renumber when hardware is
 plugged in. A name match is stable; when a name matches several entries the
 best host API for the platform wins.
 
-macOS has one host API (Core Audio) so there is nothing to disambiguate, but it
-has a hazard Windows does not: without Microphone permission the process is
+macOS has one hazard worth naming: without Microphone permission the process is
 handed a stream of digital silence rather than an error. That looks exactly like
 a muted mic, so it is detected and reported separately.
 
@@ -40,10 +37,9 @@ except Exception as exc:                       # no PortAudio, headless box, ...
 PREFERRED_RATE = 16000
 BLOCK_MS = 100                                  # 100 ms blocks
 
-# Best host API first, per platform. On macOS there is only one.
+# Best host API first. On macOS there is only one.
 HOSTAPI_PREFERENCE = {
     "darwin": ("Core Audio",),
-    "win32": ("Windows WASAPI", "Windows DirectSound", "MME"),
 }.get(sys.platform, ("ALSA", "PulseAudio", "JACK"))
 
 # A transient glitch should disappear from the status page on its own.
@@ -59,9 +55,8 @@ ERROR_TTL = 6.0
 DIGITAL_SILENCE_AFTER = 5.0
 
 # PortAudio's `active` flag is not proof of life. A driver can leave a stream
-# marked active while it has stopped calling us back at all - reported on
-# Windows, and the same shape of failure as a USB interface that is unplugged
-# and replugged mid-event. Nothing downstream notices: the level meter simply
+# marked active while it has stopped calling us back at all - the same shape
+# of failure as a USB interface that is unplugged and replugged mid-event. Nothing downstream notices: the level meter simply
 # holds its last value and the ASR backend keeps decoding a buffer nobody is
 # refilling. Counting callbacks is the reliable signal, because a working
 # device delivers one every BLOCK_MS whether or not anyone is talking.
@@ -91,11 +86,9 @@ LID_CLOSED_HINT = (
 BUILT_IN_MIC_MARKERS = ("macbook", "built-in", "imac ")
 
 # PortAudio's ways of saying "the device exists but you cannot have it right
-# now". On Windows that is almost always another program holding the input in
-# WASAPI exclusive mode (OBS or vMix with "exclusive" ticked, a DAW); on macOS
-# it is rarer but a virtual device's owner can do it. The preflight (N-02,
-# N-10) turns this into "another program has the input" with the fix, rather
-# than a PortAudio error code.
+# now" - rare on macOS, but a virtual device's owner can do it. The preflight
+# (N-02, N-10) turns this into "another program has the input" with the fix,
+# rather than a PortAudio error code.
 DEVICE_BUSY_MARKERS = (
     "unanticipated host error", "-9999", "device unavailable", "-9985",
     "in use", "exclusive", "access denied", "-9996",
@@ -108,11 +101,6 @@ def device_busy_hint(exc: BaseException | str) -> str:
     text = str(exc).lower()
     if not any(marker in text for marker in DEVICE_BUSY_MARKERS):
         return ""
-    if sys.platform == "win32":
-        return ("another program appears to have this input open in exclusive mode. "
-                "Windows: Settings > System > Sound > the device > Advanced, untick "
-                "\"Allow applications to take exclusive control\", or untick exclusive "
-                "mode in OBS/vMix - or pick a different input.")
     return ("another program appears to have this input open. Quit the program "
             "that is using it, or pick a different input.")
 
@@ -313,8 +301,7 @@ class AudioInput:
             dtype="int16",
             blocksize=self.block_frames,
             # Ask PortAudio for generous buffers. Caption latency is dominated
-            # by the ASR service, not by this, and the older Windows host APIs
-            # (MME especially) overflow at low latency settings.
+            # by the ASR service, not by this.
             latency="high",
             callback=self._callback,
         )

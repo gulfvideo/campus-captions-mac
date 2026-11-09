@@ -29,25 +29,13 @@ from pathlib import Path
 import websockets
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from capture.backends.mock import load_script  # noqa: E402 - same script format
+
 DEFAULT_SCRIPT = ROOT / "config" / "mock_script.txt"
 
 STATUS_HZ = 4.0
-
-
-def load_script(path: Path) -> list[str]:
-    """Same format as the stage-1 rig: # comments, blank = pause, [clear]."""
-    if not path.exists():
-        print(f"!! script not found: {path}", file=sys.stderr)
-        return ["Mock script file is missing."]
-    lines = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line.startswith("#"):
-            continue
-        lines.append(line)
-    while lines and not lines[0]:
-        lines.pop(0)
-    return lines or ["Mock script is empty."]
 
 
 class MockSource:

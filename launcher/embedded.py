@@ -2,16 +2,14 @@
 
 launch.py starts them as two subprocesses (`python -m relay`, `python -m
 capture`), each with its own asyncio loop. A frozen app has no interpreter to
-shell back out to, so the packaged apps run both here instead, each on its own
+shell back out to, so the packaged app runs both here instead, each on its own
 thread with its own event loop. They only ever talk to each other over a
 localhost websocket, so nothing about that relationship changes.
 
-Both packaged front ends use this: macapp/menubar.py (a macOS menu bar item)
-and winapp/tray.py (a Windows notification-area icon). Everything in this file
-is platform-neutral on purpose - the two of them differ in how they draw a
-menu and show an alert, and in nothing else. Keeping the supervision here is
-what stops "restart the relay when the operator changes the port" from being
-fixed on one platform and quietly broken on the other.
+macapp/menubar.py is the front end: it draws the menu bar item and the
+alerts, and hands a status callback to Supervisor. Everything else - starting
+the relay, restarting it when the operator changes the port, pointing the
+capture client at whichever port it got - lives here.
 """
 
 from __future__ import annotations
@@ -51,9 +49,7 @@ class _SilentServer(uvicorn.Server):
 
 
 def port_in_use(port: int) -> bool:
-    """Connect, don't bind. A bind probe is wrong on Windows: with
-    SO_REUSEADDR it succeeds even when another process is already listening,
-    so the port looks free when it is not."""
+    """Connect, don't bind: if a connection is accepted, something is there."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.8)
         return probe.connect_ex(("127.0.0.1", port)) == 0

@@ -28,9 +28,8 @@ Python, no terminal, no zip to unpack:
 |---|---|
 | macOS | `CampusCaptions.zip` — unzip, drag to Applications, Control-click → Open the first time |
 
-Neither is code-signed, so each shows a one-time warning the first time it runs
-on a given computer (macOS:
-Control-click → Open). See [SETUP.md §1](SETUP.md) for both, in order.
+It is not code-signed, so it shows a one-time warning the first time it runs
+on a given Mac (Control-click → Open). See [SETUP.md §1](SETUP.md).
 
 This README is for working on the code.
 
@@ -38,12 +37,10 @@ This README is for working on the code.
 
 ## Operating it: the short version
 
-The installed app runs as a **menu
-bar icon on macOS** — right-click it for the status, settings, wall and phone
+The installed app runs as a **menu bar icon** — right-click it for the status, settings, wall and phone
 pages, and to quit.
 
-From a source checkout, double-click **`Start Captions.bat`** on Windows or
-**`Start Captions.command`** on macOS. It creates the virtual environment on
+From a source checkout, double-click **`Start Captions.command`**. It creates the virtual environment on
 first run, starts the relay and the capture client, opens the status page, and
 supervises both until the window is closed.
 
@@ -61,14 +58,11 @@ tour whenever someone wants it again.
 ## Install (development)
 
 ```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-# macOS / Linux
+python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-Pinned to the exact versions tested on Python 3.14.6 / Windows 11; every one has
+Pinned to the exact versions tested on Python 3.14.6; every one has
 a cp314 wheel, so nothing is compiled at install time.
 
 ## Running the pieces by hand
@@ -76,22 +70,20 @@ a cp314 wheel, so nothing is compiled at install time.
 Two processes. The relay, then the capture client:
 
 ```bash
-.venv\Scripts\python.exe -m relay
-# macOS / Linux: .venv/bin/python -m relay
+.venv/bin/python -m relay
 ```
 
 ```bash
-.venv\Scripts\python.exe -m capture
-# macOS / Linux: .venv/bin/python -m capture
+.venv/bin/python -m capture
 ```
 
 `-m capture` defaults to the mock backend, so it needs no audio hardware and no
 API key. Useful flags:
 
 ```bash
-.venv\Scripts\python.exe -m capture --list-devices
-.venv\Scripts\python.exe -m capture --backend deepgram --device "Scarlett"
-.venv\Scripts\python.exe -m capture --no-audio          # no input device at all
+.venv/bin/python -m capture --list-devices
+.venv/bin/python -m capture --backend deepgram --device "Scarlett"
+.venv/bin/python -m capture --no-audio          # no input device at all
 ```
 
 Then open the **status page** — <http://localhost:8000/status>. It shows
@@ -136,7 +128,7 @@ await backend.close()                   # and stops HERE
 | `mock` | `capture/backends/mock.py` | replays `config/mock_script.txt`, ignores audio, costs nothing |
 | `deepgram` | `capture/backends/deepgram.py` | Nova-3 streaming, keyterm prompting, key from `.env` |
 | `apple_speech` | `capture/backends/apple_speech.py` | on-device SpeechAnalyzer, macOS 26+, free, no network after first model download |
-| `whisper` | `capture/backends/whisper.py` | on-device via faster-whisper, free, works on any OS, needs `requirements-whisper.txt` |
+| `whisper` | `capture/backends/whisper.py` | on-device via faster-whisper, free, no macOS version requirement, needs `requirements-whisper.txt` |
 
 `apple_speech` is Swift-only under the hood - there's no Python or Objective-C
 bridge to Apple's SpeechAnalyzer/SpeechTranscriber APIs - so the class in
@@ -171,14 +163,14 @@ authority for three things:
   a Mac new enough for it, `mock` everywhere else. Never `deepgram` (it bills)
   and never `whisper` (its wheels are an opt-in download).
 - **What gets offered.** The setup wizard and the status page's picker list
-  `supported()` only, so `apple_speech` is simply absent on Windows and Linux.
+  `supported()` only, so `apple_speech` is simply absent on a Mac older than 26.
 - **What happens to a config naming a backend this machine cannot run.** It is
   substituted for one that works, and the capture client prints why. Failing
   instead would mean a volunteer with no captions and a config file to edit.
 
 This is what the shipped default used to get wrong: `event.example.toml` named
-`apple_speech`, and a fresh clone has no `config/event.toml`, so every Windows
-install came up on a macOS-only backend that could only ever report an error.
+`apple_speech`, and a fresh clone has no `config/event.toml`, so every install
+on an older Mac came up on a backend that could only ever report an error.
 `tests/test_backend_support.py` pins the behaviour, including that the shipped
 example never names a platform-bound backend again.
 
@@ -203,47 +195,18 @@ python tools/mock_relay.py
 
 ## Packaging
 
-Two packagers, one shared core. `launcher/embedded.py` runs the relay and the
-capture client as threads of one process — a frozen app has no `python -m X` to
-shell out to, so `launch.py`'s two-subprocess model cannot apply. Both front
-ends are thin: they draw a menu, show an alert, and hand a status callback to
-`embedded.Supervisor`. Everything else — starting the relay, restarting it when
-the Settings page changes the port, pointing the capture client at whichever
-port it actually got — lives in the shared file, so a fix cannot land on one
-platform and quietly miss the other.
+`launcher/embedded.py` runs the relay and the capture client as threads of one
+process — a frozen app has no `python -m X` to shell out to, so `launch.py`'s
+two-subprocess model cannot apply. The menu bar app is thin: it draws a menu,
+shows an alert, and hands a status callback to `embedded.Supervisor`.
+Everything else — starting the relay, restarting it when the Settings page
+changes the port, pointing the capture client at whichever port it actually
+got — lives there.
 
-`launcher/version.py` is the only place the version number is written; both
-`.spec` files and the Windows installer read it.
+`launcher/version.py` is the only place the version number is written; the
+`.spec` file, the release workflow and the updater read it.
 
-### Windows: an installer
-
-```powershell
-py -3 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt `
-    -r winapp\requirements-build.txt -r requirements-whisper.txt
-powershell -ExecutionPolicy Bypass -File winapp\build.ps1
-```
-
-Two outputs in `winapp\dist`: the app folder, and
-`CampusCaptions-Setup-<version>.exe` — the single file to hand out. The
-installer step needs [Inno Setup 6](https://jrsoftware.org/isdl.php);
-without it the app still builds and the script says so.
-
-`winapp/tray.py` is the entry point: a notification-area icon (`pystray`), no
-console window. A **onedir** build, not onefile — a onefile re-extracts the
-whole interpreter to a temp folder on every launch, which on a booth PC with an
-aggressive antivirus is twenty seconds of a double-click appearing to do
-nothing. The installer hides the folder in Program Files anyway.
-
-`winapp/icons/*.ico` are generated from the macOS app icon by
-`winapp/icons/make_icons.py` and committed, so a Windows build needs neither
-Pillow nor the `.icns`. They are the blue app tile with a status dot rather
-than the macOS menu bar's template images: Windows does not recolour tray
-icons, so a black one vanishes on the default dark taskbar.
-
-Building it needs no Windows machine — see **Releasing** below.
-
-### macOS: a menu bar app
+### The menu bar app
 
 ```
 .venv/bin/python3 -m pip install -r requirements.txt -r macapp/requirements-build.txt
@@ -260,8 +223,8 @@ The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
 `macapp/make_dmg.sh` wraps the built app in a disk image, which is what
 releases ship: opening a `.dmg` and dragging one icon onto Applications is the
 gesture Mac users know, and it puts the app somewhere permanent. A zip left it
-loose in Downloads and made "extract this first" a step — the same step the
-Windows installer exists to remove. `hdiutil` only, so it needs no Homebrew.
+loose in Downloads and made "extract this first" a step. `hdiutil` only, so
+it needs no Homebrew.
 
 The Intel build ships without Whisper: `onnxruntime`, a faster-whisper
 dependency, publishes no macOS x86_64 wheel for Python 3.14, and installing it
@@ -280,31 +243,26 @@ The app bundles a prebuilt `speech_helper` (see `capture/backends/native/`) so
 
 ### What ships, and what doesn't
 
-Only `config/event.example.toml` goes into either bundle. The real
-`event.toml`, the `.env` with the keys, and any uploaded images live in a
-per-user folder — `%LOCALAPPDATA%\Campus Captions` on Windows,
-`~/Library/Application Support/Campus Captions` on macOS (see
-`relay/config.py`'s `_data_dir()`), created on first run. So nothing personal
-or secret travels with a copy of the app, an upgrade keeps the operator's
-settings, and writing settings needs neither a writable Program Files nor a
-valid macOS code signature.
+Only `config/event.example.toml` goes into the bundle. The real `event.toml`,
+the `.env` with the keys, and any uploaded images live in
+`~/Library/Application Support/Campus Captions` (see `relay/config.py`'s
+`_data_dir()`), created on first run. So nothing personal or secret travels
+with a copy of the app, an upgrade keeps the operator's settings, and writing
+settings never breaks the bundle's code signature.
 
 ### Releasing
 
-`.github/workflows/release.yml` builds both apps and attaches them to the
-GitHub release for a `v*` tag — so cutting a release needs neither a Windows
-machine nor a Mac. Two independent jobs, deliberately not chained: a macOS
-runner that cannot build the Swift speech helper must not stop the Windows
-installer from reaching the release.
+`.github/workflows/release.yml` builds the app for both architectures and
+attaches the disk images to the GitHub release for a `v*` tag — so cutting a
+release needs no Mac to hand.
 
-Neither job writes the release body. Every release here carries hand-written
-notes, so the workflow only attaches files: an existing release's notes
-survive a re-run, and the two jobs cannot overwrite each other. A tag pushed
-with no release yet gets an empty one to fill in.
+The job does not write the release body. Every release here carries
+hand-written notes, so the workflow only attaches files: an existing
+release's notes survive a re-run. A tag pushed with no release yet gets an
+empty one to fill in.
 
-`tools/windows_build_check.py` and `tools/macos_build_check.py` run before
-either upload and fail the build on a hidden import PyInstaller missed or a
-platform default that regressed — a runner has no display, no audio device
+`tools/macos_build_check.py` runs before the upload and fails the build on a
+hidden import PyInstaller missed or a platform default that regressed — a runner has no display, no audio device
 and no microphone permission, so importing what the frozen app imports is the
 most a machine can check.
 
@@ -324,17 +282,14 @@ release is touched.
 
 `launcher/version.py` is the one place the version is written. It carries the
 full label including any pre-release suffix (`0.3.0-beta`); `VERSION_NUMBER`
-is the numeric part, which is what the Windows VERSIONINFO resource and Inno
-Setup's `VersionInfoVersion` need.
+is the numeric part, which the updater compares.
 
 ### Signing
 
-Neither is signed. The macOS app is ad-hoc signed (no paid Apple Developer ID),
-so first launch on another Mac needs Control-click → Open once to get past
-Gatekeeper. The Windows installer is unsigned, so it shows SmartScreen's
-"Windows protected your PC" once per machine — More info → Run anyway. Both are
+The app is ad-hoc signed (no paid Apple Developer ID), so first launch on
+another Mac needs Control-click → Open once to get past Gatekeeper. That is
 one-time per computer, not per launch. A certificate is the only thing that
-removes either.
+removes it.
 
 ## Configuration
 
@@ -846,7 +801,7 @@ this page with no change to the relay, the status page or the viewers.
 ## Layout
 
 ```
-Start Captions.bat            double-click this
+Start Captions.command        double-click this
 launcher/launch.py            venv, both processes, browser, supervision
 SETUP.md                      the operator and technician document
 docs/MESSAGES.md              the message contract
@@ -878,7 +833,7 @@ capture/backends/mock.py      scripted backend
 capture/backends/deepgram.py  Nova-3 streaming
 capture/backends/apple_speech.py  on-device SpeechAnalyzer, macOS 26+
 capture/backends/native/      the Swift helper apple_speech.py subprocesses
-capture/backends/whisper.py   on-device via faster-whisper, any OS
+capture/backends/whisper.py   on-device via faster-whisper, any macOS version
 capture/backends/registry.py  name -> class; add a backend here
 
 viewer/wall.html              broadcast graphic for ProPresenter

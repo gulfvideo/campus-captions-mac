@@ -14,8 +14,7 @@ The manifest is one JSON document:
       "notes":   "what changed",
       "builds": {
         "macos-arm64":    {"url": "...", "sha256": "...", "size": 78123456},
-        "macos-x86_64":   {...},
-        "windows-x86_64": {...}
+        "macos-x86_64":   {...}
       }
     }
 
@@ -104,8 +103,6 @@ def platform_key() -> str:
     machine = platform.machine().lower()
     if sys.platform == "darwin":
         return "macos-arm64" if machine in ("arm64", "aarch64") else "macos-x86_64"
-    if sys.platform == "win32":
-        return "windows-x86_64"
     return f"{sys.platform}-{machine or 'unknown'}"
 
 

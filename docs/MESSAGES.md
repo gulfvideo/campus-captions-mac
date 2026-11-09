@@ -218,7 +218,7 @@ string for the status page only — it never reaches a viewer.
 `audio_devices` is the capture machine's current input list; `device_index`
 identifies the active one. `available_backends` is only the backends this
 machine can actually run (`capture/backends/support.py`'s `supported()`), not
-every name in the registry - so `apple_speech` is absent on Windows and Linux,
+every name in the registry - so `apple_speech` is absent on a Mac older than 26,
 and the status page cannot offer a choice that could only ever report an
 error. `has_deepgram_key` is whether `DEEPGRAM_API_KEY` is currently set in
 the environment - never the key itself. They let the status page change

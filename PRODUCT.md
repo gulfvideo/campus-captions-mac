@@ -54,7 +54,7 @@ chooses, not the floor the product stands on.
 
 ## Operating Context
 
-- A booth or control position with a Windows or Mac computer already in it,
+- A booth or control position with a Mac already in it,
   and a feed off the mixer already being run — the same send that feeds the
   stream or the hearing loop.
 - The wall output is consumed as a browser source: a ProPresenter web Prop,
@@ -81,8 +81,7 @@ a script with no audio hardware, no key and no spend. Optional live
 translation with per-language replay buffers, so a phone joining mid-event
 and selecting a language replays *that* language's history. Live caption push
 to YouTube, plus a timed `.srt` export of every committed line. Keyterm
-priming for campus proper nouns, and a blocklist. Installers for Windows and
-macOS.
+priming for campus proper nouns, and a blocklist. A macOS disk image.
 
 **Terminology this product uses.** Wall view, phone view, QR page, relay,
 capture client, status page, preflight, keyterms, rehearsal/mock backend;

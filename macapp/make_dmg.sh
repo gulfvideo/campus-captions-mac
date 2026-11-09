@@ -10,8 +10,7 @@
 # image and dragging one icon onto a folder is the gesture every Mac user
 # already knows, and it puts the app in /Applications by construction. A zip
 # leaves "Campus Captions.app" loose in Downloads, where it runs perfectly
-# well until someone empties that folder - and "extract this first" is the
-# exact step this project set out to remove from the Windows side.
+# well until someone empties that folder.
 #
 # hdiutil only, no Homebrew, no create-dmg: this runs on a CI runner and on
 # whatever Mac happens to be to hand. The window has no custom background or

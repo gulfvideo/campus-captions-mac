@@ -1,4 +1,4 @@
-"""Start everything. Run by "Start Captions.bat"; no terminal knowledge needed.
+"""Start everything. Run by "Start Captions.command"; no terminal knowledge needed.
 
 Creates the virtual environment on first run, installs pinned dependencies,
 starts the relay, waits for it to answer, starts the capture client, opens the
@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VENV = ROOT / ".venv"
-VENV_PY = VENV / "Scripts" / "python.exe" if os.name == "nt" else VENV / "bin" / "python"
+VENV_PY = VENV / "bin" / "python"
 REQUIREMENTS = ROOT / "requirements.txt"
 STAMP = VENV / ".requirements-stamp"
 ENV_FILE = ROOT / ".env"
@@ -171,12 +171,7 @@ def spawn(python: Path, args: list[str], title: str) -> subprocess.Popen:
 
 
 def port_in_use(port: int) -> bool:
-    """Connect, don't bind.
-
-    A bind probe is wrong on Windows: with SO_REUSEADDR it succeeds even when
-    another process is already listening, so the port looks free when it is not.
-    If a connection is accepted, something is there.
-    """
+    """Connect, don't bind: if a connection is accepted, something is there."""
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.8)
@@ -226,20 +221,7 @@ def capture_args(port: int) -> list[str]:
 def port_owner(port: int) -> str:
     """Best effort name of whatever holds the port, for the error message."""
     try:
-        if os.name == "nt":
-            out = subprocess.run(["netstat", "-ano"], capture_output=True,
-                                 text=True, timeout=5).stdout
-            for line in out.splitlines():
-                if f":{port} " in line and "LISTENING" in line:
-                    pid = line.split()[-1]
-                    task = subprocess.run(
-                        ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-                        capture_output=True, text=True, timeout=5).stdout.strip()
-                    name = task.split(",")[0].strip('"') if task else "unknown"
-                    return f"{name} (PID {pid})"
-            return ""
-
-        # macOS and Linux: lsof prints COMMAND and PID in the first two columns.
+        # lsof prints COMMAND and PID in the first two columns.
         out = subprocess.run(
             ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
             capture_output=True, text=True, timeout=5).stdout

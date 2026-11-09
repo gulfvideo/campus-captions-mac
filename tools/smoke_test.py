@@ -1,7 +1,6 @@
 r"""End-to-end check of the relay against a real uvicorn process.
 
-    .venv/bin/python tools/smoke_test.py "$(pwd)"          # macOS / Linux
-    .venv\Scripts\python.exe tools\smoke_test.py %cd%       # Windows
+    .venv/bin/python tools/smoke_test.py "$(pwd)"
 
 Starts the relay on port 8765 with fixed test tokens and a temporary copy of
 config/event.example.toml, then checks operator sign-in and the cookie
@@ -62,10 +61,9 @@ proc = subprocess.Popen([PY, "-u", "-m", "relay", "--port", str(PORT), "--config
                         cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 # Drain the relay's output as it comes. Reading it only at the end let the
-# pipe fill up - a Windows pipe holds about 4 KiB, a Linux one 64 KiB - and
-# once it was full the relay blocked on its next print(), mid-startup, and
-# never answered. Which looked exactly like a relay that failed to come back
-# on its port, and only on Windows.
+# pipe fill up, and once it was full the relay blocked on its next print(),
+# mid-startup, and never answered. Which looked exactly like a relay that
+# failed to come back on its port.
 relay_lines: list[str] = []
 def _drain():
     for line in proc.stdout:

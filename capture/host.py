@@ -27,9 +27,6 @@ SAMPLE_SECONDS = 2.0          # CPU and memory
 PROCESS_SECONDS = 10.0        # the busiest-programs list; walking every process costs more
 TOP_PROCESSES = 4
 TOP_MIN_PERCENT = 5.0         # below this a program is not worth naming
-# Not programs: Windows accounts idle time to a pseudo-process, which would
-# otherwise top every list at 80%.
-IDLE_NAMES = {"system idle process", "idle"}
 
 
 class HostMonitor:
@@ -88,7 +85,7 @@ class HostMonitor:
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     continue
                 name = (proc.info.get("name") or "").strip() or f"pid {proc.pid}"
-                if name.lower() in IDLE_NAMES or pct <= 0:
+                if pct <= 0:
                     continue
                 by_name[name[:48]] = by_name.get(name[:48], 0.0) + pct
         except Exception:

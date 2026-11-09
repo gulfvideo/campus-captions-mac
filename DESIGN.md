@@ -258,7 +258,7 @@ Hyperlegible available to the reader
 tight, neutral, slightly condensed at display sizes, with no personality of
 its own competing for attention. Figtree is the deliberate fallback because
 it matches SF's proportions closely enough that a layout does not reflow
-between the designer's Mac and the Windows machine in the booth.
+between the designer's Mac and the booth machine.
 
 Caption text is a separate decision from interface text and must stay that
 way. It uses a plain grotesque at the largest size the frame allows, because

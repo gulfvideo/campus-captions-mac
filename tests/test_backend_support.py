@@ -3,7 +3,7 @@
 The regression this file exists for: config/event.example.toml shipped
 `backend = "apple_speech"`, and a fresh clone has no config/event.toml, so
 both the relay and the capture client fell back to the example - and every
-Windows install came up on a macOS-only backend that could only ever report
+install on an older Mac came up on a backend that could only ever report
 an error at the first "Open ASR stream".
 
 Standard library only, and deliberately no import of registry.py: the point

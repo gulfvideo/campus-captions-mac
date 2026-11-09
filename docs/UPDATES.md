@@ -39,13 +39,11 @@ running an untampered one.
 ```
 release tag v0.4.0-beta
         │
-        ├── windows job ──┐
-        ├── macos job ────┤  built assets
+        ├── macos job ────┐  built assets
         │                 ▼
         └── publish-update  ──►  R2 bucket
                                    /0.4.0-beta/CampusCaptions-0.4.0-beta-AppleSilicon.dmg
                                    /0.4.0-beta/CampusCaptions-0.4.0-beta-Intel.dmg
-                                   /0.4.0-beta/CampusCaptions-Setup-0.4.0-beta.exe
                                    /latest.json          ← written last
 ```
 
@@ -116,8 +114,8 @@ Cloudflare account.
 
 ## Cutting a release
 
-Unchanged: push a `v*` tag. The Windows and macOS jobs build as they always
-did, and `publish-update` runs after **both** succeed. If either fails no
+Unchanged: push a `v*` tag. The macOS job builds both architectures as it
+always did, and `publish-update` runs after it succeeds. If it fails no
 manifest is published and everyone stays on the version they have, which is
 the safe outcome — a manifest naming a build that failed offers a download
 that 404s.

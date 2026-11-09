@@ -409,7 +409,7 @@ class CaptureApp:
         """Reopen an input that has stopped calling us back.
 
         PortAudio will happily report a stream as active after the driver has
-        stopped delivering callbacks - seen on Windows, and the same shape as
+        stopped delivering callbacks - the same shape as
         an interface unplugged and replugged mid-event. Nothing downstream
         notices: the meter holds its last value and the backend keeps decoding
         a buffer nobody refills, so the captions stop with no error anywhere.
@@ -491,9 +491,9 @@ class CaptureApp:
                 "stream_open": self.backend.stream_open,
                 "backend": self.cfg.backend,
                 # Only what this machine can run. The status page turns this
-                # straight into its picker, and offering apple_speech on a
-                # Windows booth is offering a choice that can only ever
-                # report an error.
+                # straight into its picker, and offering apple_speech on an
+                # older Mac is offering a choice that can only ever report
+                # an error.
                 "available_backends": backend_support.supported(),
                 "has_deepgram_key": bool(os.environ.get("DEEPGRAM_API_KEY", "").strip()),
                 "device": str(self.input.device),

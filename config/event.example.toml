@@ -90,7 +90,7 @@ keys = []                   # e.g. ["obs:abc123", "propresenter:def456"]
 [capture]
 # "auto" picks a backend this machine can actually run - apple_speech on a
 # Mac new enough for it, practice mode (mock) everywhere else - so this one
-# shipped file is right on Windows and macOS both. The setup wizard (opened
+# shipped file is right on every Mac. The setup wizard (opened
 # on first run, or /setup any time after) is where a real choice gets made
 # and written back here; the status page's picker changes it live.
 backend = "auto"      # auto | mock | deepgram | apple_speech | whisper

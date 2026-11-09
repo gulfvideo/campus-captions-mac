@@ -1,15 +1,13 @@
-# Line endings are load-bearing for the launchers.
+# Line endings are load-bearing for the launcher.
 #
 # A .command with CRLF fails on macOS with "bad interpreter: /bin/bash^M",
 # which is a confusing way to learn about line endings in an AV booth.
-# A .bat with LF misbehaves in cmd.exe. Pin both regardless of who commits.
 
 *.command  text eol=lf
 *.sh       text eol=lf
-*.bat      text eol=crlf
 
 # The viewer pages carry inline scripts whose Content-Security-Policy hash the
-# relay computes from the file. The hash is now line-ending independent (see
-# relay/server.py _script_hash), but a Windows checkout with CRLF pages still
-# differs byte-for-byte from what everyone else runs; pin them to LF too.
+# relay computes from the file. The hash is line-ending independent (see
+# relay/server.py _script_hash), but a CRLF checkout still differs
+# byte-for-byte from what everyone else runs; pin them to LF too.
 *.html     text eol=lf

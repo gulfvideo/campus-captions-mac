@@ -259,7 +259,6 @@ class FetchTargetTests(unittest.TestCase):
             ("darwin", "arm64"): "macos-arm64",
             ("darwin", "aarch64"): "macos-arm64",
             ("darwin", "x86_64"): "macos-x86_64",
-            ("win32", "AMD64"): "windows-x86_64",
         }
         for (system, machine), expected in cases.items():
             with self.subTest(system=system, machine=machine):

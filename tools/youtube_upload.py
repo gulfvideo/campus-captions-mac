@@ -29,13 +29,15 @@ default 10,000/day quota, so roughly 25 uploads a day.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from launcher.launch import read_env_var  # noqa: E402 - the environment, then .env
 CLIENT_SECRET = ROOT / "config" / "google_client_secret.json"
 TOKEN_FILE = ROOT / "config" / "google_token.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
@@ -97,19 +99,6 @@ def authenticate():
         print(f"signed in; token cached in {TOKEN_FILE}")
 
     return creds
-
-
-def read_env_var(key: str) -> str:
-    """The environment, then the project's .env - where the relay keeps it."""
-    value = os.environ.get(key, "").strip()
-    env_file = ROOT / ".env"
-    if value or not env_file.exists():
-        return value
-    for raw in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
 
 
 def fetch_from_relay(relay: str, lang: str, token: str, out: Path) -> Path:

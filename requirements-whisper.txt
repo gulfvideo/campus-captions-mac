@@ -4,8 +4,7 @@
 # a machine that runs ASR offline - the booth install stays lean if it uses
 # Deepgram. Install alongside the main requirements:
 #
-#   macOS    .venv/bin/python -m pip install -r requirements-whisper.txt
-#   Windows  .venv\Scripts\python.exe -m pip install -r requirements-whisper.txt
+#   .venv/bin/python -m pip install -r requirements-whisper.txt
 #
 # Verified importable on Python 3.14.6; every wheel is prebuilt, nothing
 # compiles at install time.

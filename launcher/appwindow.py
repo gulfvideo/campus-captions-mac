@@ -11,13 +11,11 @@ Not every machine has one. Firefox has no equivalent flag and Safari has none
 either, so `open_link` falls back to a normal browser tab and says so rather
 than failing. A tab is a worse experience, not a broken one.
 
-Nothing here is macOS- or Windows-specific beyond where the browsers are
-installed; both packaged front ends and the source launcher use it.
+The menu bar app and the source launcher both use it.
 """
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
@@ -31,16 +29,7 @@ MODES = (APP, BROWSER)
 DEFAULT_MODE = APP
 
 # Chromium-family browsers that understand --app=, most preferred first.
-# Edge is first on Windows because it is always there; Chrome is first
-# elsewhere because a machine that has it usually prefers it.
-_WINDOWS_CANDIDATES = (
-    r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
-    r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
-    r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
-    r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
-    r"%LocalAppData%\Google\Chrome\Application\chrome.exe",
-    r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
-)
+# Chrome first because a machine that has it usually prefers it.
 _MACOS_CANDIDATES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
@@ -55,29 +44,11 @@ _UNIX_COMMANDS = (
 
 def find_browser() -> str | None:
     """A Chromium-family browser that can open an app window, or None."""
-    if sys.platform == "win32":
-        for candidate in _WINDOWS_CANDIDATES:
-            path = Path(os.path.expandvars(candidate))
-            if path.is_file():
-                return str(path)
-        # Some installs are only on PATH.
-        for name in ("msedge", "chrome", "brave"):
-            found = shutil.which(name)
-            if found:
-                return found
-        return None
-
     if sys.platform == "darwin":
         for candidate in _MACOS_CANDIDATES:
             if Path(candidate).is_file():
                 return candidate
-        # A Homebrew or user-local install.
-        for name in _UNIX_COMMANDS:
-            found = shutil.which(name)
-            if found:
-                return found
-        return None
-
+    # A Homebrew or user-local install, or Linux.
     for name in _UNIX_COMMANDS:
         found = shutil.which(name)
         if found:
@@ -114,9 +85,6 @@ def open_app_window(url: str, data_dir) -> bool:
             [browser, f"--app={url}", f"--user-data-dir={profile}",
              "--no-first-run", "--no-default-browser-check"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            # Windows: do not flash a console window behind the app.
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            if sys.platform == "win32" else 0,
         )
         return True
     except (OSError, ValueError) as exc:

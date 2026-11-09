@@ -37,8 +37,7 @@ that cannot run.
 2. Drag **Campus Captions** onto **Applications**.
 3. **Control-click** it in Applications and choose **Open**, then confirm.
    (Double-clicking the first time gives an "unidentified developer" refusal
-   with no way past it — same reason as the Windows prompt above, and also
-   once per Mac.)
+   with no way past it. Once per Mac.)
 4. macOS asks for microphone access, and for speech recognition if you use the
    on-device backend. Allow both, or there is nothing to caption.
 
@@ -83,11 +82,10 @@ After the first run, Campus Captions goes straight to the status page instead.
 
 For development, or on a machine where an installer cannot be run:
 
-1. Install **Python 3.11 or newer** from python.org. On Windows, tick
-   **"Add Python to PATH"** during setup. Tested on 3.14.6.
+1. Install **Python 3.11 or newer** from python.org, or `brew install
+   python@3.12`. Tested on 3.14.6.
 2. Copy the whole `campus-captions` folder onto the machine.
-3. Double-click **`Start Captions.bat`** on Windows or
-   **`Start Captions.command`** on macOS.
+3. Double-click **`Start Captions.command`**.
 
 The first run creates a virtual environment and installs dependencies — about a
 minute, once. Every later run starts in a couple of seconds. If the window
@@ -128,11 +126,10 @@ installer:
 
 | | |
 |---|---|
-| Windows | `%LOCALAPPDATA%\Campus Captions` |
-| macOS | `~/Library/Application Support/Campus Captions` (logs in `~/Library/Logs/Campus Captions`) |
+| Installed app | `~/Library/Application Support/Campus Captions` (logs in `~/Library/Logs/Campus Captions`) |
 | From source | the checkout itself |
 
-The tray or menu bar menu opens both folders for you.
+The menu bar menu opens both folders for you.
 
 ---
 
@@ -228,7 +225,7 @@ per-minute cost, and after the first run, no network at all.
 
 Requirements:
 
-- **macOS 26 or newer.** Anywhere else — Windows, Linux, an older Mac — this
+- **macOS 26 or newer.** On an older Mac this
   backend is not offered at all: it is absent from the setup wizard and from
   the status page's picker, and `backend = "apple_speech"` in a config file is
   substituted for one that works, with a line in the log saying so.
@@ -340,11 +337,11 @@ enabled - press Disable first.
 
 ---
 
-## 3d. The Whisper backend (any OS)
+## 3d. The Whisper backend (any macOS version)
 
 `backend = "whisper"` runs recognition entirely on-device via faster-whisper -
-no API key, no per-minute cost, works on Windows/Linux too (not just macOS
-26+ like `apple_speech`).
+no API key, no per-minute cost, and no macOS 26 requirement (unlike
+`apple_speech`).
 
 **Whisper needs its speech model downloaded once**, a few hundred megabytes.
 The installed app ships the Whisper software but not the model, so there is a
@@ -523,12 +520,7 @@ this once and write the address down.
 
 **Open the port inbound.** A firewall may block it, which shows up
 as: the status page works on the booth machine, but phones and ProPresenter on
-another machine cannot connect. On Windows, run this once in an
-**Administrator** PowerShell:
-
-```powershell
-New-NetFirewallRule -DisplayName "Campus Captions relay" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Domain,Private
-```
+another machine cannot connect.
 
 On macOS, if prompted to allow incoming connections for Python, choose
 **Allow**. You can review this later under **System Settings > Network >
@@ -551,17 +543,11 @@ images from the internet.
 
 ## 5. Audio input device
 
-Device indices are **not** stable between machines. Windows may list the same
-physical microphone several times, once per host API (MME, DirectSound, WASAPI,
-WDM-KS), so index 3 on your laptop is something else entirely in the booth.
+Device indices are **not** stable between machines: they renumber when an
+interface is plugged in, so index 3 on your laptop is something else entirely
+in the booth.
 
 See what a machine actually has:
-
-```
-.venv\Scripts\python.exe -m capture --list-devices
-```
-
-On macOS, the equivalent command is:
 
 ```bash
 .venv/bin/python -m capture --list-devices
@@ -569,26 +555,17 @@ On macOS, the equivalent command is:
 
 ```
  idx  name                                    host api            in    rate
-   3  Microphone (Yeti Classic)               MME                  2   44100
-  33  Microphone (Yeti Classic)               Windows DirectSound  2   44100
-  78  Microphone (Yeti Classic)               Windows WASAPI       2   48000
+   0  MacBook Pro Microphone                  Core Audio           1   48000
+   2  Scarlett 2i2 USB                        Core Audio           2   48000
 ```
 
 **Select by name, not by index.** In `config/event.toml`:
 
 ```toml
-device = "Yeti"          # any part of the name, case-insensitive
+device = "Scarlett"      # any part of the name, case-insensitive
 ```
 
-A name that matches several entries resolves to the WASAPI one (the modern,
-lowest-latency host API on Windows), and the log line tells you which it picked
-and what the alternatives were:
-
-```
-[audio] 'Yeti' matched 4 devices, using 78 [Windows WASAPI] (also 33:..., 3:..., 122:...)
-```
-
-An index still works if you want one specific entry: `device = "78"`. Leaving it
+An index still works if you want one specific entry: `device = "2"`. Leaving it
 empty uses the system default input.
 
 You can also change the input after startup. Open the status page and choose an
@@ -721,7 +698,7 @@ What it checks, and what the words mean:
 | Finding | What to do |
 |---|---|
 | **Capture client** not connected | Start Campus Captions with the launcher; check the capture window for an error. |
-| **Audio input**: another program has the device | On Windows, untick *exclusive mode* in OBS/vMix, or in Settings › Sound › the device › Advanced. Or pick a different input. |
+| **Audio input**: another program has the device | Quit the program that has it open, or pick a different input. |
 | **Audio level** silent | Say something into the mic, or check the send from the desk, and run again. |
 | **Audio level** clipping | Turn the gain down until the meter peaks near "good". |
 | **Transcription**: no Deepgram key / mock backend | Add the key under Settings; pick a real backend for the service. |
@@ -1012,7 +989,7 @@ Roughly 30 minutes before doors.
 **Setup**
 
 - [ ] Relay host is on, on the network, at its expected IP address
-- [ ] `Start Captions.bat` run — window shows `--- ready ---`
+- [ ] `Start Captions.command` run — window shows `--- ready ---`
 - [ ] Status page open in the booth, via the launcher's link (`/status?token=…`)
 - [ ] the status page shows the backend you intend for a real event — usually
       `deepgram`, never `mock`

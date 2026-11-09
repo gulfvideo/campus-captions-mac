@@ -25,7 +25,7 @@ def held_port() -> tuple[socket.socket, int]:
     taken and the ones above it are plausibly free.
 
     Not port 0: that hands out an ephemeral port, and right after a smoke
-    run the ephemeral range is full of Windows' closing connections, which
+    run the ephemeral range is full of closing connections, which
     made the "next free port" search come up empty for twenty ports in a
     row. The relay's own port lives well below that range too.
     """

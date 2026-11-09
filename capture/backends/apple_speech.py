@@ -92,12 +92,11 @@ class AppleSpeechBackend(ASRBackend):
 
     @classmethod
     def unsupported_reason(cls) -> str | None:
-        # SpeechAnalyzer is a macOS 26 API with no equivalent anywhere else,
-        # so a Windows or Linux machine can never run this however it is
-        # configured. Saying so here keeps it out of the status page's picker
-        # and out of the automatic default on those machines - it used to be
-        # the shipped default for everyone, which put every fresh Windows
-        # install on a backend that could only ever report an error.
+        # SpeechAnalyzer is a macOS 26 API, so an older Mac can never run
+        # this however it is configured. Saying so here keeps it out of the
+        # status page's picker and out of the automatic default there - it
+        # used to be the shipped default for everyone, which put every
+        # fresh install on a backend that could only ever report an error.
         return _unsupported_reason()
 
     def __init__(self, config: dict | None = None):

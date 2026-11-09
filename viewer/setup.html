@@ -9,14 +9,6 @@
   /* Same palette and controls as the status and settings pages: this is the
      first thing an operator ever sees, and nothing it teaches them should
      have to be relearned two screens later. */
-  /* Legacy names this page's rules still use, pointed at the shared
-     palette in theme.css rather than carrying a second opinion. */
-  :root {
-    --panel: #1C1C1E;
-    --edge: #2C2C2E;
-    --dim: #8E8E93;
-    --link: #0A84FF;
-  }
   * { box-sizing: border-box; }
   body {
     margin: 0 auto; background: var(--bg); color: var(--text);
@@ -26,11 +18,11 @@
   h1 { font-size: 23px; margin: 0 0 6px; font-weight: 600; }
   h2 { font-size: 19px; margin: 0 0 10px; font-weight: 600; }
   p { margin: 0 0 14px; }
-  p.sub { color: var(--dim); font-size: 14.5px; }
-  a { color: var(--link); }
+  p.sub { color: var(--text-3); font-size: 14.5px; }
+  a { color: var(--accent); }
   code {
     font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px;
-    background: #262b33; border: 1px solid var(--edge); border-radius: 5px;
+    background: #262b33; border: 1px solid var(--raised); border-radius: 5px;
     padding: 1px 5px; word-break: break-all;
   }
 
@@ -38,18 +30,18 @@
   ol.rail {
     display: flex; gap: 6px; list-style: none; margin: 0 0 24px; padding: 0;
     font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--dim); font-weight: 700;
+    color: var(--text-3); font-weight: 700;
   }
   ol.rail li {
-    flex: 1; padding-top: 9px; border-top: 3px solid var(--edge);
+    flex: 1; padding-top: 9px; border-top: 3px solid var(--raised);
     transition: border-color 200ms, color 200ms;
   }
-  ol.rail li.done { border-top-color: #2b8a51; color: var(--dim); }
-  ol.rail li.now { border-top-color: var(--link); color: var(--text); }
+  ol.rail li.done { border-top-color: #2b8a51; color: var(--text-3); }
+  ol.rail li.now { border-top-color: var(--accent); color: var(--text); }
 
   /* ---- step card ---- */
   section.step {
-    background: var(--panel); border: 1px solid var(--edge);
+    background: var(--card); border: 1px solid var(--raised);
     border-radius: 14px; padding: 22px;
   }
   section.step[hidden] { display: none; }
@@ -57,11 +49,11 @@
   .field { margin: 0 0 18px; }
   .field > label {
     display: block; font-size: 13px; font-weight: 700; letter-spacing: .09em;
-    text-transform: uppercase; color: var(--dim); margin-bottom: 7px;
+    text-transform: uppercase; color: var(--text-3); margin-bottom: 7px;
   }
   input[type=text], input[type=password], select {
     width: 100%; min-height: 48px; font: inherit; color: var(--text);
-    background: #262b33; border: 1px solid var(--edge); border-radius: 9px;
+    background: #262b33; border: 1px solid var(--raised); border-radius: 9px;
     padding: 10px 12px;
   }
   select { padding-right: 36px; }
@@ -69,32 +61,32 @@
   button {
     font: inherit; font-weight: 600; font-size: 15px;
     padding: 13px 21px; border-radius: 10px; cursor: pointer;
-    border: 1px solid var(--edge); background: #262b33; color: var(--text);
+    border: 1px solid var(--raised); background: #262b33; color: var(--text);
   }
   button:hover:not(:disabled) { background: #2f353f; }
   button:disabled { opacity: .38; cursor: default; }
   button.go { background: #1f6b3d; border-color: #2b8a51; }
   button.go:hover:not(:disabled) { background: #248049; }
-  button.quiet { background: none; border-color: transparent; color: var(--dim); font-weight: 500; }
+  button.quiet { background: none; border-color: transparent; color: var(--text-3); font-weight: 500; }
   button.quiet:hover:not(:disabled) { background: #262b33; color: var(--text); }
 
   nav.actions {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--edge);
+    margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--raised);
   }
   nav.actions .spacer { flex: 1; }
 
   /* ---- backend choices ---- */
   .choice {
     display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px;
-    border: 1px solid var(--edge); border-radius: 11px; margin-bottom: 9px;
+    border: 1px solid var(--raised); border-radius: 11px; margin-bottom: 9px;
     cursor: pointer;
   }
   .choice:hover { background: #262b33; }
   .choice input { margin-top: 4px; width: 18px; height: 18px; flex: none; accent-color: #5aa2f0; }
-  .choice.picked { border-color: var(--link); background: #232935; }
+  .choice.picked { border-color: var(--accent); background: #232935; }
   .choice .name { font-weight: 600; display: block; }
-  .choice .why { color: var(--dim); font-size: 14px; display: block; margin-top: 2px; }
+  .choice .why { color: var(--text-3); font-size: 14px; display: block; margin-top: 2px; }
   .tag {
     display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .07em;
     text-transform: uppercase; border-radius: 999px; padding: 2px 8px;
@@ -106,7 +98,7 @@
   /* ---- level meter ---- */
   .meter {
     height: 22px; border-radius: 7px; background: #262b33;
-    border: 1px solid var(--edge); overflow: hidden; margin-bottom: 8px;
+    border: 1px solid var(--raised); overflow: hidden; margin-bottom: 8px;
   }
   .meter > i {
     display: block; height: 100%; width: 0;
@@ -119,21 +111,21 @@
   .verdict.bad { color: var(--bad); }
 
   ul.links { list-style: none; margin: 0 0 16px; padding: 0; }
-  ul.links li { padding: 11px 0; border-top: 1px solid var(--edge); }
+  ul.links li { padding: 11px 0; border-top: 1px solid var(--raised); }
   ul.links li:first-child { border-top: 0; }
   ul.links .what { font-weight: 600; }
-  ul.links .who { color: var(--dim); font-size: 14px; }
+  ul.links .who { color: var(--text-3); font-size: 14px; }
 
   .note {
-    border-left: 3px solid var(--edge); padding: 2px 0 2px 13px;
-    color: var(--dim); font-size: 14.5px; margin: 0 0 16px;
+    border-left: 3px solid var(--raised); padding: 2px 0 2px 13px;
+    color: var(--text-3); font-size: 14.5px; margin: 0 0 16px;
   }
   .note.warn { border-left-color: var(--warn); }
   .note.bad { border-left-color: var(--bad); color: var(--text); }
 
   #toast {
     position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: 22px; background: #2f353f; border: 1px solid var(--edge);
+    bottom: 22px; background: #2f353f; border: 1px solid var(--raised);
     padding: 11px 19px; border-radius: 9px; font-size: 14px;
     opacity: 0; transition: opacity 220ms; pointer-events: none;
   }

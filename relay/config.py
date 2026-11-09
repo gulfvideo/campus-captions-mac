@@ -37,9 +37,6 @@ def _data_dir() -> Path:
     """
     if not FROZEN:
         return ROOT
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA", "").strip()
-        return Path(base or Path.home() / "AppData" / "Local") / APP_NAME
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
     base = os.environ.get("XDG_DATA_HOME", "").strip()
@@ -50,15 +47,12 @@ def _log_dir() -> Path:
     """The packaged app has no terminal to print to and `sys._MEIPASS` is a
     temp directory that's gone by the next launch, so its logs go in a
     standard per-user location instead - Console.app finds ~/Library/Logs/*
-    on its own, and the Windows tray app's "Show Logs" opens this folder.
+    on its own, and the menu bar's "Show Logs in Finder" opens this folder.
     Running from source, next to the code."""
     if not FROZEN:
         return ROOT / "logs"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Logs" / APP_NAME
-    # Windows and Linux have no equivalent per-user log convention that a
-    # tool would find on its own, so they go beside the config the tray
-    # app's menu already opens.
     return _data_dir() / "logs"
 
 
@@ -74,12 +68,11 @@ ENV_FILE = DATA_DIR / ".env"
 
 # Hand-edited files that must exist somewhere writable. resolve_path() looks
 # in DATA_DIR before the bundle, so without seeding these the packaged app
-# reads the copies inside the bundle - which on macOS is read-only and
-# code-signed (editing one there breaks the signature: "a sealed resource is
-# missing or invalid") and on Windows lives under Program Files, which a
-# standard user account cannot write to at all. Either way the Settings page
-# would be telling the operator to edit a file they cannot edit, and "Reload
-# keyterms & blocklist" would re-read the shipped one every time.
+# reads the copies inside the bundle - which is read-only and code-signed
+# (editing one there breaks the signature: "a sealed resource is missing or
+# invalid"). The Settings page would be telling the operator to edit a file
+# they cannot edit, and "Reload keyterms & blocklist" would re-read the
+# shipped one every time.
 SEEDED_CONFIG_FILES = ("keyterms.txt", "blocklist.txt")
 
 # The two hand-maintained word lists, by the short name the Settings page and
@@ -110,8 +103,7 @@ def wordlist_path(name: str) -> Path:
 def ensure_data_dir() -> None:
     """First run of the packaged app: give it real files to edit, copied from
     the ones shipped in the bundle, in the folder the status page writes to
-    and the menu bar's "Show Config Folder in Finder" (macOS) or the tray
-    menu's "Open Config Folder" (Windows) opens."""
+    and the menu bar's "Show Config Folder in Finder" opens."""
     if not FROZEN:
         return
     try:
@@ -157,7 +149,7 @@ class _Tee:
             return False
 
 
-_logging_ready = False
+_logging_ready: set[str] = set()
 
 
 def setup_logging(name: str = "relay") -> None:
@@ -165,12 +157,12 @@ def setup_logging(name: str = "relay") -> None:
     crash or a silent failure - like a backend that reports an error nobody
     was watching the terminal to see - leaves something to reference
     afterward instead of vanishing with the packaged app's nonexistent
-    console. Idempotent: safe to call every time load() runs.
+    console. Idempotent per name: safe to call every time load() runs, and
+    the packaged app (relay and capture in one process) gets both logs.
     """
-    global _logging_ready
-    if _logging_ready:
+    if name in _logging_ready:
         return
-    _logging_ready = True
+    _logging_ready.add(name)
     try:
         log_dir = _log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -226,8 +218,7 @@ def has_control_chars(value: str) -> bool:
 
 
 def write_private(path: Path, text: str) -> None:
-    """Write a file only its owner can read (0600). On Windows the mode is
-    advisory; the per-user profile ACL does the equivalent job there."""
+    """Write a file only its owner can read (0600)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
@@ -613,29 +604,21 @@ def port_is_free(host: str, port: int) -> bool:
     """Can the relay bind this port right now?
 
     A bind test, not a connect probe: binding is what the relay actually has
-    to do. No SO_REUSEADDR, so a port another process is already listening
-    on reports busy on Windows as well as macOS and Linux.
+    to do.
     """
     bind_host = "0.0.0.0" if host in ("", "0.0.0.0", "*") else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        # Bind the way uvicorn will. On macOS and Linux that means
-        # SO_REUSEADDR, without which a port whose last connections are
-        # still in TIME_WAIT - exactly the state a just-restarted relay's
-        # own port is in - reports busy for a minute and a port change back
-        # to it is refused. On Windows SO_REUSEADDR means something else
-        # (it lets a bind take a port that is actually in use), so there
-        # the bind stays plain; TIME_WAIT does not block a bind on Windows.
-        if sys.platform != "win32":
-            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Bind the way uvicorn will: with SO_REUSEADDR, without which a port
+        # whose last connections are still in TIME_WAIT - exactly the state a
+        # just-restarted relay's own port is in - reports busy for a minute.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((bind_host, port))
         except OSError:
             return False
-    # Second opinion, for the cases the bind cannot see: Windows lets a
-    # wildcard bind succeed beside a program bound to 127.0.0.1 alone, and
-    # SO_REUSEADDR hides a listener on some systems. Anything answering on
-    # loopback means taken - the same probe the launcher uses, so the two
-    # always agree.
+    # Second opinion, for what the bind cannot see: SO_REUSEADDR hides a
+    # listener on some systems. Anything answering on loopback means taken -
+    # the same probe the launcher uses, so the two always agree.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.3)
         if probe.connect_ex(("127.0.0.1", port)) == 0:

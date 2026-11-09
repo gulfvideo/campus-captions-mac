@@ -6,7 +6,7 @@ what is **not** known is how the real application behaves, and that is what
 this plan finds out. Write the answers into the "Findings" section at the
 bottom and commit them - the requirements (N-04) want a written decision.
 
-Target: ProPresenter 21 on macOS. Windows later.
+Target: ProPresenter 21 on macOS.
 
 ## 0. Setup (10 minutes)
 
@@ -96,11 +96,6 @@ And from the status page's Captions tile: latency median and p95 (that is
 speech to relay, independent of ProPresenter).
 
 Note any visual glitch with a timestamp so it can be matched to the relay log.
-
-## 5. Windows (when a Windows ProPresenter is available)
-
-Repeat sections 0 to 3. Note firewall prompts and whether the API port needed
-allowing.
 
 ## Findings
 
