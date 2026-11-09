@@ -366,6 +366,19 @@ class Hub:
             snap.update(self.snapshot_extra())
         return snap
 
+    def new_session(self) -> str:
+        """The next event, without a relay restart: a new session id (so
+        every phone wipes its screen on the next heartbeat and old final ids
+        can never collide with new ones), empty replay buffers, and a clear
+        so the wall goes blank now rather than at the next commit."""
+        self.session_id = uuid.uuid4().hex[:8]
+        self.state.session_id = self.session_id
+        self.finals.clear()
+        self._utterance_started = None
+        self.broadcast({"type": "clear"})
+        self.heartbeat()
+        return self.session_id
+
     def heartbeat(self) -> None:
         self.broadcast({
             "type": "heartbeat",

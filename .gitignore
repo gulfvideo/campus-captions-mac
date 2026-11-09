@@ -85,3 +85,6 @@ integrations/companion-module-campus-captions/*.tgz
 .agents/
 skills-lock.json
 brag-output/
+
+# Transcripts archived by "Next event" when run from source
+transcripts/

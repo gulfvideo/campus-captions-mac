@@ -45,6 +45,20 @@ def recorded() -> transcript.TranscriptRecorder:
     return rec
 
 
+class ArchiveTests(unittest.TestCase):
+    def test_every_language_lands_on_disk_and_an_empty_recorder_writes_nothing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "transcripts"
+            written = recorded().archive(folder, "10 AM: Graduation / Spring")
+            names = sorted(p.name for p in written)
+            self.assertEqual(len(names), 4)                       # en + es, srt + txt
+            self.assertTrue(all(" 10 AM Graduation  Spring " in n for n in names), names)
+            spanish = [p for p in written if p.name.endswith(" es.txt")][0]
+            self.assertIn("Bienvenidos.", spanish.read_text(encoding="utf-8"))
+            self.assertEqual(transcript.TranscriptRecorder().archive(folder), [])
+
+
 class TimestampTests(unittest.TestCase):
     def test_srt_dialect_uses_comma(self):
         self.assertEqual(transcript.format_timestamp(3661.5), "01:01:01,500")

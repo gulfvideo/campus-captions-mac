@@ -25,6 +25,7 @@ import io
 import json
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 
 # Keep a cue on screen for at least this long even if the speaker was terse, and
@@ -160,6 +161,23 @@ class TranscriptRecorder:
             "utterance": msg.get("utterance", msg.get("id", "")),
         })
 
+    def archive(self, folder: Path, title: str = "") -> list[Path]:
+        """Write every language as .srt and .txt into `folder`, named by
+        the time and the event title. Used before a reset so a fast turnaround
+        between two services never loses the first one's transcript."""
+        written: list[Path] = []
+        if not self.count():
+            return written
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d %H%M", time.localtime(self.zero_time or self.started_at))
+        name = re.sub(r"[^\w\- ]+", "", title).strip() or "event"
+        for lang in self.languages():
+            for fmt in ("srt", "txt"):
+                path = folder / f"{stamp} {name} {lang}.{fmt}"
+                path.write_text(self.export(lang, fmt), encoding="utf-8")
+                written.append(path)
+        return written
+
     def clear(self) -> None:
         self.lines.clear()
         self.zero_time = None
@@ -199,7 +217,7 @@ class TranscriptRecorder:
             # Marking the start part way through an event is normal, and
             # clamping those earlier lines to zero would pile them on top of
             # each other at 00:00:00 where nobody could read them.
-            if end <= 0:
+            if end < 0:
                 continue
             start = max(0.0, start)
             if end - start > MAX_CUE_SECONDS * MAX_LINES:
@@ -294,7 +312,7 @@ class TranscriptRecorder:
         zero = self.zero_time if self.zero_time is not None else raw[0]["started"]
         out = []
         for entry in raw:
-            if entry["committed"] - zero - offset <= 0:
+            if entry["committed"] - zero - offset < 0:
                 continue
             out.append((max(0.0, entry["started"] - zero - offset), entry["text"]))
         return out

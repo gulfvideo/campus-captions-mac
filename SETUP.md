@@ -464,6 +464,13 @@ of whether live YouTube pushing (3b) is set up. On the status page, under
    cached at `config/google_token.json` (gitignored) after that. Uploads as a
    draft by default - add `--publish` to publish immediately.
 
+**Next event…** (on the status page once an event has ended) is the fast
+turnaround between two services without quitting: the transcript so far is
+written to `transcripts/` in the data folder as .srt and .txt for every
+language, then cleared; every phone and the wall are wiped; and the welcome
+screen comes back under the title you type (leave it blank to keep the old
+one). Settings, images and the audio input all stay as they were.
+
 **Reset transcript** clears the recorded record (for a rehearsal you don't
 want mixed into the real event's export) - it does not affect the live
 captions on the wall or phone views at all.

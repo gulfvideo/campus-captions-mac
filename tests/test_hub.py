@@ -25,6 +25,34 @@ def drain(client) -> list[dict]:
             return out
 
 
+class NewSessionTests(unittest.TestCase):
+    def setUp(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.hub = Hub(session_id="abc12345", source_language="en")
+        self.hub.add_source("src")
+        self.viewer = self.hub.add_viewer("phone", "p1")
+        self.hub.broadcast({"type": "final", "text": "Good morning."})
+        while not self.viewer.queue.empty():
+            self.viewer.queue.get_nowait()
+
+    def tearDown(self):
+        self.loop.close()
+        asyncio.set_event_loop(None)
+
+    def test_next_event_is_a_new_session_with_nothing_to_replay(self):
+        old = self.hub.session_id
+        new = self.hub.new_session()
+        self.assertNotEqual(old, new)
+        self.assertEqual(self.hub.state.session_id, new)
+        self.assertEqual(sum(len(b) for b in self.hub.finals.values()), 0)
+        kinds = []
+        while not self.viewer.queue.empty():
+            kinds.append(json.loads(self.viewer.queue.get_nowait()))
+        self.assertEqual([m["type"] for m in kinds], ["clear", "heartbeat"])
+        self.assertEqual(kinds[1]["session_id"], new)   # what makes a phone wipe itself
+
+
 class SpeechEndTests(unittest.TestCase):
     def setUp(self):
         # Client queues are asyncio.Queues; they need a loop to exist even

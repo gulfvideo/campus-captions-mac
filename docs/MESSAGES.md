@@ -534,6 +534,7 @@ action worked.
 ```
 POST /api/event           {"state": "live"}
 POST /api/event           {"title": "Fall Convocation", "message": "...", "notice": "...", "pause_message": "Intermission"}
+POST /api/event/next      {"title": "Noon Commencement"}   -> archives + clears the transcript, new session (phones and wall wiped), state "starting"
   ->  200 {"ok": true, "state": "live", "title": ..., "image": false, "image_v": 0, ...}
   ->  400 if state is not starting|live|paused|ended, or a field is too long
 PUT  /api/event/image     (body: the raw JPEG/PNG/WebP bytes, at most 5 MB)

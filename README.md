@@ -352,6 +352,7 @@ a password:
 | `GET /api/transcript.{srt,vtt,txt,json,csv}` | recorded captions as a file, `?lang=` and `?offset=` (operator-only); `.txt` takes `?timestamps=0` |
 | `POST /api/control` | `{"action": "open_stream"}` and friends - forwarded to the capture client, see `docs/MESSAGES.md` for the full list; `{"action": "caption", "text": "[Applause]"}` is relay-local |
 | `POST /api/event` | `{"state": "live"}` and the welcome-screen text; `PUT`/`DELETE /api/event/image` for its photo, `GET` is public |
+| `POST /api/event/next` | the next event without a restart: archives the transcript to `transcripts/` in the data folder, clears it, wipes phones and the wall, back to the welcome screen with `{"title": ...}` if given |
 | `GET /api/setup` | what the first-run wizard needs: the backends this machine can run and how to describe them, plus the addresses to hand out (operator-only) |
 | `POST /api/setup` | `{"completed": bool}` and/or `{"tour_completed": bool}` — the wizard's Finish and Skip, and the tour's (operator-only) |
 | `POST /api/setup` | `{"completed": true}` - the wizard's Finish and its Skip, written to `[setup]` in `event.toml` |

@@ -282,6 +282,7 @@
           <button class="pill tall light" id="btn-event-pause" type="button">Pause</button>
           <button class="pill tall light" id="btn-event-resume" type="button">Resume</button>
           <button class="pill tall danger" id="btn-event-end" type="button">End event&hellip;</button>
+          <button class="pill tall filled" id="btn-event-next" type="button">Next event&hellip;</button>
           <button class="pill tall" id="btn-close" type="button">Stop captions</button>
         </div>
       </div>
@@ -617,6 +618,8 @@
     $('btn-event-pause').hidden = ev.state !== 'live';
     $('btn-event-resume').hidden = ev.state !== 'paused';
     $('btn-event-end').disabled = ev.state === 'ended';
+    $('btn-event-end').hidden = ev.state === 'ended';
+    $('btn-event-next').hidden = ev.state !== 'ended';
 
     var fault = health && health.fault;
     var sub;
@@ -1002,6 +1005,23 @@
     $('btn-event-pause').onclick = function () { eventPost({ state: 'paused' }, 'Paused — attendees see the pause message'); };
     $('btn-event-resume').onclick = function () { eventPost({ state: 'live' }, 'Resumed'); };
     $('btn-event-end').onclick = function () { eventPost({ state: 'ended' }, 'Event ended'); };
+    // Fast turnaround between two services: the transcript so far is saved
+    // to the data folder, phones and the wall are wiped, and the welcome
+    // screen comes back under the new title.
+    $('btn-event-next').onclick = function () {
+      var title = window.prompt('Title for the next event:', '');
+      if (title === null) return;
+      var fields = title.trim() ? { title: title.trim() } : {};
+      fetch('/api/event/next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields)
+      }).then(jsonOrThrow).then(function (r) {
+        toast(r.archived && r.archived.length
+          ? 'Ready for the next event. Transcript saved to the data folder (transcripts).'
+          : 'Ready for the next event.');
+      })['catch'](function (e) { toast('Next event — ' + e.message); });
+    };
 
     $('btn-preflight').onclick = runPreflight;
 

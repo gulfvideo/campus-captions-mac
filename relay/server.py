@@ -1071,6 +1071,37 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 asyncio.create_task(propresenter.clear())
         return JSONResponse({"ok": True, **event.public()}, headers=NO_STORE)
 
+    @app.post("/api/event/next")
+    async def api_event_next(request: Request) -> JSONResponse:
+        """Relay-local. The next event without quitting: the transcript so
+        far is written to <data dir>/transcripts, then cleared; every phone and
+        the wall are wiped; the state goes back to the welcome screen with the
+        new title (or the old one). Settings, images and the input all stay."""
+        require_operator(request)
+        body = await read_json(request) or {}
+        saved = []
+        try:
+            saved = recorder.archive(config_module.DATA_DIR / "transcripts", event.title)
+        except OSError as exc:
+            print(f"[relay] could not archive the transcript: {exc}")
+        recorder.clear()
+        fields = {"state": "starting"}
+        if "title" in body:
+            fields["title"] = text_field(body, "title", 80, allow_empty=True)
+        event.update(**fields)
+        slides.set_live(False)
+        try:
+            config_module.save_event_settings(config_target(), fields)
+        except OSError as exc:
+            print(f"[relay] could not save event settings to disk: {exc}")
+        hub.new_session()
+        hub.broadcast_event()
+        if propresenter.enabled:
+            asyncio.create_task(propresenter.clear())
+        print(f"[relay] next event: session {hub.session_id}, {len(saved)} transcript file(s) archived")
+        return JSONResponse({"ok": True, "archived": [p.name for p in saved], **event.public()},
+                            headers=NO_STORE)
+
     async def store_image(request: Request, setter, what: str) -> JSONResponse:
         """The raw image bytes as the body (no multipart, no extra
         dependency). Type is sniffed from the bytes, never trusted from the
