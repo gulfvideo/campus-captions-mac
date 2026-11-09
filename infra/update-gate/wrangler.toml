@@ -12,8 +12,9 @@ name = "campus-captions-update-gate"
 main = "worker.js"
 compatibility_date = "2026-09-01"
 
+# A custom domain takes the bare hostname: no wildcard, no path.
 routes = [
-  { pattern = "updates.gulfvideo.io/*", custom_domain = true },
+  { pattern = "updates.gulfvideo.io", custom_domain = true },
 ]
 
 [[r2_buckets]]
