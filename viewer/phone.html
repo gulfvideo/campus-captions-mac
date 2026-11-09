@@ -342,7 +342,7 @@
   }
   #settings .font-btn.selected { background: rgba(255,255,255,0.28); }
   #speak-row[hidden] { display: none; }
-  #speak-btn[aria-checked="true"] { background: #0A84FF; }
+  #settings #speak-btn[aria-checked="true"] { background: #0A84FF; }
   #speak-note, #speak-status { color: rgba(255,255,255,0.6); font-size: 0.8125rem; margin: 8px 0 0; }
   #speak-status { color: #8ab4ff; }
   #speak-status[hidden] { display: none; }
@@ -796,12 +796,16 @@
   }
 
   // Phones in a service are on silent, and iOS mutes speech synthesis with
-  // the ring switch unless the page already counts as playing media. A
-  // looping 50 ms silent clip, started inside the reader's tap, puts the
-  // page in that mode for as long as the switch is on. Inline so it needs no
-  // request; the CSP allows media-src data: for it.
+  // the ring switch. Safari 17+ lets a page declare itself playback audio
+  // (navigator.audioSession), which is what plays through the switch; a
+  // looping 50 ms silent clip, started inside the reader's tap, is the
+  // fallback that keeps the page counted as playing media. Inline so it
+  // needs no request; the CSP allows media-src data: for it.
   var SILENCE = 'data:audio/wav;base64,' + 'UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
   function holdAudio(on) {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = on ? 'playback' : 'auto';
+    } catch (e) {}
     try {
       if (!silentClip) {
         silentClip = new Audio(SILENCE);
