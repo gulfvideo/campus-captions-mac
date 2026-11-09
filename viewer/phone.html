@@ -341,6 +341,9 @@
     font-family: inherit; font-size: 0.8125rem; -webkit-tap-highlight-color: transparent;
   }
   #settings .font-btn.selected { background: rgba(255,255,255,0.28); }
+  #speak-row[hidden] { display: none; }
+  #speak-btn[aria-checked="true"] { background: #0A84FF; }
+  #speak-note { color: rgba(255,255,255,0.6); font-size: 0.8125rem; margin: 8px 0 0; }
 
   #dbg {
     position: fixed; top: 6px; left: 6px; z-index: 9;
@@ -513,6 +516,13 @@
       <button class="font-btn" type="button" role="radio" aria-checked="false" data-font="atkinson">Dyslexia-friendly</button>
     </div>
   </fieldset>
+  <fieldset class="row" id="speak-row" hidden>
+    <legend class="label">Read aloud</legend>
+    <div class="fonts">
+      <button id="speak-btn" class="font-btn" type="button" role="switch" aria-checked="false">Speak each line</button>
+    </div>
+    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room.</p>
+  </fieldset>
 </div>
 <div id="dbg"></div>
 <script>
@@ -534,6 +544,8 @@
   // "Small"/"Huge" reads as a judgment on whoever needs the big end of it.
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
   var chosenLang = '', availableLangs = [], langChosenBefore = false, elLangPick, elLangPickList;
+  var elSpeakRow, elSpeakBtn, speakOn = false, speakQueue = [], speakBusy = false, speakTimer = null;
+  var speakCurrent = null, liveSeen = false;
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
@@ -732,6 +744,105 @@
       ? 'Automatic translation from ' + langLabel(siteSource) + '. Wording may be imperfect.'
       : '';
     elLangNote.setAttribute('lang', chosenLang || 'en');
+    updateSpeakRow();
+  }
+
+  // ---- read aloud ----------------------------------------------------------
+  // The phone's own speech engine reads each translated line as it arrives:
+  // on device, free, nothing sent anywhere. Only offered when the reader is on
+  // a translation - hearing the room's own language spoken back is noise.
+  // Lines queue in order and are never dropped: when speech falls behind a
+  // fast talker it stays behind, which readers asked for over skipping.
+  // ponytail: no rate control; add a speed step if lag complaints come in.
+
+  var SPEECH_LANG = { 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW', zh: 'zh-CN' };
+
+  function speechOK() {
+    return !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
+  }
+
+  function updateSpeakRow() {
+    var show = speechOK() && !!chosenLang && chosenLang !== siteSource;
+    elSpeakRow.hidden = !show;
+    if (!show && speakOn) setSpeak(false);
+  }
+
+  function speechVoice(lang) {
+    var want = lang.toLowerCase(), base = want.split('-')[0], best = null, score = -1;
+    var voices = [];
+    try { voices = window.speechSynthesis.getVoices() || []; } catch (e) {}
+    for (var i = 0; i < voices.length; i++) {
+      var vl = String(voices[i].lang || '').toLowerCase().replace('_', '-');
+      if (vl.split('-')[0] !== base) continue;
+      var s = (vl === want ? 2 : 0) + (voices[i].localService ? 1 : 0) + (voices[i]['default'] ? 0.5 : 0);
+      if (s > score) { score = s; best = voices[i]; }
+    }
+    return best;
+  }
+
+  function stopSpeaking() {
+    speakQueue.length = 0;
+    speakBusy = false;
+    speakCurrent = null;
+    clearTimeout(speakTimer);
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  }
+
+  function setSpeak(on) {
+    speakOn = on;
+    elSpeakBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+    if (!on) { stopSpeaking(); return; }
+    // Spoken from the tap itself, which is what unlocks audio on iOS; also
+    // the one confirmation the reader gets that the voice exists.
+    stopSpeaking();
+    enqueueSpeech(langLabel(chosenLang));
+  }
+
+  function enqueueSpeech(text) {
+    if (!speakOn || !text) return;
+    speakQueue.push(text);
+    speakNext();
+  }
+
+  function speakNext() {
+    if (speakBusy || !speakQueue.length) return;
+    var text = speakQueue.shift(), lang = SPEECH_LANG[chosenLang] || chosenLang;
+    var u;
+    try { u = new SpeechSynthesisUtterance(text); } catch (e) { return; }
+    u.lang = lang;
+    try { var v = speechVoice(lang); if (v) u.voice = v; } catch (e) {}
+    // A cancelled utterance reports back late; only the current one may
+    // advance the queue. Holding it also stops Chromium collecting it early.
+    function finish() {
+      if (u !== speakCurrent) return;
+      speakCurrent = null;
+      clearTimeout(speakTimer);
+      speakBusy = false;
+      speakNext();
+    }
+    u.onend = finish;
+    u.onerror = finish;
+    // Some engines never fire onend (Chrome after ~15 s of speech, Safari
+    // after an interruption), so a watchdog advances the queue - but only
+    // when speech has made no progress: every boundary event re-arms it, and
+    // the full-line budget is generous enough for slow CJK voices on engines
+    // that fire no boundaries at all. Never cut a line while the page is
+    // hidden; iOS pauses speech there and it resumes on return.
+    var budget = 15000 + text.length * 400;
+    function arm(ms) {
+      clearTimeout(speakTimer);
+      speakTimer = setTimeout(function () {
+        if (document.hidden) { arm(ms); return; }
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        finish();
+      }, ms);
+    }
+    u.onstart = function () { arm(budget); };
+    u.onboundary = function () { arm(15000); };
+    arm(budget);
+    speakBusy = true;
+    speakCurrent = u;
+    try { window.speechSynthesis.speak(u); } catch (e) { finish(); }
   }
 
   function fillLangSelect() {
@@ -1078,6 +1189,12 @@
     elLines.appendChild(d);
     lineCount++;
     trimScrollback();
+    // After the line is on screen: a speech engine fault must never cost a
+    // caption, so it is guarded here as well as inside speakNext. The history
+    // burst on first connect stays silent; replayed lines after that are the
+    // ones said during a reconnect gap, and those are spoken, not skipped.
+    if (!isReplay) liveSeen = true;
+    if (liveSeen) { try { enqueueSpeech(text); } catch (e) {} }
   }
 
   function addDivider() {
@@ -1103,6 +1220,8 @@
   }
 
   function resetAll() {
+    if (speakOn) stopSpeaking();
+    liveSeen = false;
     while (elLines.firstChild) elLines.removeChild(elLines.firstChild);
     setInterimText('');
     seenIds = Object.create(null);
@@ -1301,6 +1420,8 @@
     elSwatches = document.getElementById('swatches');
     elColorCustom = document.getElementById('color-custom');
     elFonts = document.getElementById('fonts');
+    elSpeakRow = document.getElementById('speak-row');
+    elSpeakBtn = document.getElementById('speak-btn');
     elStatus = document.getElementById('status');
     elPause = document.getElementById('pause');
     elLangNote = document.getElementById('lang-note');
@@ -1334,6 +1455,7 @@
       e.stopPropagation();
       toggleSettings();
     });
+    elSpeakBtn.addEventListener('click', function () { setSpeak(!speakOn); scheduleSettingsClose(); });
     elSizeDec.addEventListener('click', function () { stepSize(-1); });
     elSizeInc.addEventListener('click', function () { stepSize(1); });
     elSwatches.addEventListener('click', function (e) {
@@ -1349,6 +1471,10 @@
     // so picking a size doesn't get cut off mid-tap.
     elSettings.addEventListener('click', scheduleSettingsClose);
     elSettings.addEventListener('input', scheduleSettingsClose);
+    // Screen-reader swipes and Tab fire neither of those; without these the
+    // sheet closes under someone still reading it.
+    elSettings.addEventListener('focusin', scheduleSettingsClose);
+    elSettings.addEventListener('keydown', scheduleSettingsClose);
     elDisclaimerDismiss.addEventListener('click', dismissDisclaimer);
     // Tapping anywhere else, or Escape, closes the panel - it should feel
     // like a lightweight popover, not a screen you have to explicitly exit.
@@ -1362,7 +1488,11 @@
       if (e.key === 'Escape') closeSettings();
     });
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) { requestWake(); if (pinned) scrollToBottom(); }
+      if (!document.hidden) {
+        requestWake();
+        if (pinned) scrollToBottom();
+        if (speakOn) { try { window.speechSynthesis.resume(); } catch (e) {} }
+      }
     });
     // Some browsers grant the wake lock more reliably (or only) inside a
     // user gesture - the boot-time request has none, so take the first tap
