@@ -523,7 +523,7 @@
     <div class="fonts">
       <button id="speak-btn" class="font-btn" type="button" role="switch" aria-checked="false">Speak each line</button>
     </div>
-    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room.</p>
+    <p id="speak-note">Spoken on the booth Mac, a few seconds behind. Use earbuds in the room.</p>
     <p id="speak-status" role="status" aria-live="polite" hidden></p>
   </fieldset>
 </div>
@@ -547,8 +547,8 @@
   // "Small"/"Huge" reads as a judgment on whoever needs the big end of it.
   var SIZES = [19, 22, 26, 31, 37, 44, 52, 64];
   var chosenLang = '', availableLangs = [], langChosenBefore = false, elLangPick, elLangPickList;
-  var elSpeakRow, elSpeakBtn, speakOn = false, speakQueue = [], speakBusy = false, speakTimer = null;
-  var speakCurrent = null, liveSeen = false, silentClip = null, elSpeakStatus, speakStarted = false;
+  var elSpeakRow, elSpeakBtn, elSpeakStatus, speakOn = false, speakQueue = [], speakBusy = false;
+  var player = null, playId = 0, liveSeen = false, speakStarted = false;
 
   // Endonyms: someone looking for their language should see it written the
   // way they write it, not translated into English.
@@ -751,145 +751,101 @@
   }
 
   // ---- read aloud ----------------------------------------------------------
-  // The phone's own speech engine reads each translated line as it arrives:
-  // on device, free, nothing sent anywhere. Only offered when the reader is on
-  // a translation - hearing the room's own language spoken back is noise.
-  // Lines queue in order and are never dropped: when speech falls behind a
-  // fast talker it stays behind, which readers asked for over skipping.
+  // Each translated line is spoken on the booth Mac and played here as a
+  // short clip. The phone's own speech engine cannot be used: iOS mutes it
+  // with the ring/silent switch and Android stops it when Chrome leaves the
+  // screen, while media playback survives both. One <audio> element, started
+  // inside the reader's tap, plays every clip after that without another
+  // gesture. Only offered on a translation - hearing the room's own language
+  // spoken back is noise. Lines queue in order and are never dropped: when
+  // playback falls behind a fast talker it stays behind, which readers asked
+  // for over skipping.
   // ponytail: no rate control; add a speed step if lag complaints come in.
 
-  var SPEECH_LANG = { 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW', zh: 'zh-CN' };
-
-  function speechOK() {
-    return !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
-  }
-
   function updateSpeakRow() {
-    var show = speechOK() && !!chosenLang && chosenLang !== siteSource;
+    var show = !!window.Audio && !!chosenLang && chosenLang !== siteSource;
     elSpeakRow.hidden = !show;
     if (!show && speakOn) setSpeak(false);
   }
 
-  function speechVoice(lang) {
-    var want = lang.toLowerCase(), base = want.split('-')[0], best = null, score = -1;
-    var voices = [];
-    try { voices = window.speechSynthesis.getVoices() || []; } catch (e) {}
-    for (var i = 0; i < voices.length; i++) {
-      var vl = String(voices[i].lang || '').toLowerCase().replace('_', '-');
-      if (vl.split('-')[0] !== base) continue;
-      var s = (vl === want ? 2 : 0) + (voices[i].localService ? 1 : 0) + (voices[i]['default'] ? 0.5 : 0);
-      if (s > score) { score = s; best = voices[i]; }
-    }
-    return best;
-  }
-
-  function stopSpeaking() {
-    var s = window.speechSynthesis, wasSpeaking = !!speakCurrent;
-    speakQueue.length = 0;
-    speakBusy = false;
-    speakCurrent = null;
-    clearTimeout(speakTimer);
-    // Only cancel when something is actually playing: iOS Safari drops an
-    // utterance spoken right after cancel(), and the one spoken right after
-    // this is the switch-on confirmation inside the reader's tap.
-    try { if (wasSpeaking || s.speaking || s.pending) s.cancel(); } catch (e) {}
-  }
-
-  // Phones in a service are on silent, and iOS mutes speech synthesis with
-  // the ring switch. Safari 17+ lets a page declare itself playback audio
-  // (navigator.audioSession), which is what plays through the switch; a
-  // looping 50 ms silent clip, started inside the reader's tap, is the
-  // fallback that keeps the page counted as playing media. Inline so it
-  // needs no request; the CSP allows media-src data: for it.
-  var SILENCE = 'data:audio/wav;base64,' + 'UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
-  function holdAudio(on) {
-    try {
-      if (navigator.audioSession) navigator.audioSession.type = on ? 'playback' : 'auto';
-    } catch (e) {}
-    try {
-      if (!silentClip) {
-        silentClip = new Audio(SILENCE);
-        silentClip.loop = true;
-        silentClip.setAttribute('playsinline', '');
-      }
-      if (on) { var p = silentClip.play(); if (p && p['catch']) p['catch'](function () {}); }
-      else silentClip.pause();
-    } catch (e) {}
-  }
-
-  // What the engine reports, in the sheet: the one place a reader (or the
-  // person helping them) can see why nothing is coming out.
   function speakStatus(msg) {
     elSpeakStatus.hidden = !msg;
     elSpeakStatus.textContent = msg || '';
   }
 
+  function stopSpeaking() {
+    speakQueue.length = 0;
+    speakBusy = false;
+    if (player) { try { player.pause(); } catch (e) {} }
+  }
+
+  function speakDone() {
+    speakBusy = false;
+    if (speakOn) speakNext();
+  }
+
+  function speakFailed() {
+    speakStatus(speakQueue.length === 0 && !speakStarted
+      ? 'No ' + langLabel(chosenLang) + ' voice on the booth Mac'
+      : 'Could not play a line');
+    speakDone();
+  }
+
+  function makePlayer() {
+    var a = new Audio();
+    a.setAttribute('playsinline', '');
+    a.preload = 'auto';
+    a.addEventListener('playing', function () { speakStarted = true; speakStatus('Speaking'); });
+    a.addEventListener('ended', function () { speakStatus('Waiting for the next line'); speakDone(); });
+    a.addEventListener('pause', function () {
+      // Paused by the system (earbuds gone, a call, audio focus lost): no
+      // 'ended' follows. Own stops clear speakBusy first; a finished clip has
+      // ended set; a hidden page is resumed by the visibilitychange handler.
+      if (!speakOn || !speakBusy || a.ended || !a.paused || document.hidden) return;
+      var p = a.play(); if (p && p['catch']) p['catch'](function () { speakFailed(); });
+    });
+    return a;
+  }
+
   function setSpeak(on) {
     speakOn = on;
     elSpeakBtn.setAttribute('aria-checked', on ? 'true' : 'false');
-    holdAudio(on);
     if (!on) { stopSpeaking(); speakStatus(''); return; }
+    if (!player) player = makePlayer();
     speakStarted = false;
     speakStatus('Starting…');
-    setTimeout(function () {
-      if (!speakOn || speakStarted) return;
-      var n = 0;
-      try { n = window.speechSynthesis.getVoices().length; } catch (e) {}
-      speakStatus('Nothing has played. Voices on this phone: ' + n +
-        (window.speechSynthesis.speaking ? ', engine says speaking' : '') +
-        (window.speechSynthesis.pending ? ', pending' : '') + '.');
-    }, 4000);
-    // Spoken from the tap itself, which is what unlocks audio on iOS; also
-    // the one confirmation the reader gets that the voice exists.
     stopSpeaking();
-    enqueueSpeech(langLabel(chosenLang));
+    // Played from the tap itself, which is what unlocks the element; also
+    // the one confirmation the reader gets that a voice exists.
+    enqueueSpeech('hello');
   }
 
-  function enqueueSpeech(text) {
-    if (!speakOn || !text) return;
-    speakQueue.push(text);
+  function enqueueSpeech(id) {
+    if (!speakOn || !id) return;
+    speakQueue.push(id);
     speakNext();
   }
 
   function speakNext() {
     if (speakBusy || !speakQueue.length) return;
-    var text = speakQueue.shift(), lang = SPEECH_LANG[chosenLang] || chosenLang;
-    var u;
-    try { u = new SpeechSynthesisUtterance(text); } catch (e) { return; }
-    u.lang = lang;
-    try { var v = speechVoice(lang); if (v) u.voice = v; } catch (e) {}
-    // A cancelled utterance reports back late; only the current one may
-    // advance the queue. Holding it also stops Chromium collecting it early.
-    function finish() {
-      if (u !== speakCurrent) return;
-      speakCurrent = null;
-      clearTimeout(speakTimer);
-      speakBusy = false;
-      speakNext();
-    }
-    u.onend = function () { speakStatus('Waiting for the next line'); finish(); };
-    u.onerror = function (e) { speakStatus('Speech error: ' + ((e && e.error) || 'unknown')); finish(); };
-    // Some engines never fire onend (Chrome after ~15 s of speech, Safari
-    // after an interruption), so a watchdog advances the queue - but only
-    // when speech has made no progress: every boundary event re-arms it, and
-    // the full-line budget is generous enough for slow CJK voices on engines
-    // that fire no boundaries at all. Never cut a line while the page is
-    // hidden; iOS pauses speech there and it resumes on return.
-    var budget = 15000 + text.length * 400;
-    function arm(ms) {
-      clearTimeout(speakTimer);
-      speakTimer = setTimeout(function () {
-        if (document.hidden) { arm(ms); return; }
-        try { window.speechSynthesis.cancel(); } catch (e) {}
-        finish();
-      }, ms);
-    }
-    u.onstart = function () { speakStarted = true; speakStatus('Speaking'); arm(budget); };
-    u.onboundary = function () { arm(15000); };
-    arm(budget);
     speakBusy = true;
-    speakCurrent = u;
-    try { window.speechSynthesis.speak(u); } catch (e) { finish(); }
+    // A failed clip reports twice (the element's error event and the play()
+    // rejection), possibly after the next clip has started: only the clip
+    // that is still current may advance the queue.
+    var my = ++playId;
+    player.onerror = function () { if (my === playId) speakFailed(); };
+    player.src = '/api/speech/' + encodeURIComponent(chosenLang) + '/' + encodeURIComponent(speakQueue.shift());
+    var p;
+    try { p = player.play(); } catch (e) { speakFailed(); return; }
+    if (p && p['catch']) {
+      p['catch'](function (e) {
+        if (my !== playId) return;
+        // NotAllowedError: the unlock is gone (a page reload, a long
+        // background stretch). Everything else: a bad clip; move on.
+        if (e && e.name === 'NotAllowedError') { speakStatus('Tap Read aloud again'); setSpeak(false); }
+        else speakFailed();
+      });
+    }
   }
 
   function fillLangSelect() {
@@ -1229,19 +1185,19 @@
 
   // ---- render ------------------------------------------------------------
 
-  function addLine(text, isReplay) {
+  function addLine(text, isReplay, id) {
     var d = document.createElement('div');
     d.textContent = text;
     if (!isReplay) d.className = 'new';
     elLines.appendChild(d);
     lineCount++;
     trimScrollback();
-    // After the line is on screen: a speech engine fault must never cost a
-    // caption, so it is guarded here as well as inside speakNext. The history
-    // burst on first connect stays silent; replayed lines after that are the
-    // ones said during a reconnect gap, and those are spoken, not skipped.
+    // After the line is on screen: a playback fault must never cost a
+    // caption. The history burst on first connect stays silent; replayed
+    // lines after that are the ones said during a reconnect gap, and those
+    // are spoken, not skipped.
     if (!isReplay) liveSeen = true;
-    if (liveSeen) { try { enqueueSpeech(text); } catch (e) {} }
+    if (liveSeen) { try { enqueueSpeech(id); } catch (e) {} }
   }
 
   function addDivider() {
@@ -1382,7 +1338,7 @@
         break;
       case 'final':
         if (seen(m.id)) { setInterimText(''); break; }
-        if (m.text) addLine(m.text, !!m.replay);
+        if (m.text) addLine(m.text, !!m.replay, m.id);
         setInterimText('');
         break;
       case 'clear':
@@ -1539,7 +1495,9 @@
       if (!document.hidden) {
         requestWake();
         if (pinned) scrollToBottom();
-        if (speakOn) { try { window.speechSynthesis.resume(); } catch (e) {} }
+        if (speakOn && speakBusy && player && player.paused && !player.ended) {
+          var p = player.play(); if (p && p['catch']) p['catch'](function () {});
+        }
       }
     });
     // Some browsers grant the wake lock more reliably (or only) inside a

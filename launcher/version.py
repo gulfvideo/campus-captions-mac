@@ -8,7 +8,7 @@ a pre-release suffix here has to be survivable rather than a build failure -
 hence the parsing below.
 """
 
-VERSION = "0.3.18-beta"
+VERSION = "0.3.19-beta"
 
 # The numeric part only: "0.3.0-beta" -> "0.3.0".
 VERSION_NUMBER = VERSION.split("-", 1)[0].split("+", 1)[0]

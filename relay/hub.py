@@ -16,7 +16,7 @@ import itertools
 import json
 import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 
 from .state import RelayState
 
@@ -95,6 +95,7 @@ class Hub:
     def __init__(self, session_id: str | None = None, source_language: str = "en"):
         self.session_id = session_id or uuid.uuid4().hex[:8]
         self.source_language = source_language
+        self.spoken: OrderedDict[tuple[str, str], str] = OrderedDict()
         self.seq = 0
         self.viewers: dict[int, Client] = {}
         self.status_clients: dict[int, Client] = {}
@@ -138,6 +139,10 @@ class Hub:
             self.finals[lang] = deque(maxlen=REPLAY_BUFFER)
         return self.finals[lang]
 
+    def final_text(self, lang: str, utterance_id: str) -> str | None:
+        """The text of a remembered final, for the spoken-translation clip."""
+        return self.spoken.get((lang, utterance_id))
+
     def broadcast(self, msg: dict) -> dict:
         """Number a message, remember it if it is a final, fan it out.
 
@@ -157,6 +162,11 @@ class Hub:
             msg.setdefault("utterance", msg["id"])
             msg.setdefault("t0", msg["t"])
             self._buffer_for(lang).append(msg)
+            # Outlives a 'clear': the phone fetches clips late, a few lines
+            # behind the wall, and a cleared wall must not silence them.
+            self.spoken[(lang, msg["id"])] = msg.get("text", "")
+            while len(self.spoken) > 2 * REPLAY_BUFFER:
+                self.spoken.popitem(last=False)
         elif kind == "clear":
             for buffer in self.finals.values():
                 buffer.clear()

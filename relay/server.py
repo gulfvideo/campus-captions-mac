@@ -57,6 +57,7 @@ from . import event as event_module
 from . import preflight as preflight_module
 from . import propresenter as propresenter_module
 from .slides import SlideClient, SlidePreview
+from . import speech as speech_module
 from . import transcript as transcript_module
 from . import translate as translate_module
 from . import tunnel as tunnel_module
@@ -233,7 +234,7 @@ def page_csp(html: bytes) -> str:
         f"script-src {script_src}; "
         "style-src 'unsafe-inline'; "
         "img-src 'self' data:; "
-        "media-src data:; "
+        "media-src 'self'; "
         "font-src 'self'; "
         "connect-src 'self' ws: wss:; "
         "frame-src 'self'; frame-ancestors 'self'; "
@@ -261,6 +262,7 @@ def peer_of(ws: WebSocket) -> str:
 def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     cfg = cfg or config_module.load()
     hub = Hub(source_language=cfg.source_language)
+    speech = speech_module.Speech()
     hub.youtube = YouTubeCaptionPusher(cfg.youtube_url, cfg.youtube_lang, cfg.youtube_start_enabled)
     event = event_module.EventState.from_config(cfg, config_module.DEFAULT_CONFIG.parent)
     hub.event = event
@@ -820,6 +822,42 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         if request.query_params:
             raise HTTPException(status_code=400, detail="no query parameters accepted")
         return JSONResponse(slides.public(), headers=NO_STORE)
+
+    @app.get("/api/speech/{lang}/{utterance}")
+    async def api_speech(lang: str, utterance: str, request: Request) -> Response:
+        """One translated line, spoken on this Mac, for the phone's Read aloud.
+
+        `utterance` is a final's id as the phone received it, or `hello` for
+        the switch-on confirmation (the language's own name). Only remembered
+        finals can be spoken, so a viewer cannot make the Mac say anything else.
+        """
+        if request.query_params:
+            raise HTTPException(status_code=400, detail="no query parameters accepted")
+        if not re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?", lang):
+            raise HTTPException(status_code=404, detail="unknown language", headers=NO_STORE)
+        if utterance == "hello":
+            text = speech_module.GREETING.get(lang) or lang
+        else:
+            text = hub.final_text(lang, utterance)
+        if text is None:
+            raise HTTPException(status_code=404, detail="no such line", headers=NO_STORE)
+        data = await speech.clip(lang, text)
+        if data is None:
+            raise HTTPException(status_code=404, detail="no voice for this language on the booth Mac",
+                                headers=NO_STORE)
+        # Safari's media loader asks for byte ranges and refuses a server
+        # that answers them with a plain 200, so honour a single range.
+        headers = dict(NO_STORE, **{"Accept-Ranges": "bytes"})
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", request.headers.get("range", ""))
+        if m and (m.group(1) or m.group(2)):
+            start = int(m.group(1)) if m.group(1) else max(0, len(data) - int(m.group(2)))
+            end = min(int(m.group(2)), len(data) - 1) if m.group(1) and m.group(2) else len(data) - 1
+            if start >= len(data) or start > end:
+                headers["Content-Range"] = f"bytes */{len(data)}"
+                return Response(status_code=416, headers=headers)
+            headers["Content-Range"] = f"bytes {start}-{end}/{len(data)}"
+            return Response(data[start:end + 1], status_code=206, media_type="audio/mp4", headers=headers)
+        return Response(data, media_type="audio/mp4", headers=headers)
 
     @app.get("/api/slides/image/{revision}")
     async def api_slide_image(revision: str, request: Request) -> Response:
