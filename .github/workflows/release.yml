@@ -149,6 +149,10 @@ jobs:
         # checksum and give every tester a failed verification.
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          # actions/checkout fetches the tagged commit by SHA and writes the
+          # tag as a lightweight one, which loses the message. Fetch the real
+          # tag object so the release notes are the tag's, not the commit's.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
           .venv/bin/python3 tools/publish_update.py \
             --assets macapp/dist \
             --version "${GITHUB_REF_NAME#v}" \
