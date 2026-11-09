@@ -8,6 +8,8 @@ the finished .app afterward. See macapp/menubar.py for what actually runs.
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller injects SPECPATH
 
 # A .spec is exec'd, not imported, and ROOT is not on sys.path when it runs -
@@ -31,6 +33,10 @@ datas = [
     (str(ROOT / "macapp" / "icons" / "menubar_streaming.png"), "macapp/icons"),
     (str(ROOT / "macapp" / "icons" / "menubar_inactive.png"), "macapp/icons"),
 ]
+# faster_whisper's Silero VAD model (assets/silero_vad_v6.onnx) is package
+# data, which PyInstaller does not pick up on its own. Without it Whisper
+# loads its speech model and then dies on the first transcribe call.
+datas += collect_data_files("faster_whisper")
 
 # The Swift on-device speech helper, when one has been built. PyInstaller
 # errors on a `datas` entry that does not exist, and build.sh normally builds
