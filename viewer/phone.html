@@ -521,7 +521,7 @@
     <div class="fonts">
       <button id="speak-btn" class="font-btn" type="button" role="switch" aria-checked="false">Speak each line</button>
     </div>
-    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room.</p>
+    <p id="speak-note">Your phone's own voice, a few seconds behind. Use earbuds in the room. Hearing nothing? Check the volume and the ring/silent switch.</p>
   </fieldset>
 </div>
 <div id="dbg"></div>
@@ -781,11 +781,15 @@
   }
 
   function stopSpeaking() {
+    var s = window.speechSynthesis, wasSpeaking = !!speakCurrent;
     speakQueue.length = 0;
     speakBusy = false;
     speakCurrent = null;
     clearTimeout(speakTimer);
-    try { window.speechSynthesis.cancel(); } catch (e) {}
+    // Only cancel when something is actually playing: iOS Safari drops an
+    // utterance spoken right after cancel(), and the one spoken right after
+    // this is the switch-on confirmation inside the reader's tap.
+    try { if (wasSpeaking || s.speaking || s.pending) s.cancel(); } catch (e) {}
   }
 
   function setSpeak(on) {
