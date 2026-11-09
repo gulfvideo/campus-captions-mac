@@ -1,5 +1,8 @@
 # Campus Captions
 
+> **macOS only.** This is the Mac-focused line of Campus Captions, split out from the shared repository so it can move independently. The Windows tray app and installer are not built here.
+
+
 Live captioning for campus events — lectures, chapel, panels, ceremonies.
 A capture client turns room audio into transcript events, a relay fans them out,
 and two viewer pages render them: a broadcast graphic for the LED wall and a
@@ -23,11 +26,10 @@ Python, no terminal, no zip to unpack:
 
 | | |
 |---|---|
-| Windows | `CampusCaptions-Setup-<version>.exe` — double-click, click through the installer |
 | macOS | `CampusCaptions.zip` — unzip, drag to Applications, Control-click → Open the first time |
 
 Neither is code-signed, so each shows a one-time warning the first time it runs
-on a given computer (Windows: "More info" → "Run anyway"; macOS:
+on a given computer (macOS:
 Control-click → Open). See [SETUP.md §1](SETUP.md) for both, in order.
 
 This README is for working on the code.
@@ -36,7 +38,7 @@ This README is for working on the code.
 
 ## Operating it: the short version
 
-The installed app runs as a **notification-area icon on Windows** and a **menu
+The installed app runs as a **menu
 bar icon on macOS** — right-click it for the status, settings, wall and phone
 pages, and to quit.
 

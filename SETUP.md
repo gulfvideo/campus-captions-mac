@@ -16,24 +16,6 @@ machine or a separate one).
 [Releases](https://github.com/koakley3/campus-captions/releases) and take the
 download for your operating system.
 
-### Windows
-
-1. Download **`CampusCaptions-Setup-<version>.exe`**.
-2. Double-click it.
-3. Windows shows a blue **"Windows protected your PC"** box. Click
-   **More info**, then **Run anyway**.
-4. Click through the installer. It offers a desktop shortcut, and optionally
-   starting Campus Captions when you sign in.
-5. It starts on its own when the installer finishes.
-
-Step 3 happens because the installer is not code-signed — a signing
-certificate costs money per year and this project does not have one. It is
-**once per computer**, not once per launch, and it is the same prompt every
-unsigned installer produces.
-
-Nothing appears on screen when Campus Captions is running: it lives as a
-graduation-cap icon in the **notification area**, bottom-right, sometimes
-hidden behind the `^` arrow. Right-click it for the pages and for Quit.
 
 ### macOS
 
