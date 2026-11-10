@@ -329,7 +329,7 @@ opens (the ASR STREAM card stays on "Closed"), this is almost always it -
 check the error banner at the top of the page, or `logs/capture.log` (see
 Troubleshooting), for `ModuleNotFoundError: No module named 'faster_whisper'`.
 
-The model (`[whisper] model`, default `base.en`, ~150MB) downloads on first
+The model (`[whisper] model`, default `small.en`, ~480MB) downloads on first
 use and is cached; for a machine with no internet at all, download it
 elsewhere and point `model_dir` at the cache. Expect roughly a second more
 latency than Apple on-device, and less stable interim text - it's the choice

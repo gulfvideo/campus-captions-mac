@@ -56,9 +56,12 @@ def apple_speech_unsupported() -> str | None:
 # it needs somewhere it can check for, write to, and describe to an operator -
 # and "in the folder the tray menu opens" beats "in a hidden cache".
 WHISPER_MODEL_SUBDIR = ("models", "whisper")
-# The default model. Small enough to download over a venue's wifi, good
-# enough to caption a lecture. Mirrors [whisper] model in the example config.
-WHISPER_DEFAULT_MODEL = "base.en"
+# The default model. Mirrors [whisper] model in the example config. small.en
+# over base.en: on 4 minutes of real program audio on an M5 Pro it agreed with
+# large-v3-turbo on 77% of words to base.en's 63%, and still decoded the
+# app's 8 s interim window in about 1 s. medium.en and large-v3-turbo took
+# 3-4 s per window, too slow to caption live on a CPU.
+WHISPER_DEFAULT_MODEL = "small.en"
 
 
 def whisper_model_dir(data_dir) -> Path:

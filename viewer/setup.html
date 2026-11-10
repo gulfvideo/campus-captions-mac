@@ -495,7 +495,7 @@ page.</p>
     var w = (source && source.whisper) || {};
     var status = $('whisper-status');
     var button = $('whisper-download');
-    var model = w.model || 'base.en';
+    var model = w.model || 'small.en';
 
     if (!source || !source.connected) {
       status.textContent = 'Waiting for the capture client…';

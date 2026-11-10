@@ -9,7 +9,7 @@
 # Verified importable on Python 3.14.6; every wheel is prebuilt, nothing
 # compiles at install time.
 #
-# The model itself is downloaded on first use (base.en is ~150 MB) and cached.
+# The model itself is downloaded on first use (small.en is ~480 MB) and cached.
 # For a machine with no internet at all, pre-download on a connected machine and
 # point whisper_model_dir at the cache.
 

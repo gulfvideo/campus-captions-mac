@@ -109,7 +109,7 @@ locale = "en-US"
 #     python -m pip install -r requirements-whisper.txt
 # The model downloads on first use and is then cached.
 [whisper]
-model = "base.en"        # tiny.en | base.en | small.en | medium.en, or a
+model = "small.en"       # tiny.en | base.en | small.en | medium.en, or a
                          # multilingual name like "small" for non-English audio
 compute_type = "int8"    # int8 is fastest on CPU; float16 needs a GPU
 device = "cpu"           # leave as cpu unless you have verified a GPU works
