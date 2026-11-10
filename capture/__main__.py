@@ -280,7 +280,10 @@ class CaptureApp:
         "Download the Whisper model" row. `present` is a directory check, so
         it stays true across restarts without anyone having to remember that
         a download happened."""
-        present = backend_support.whisper_model_present(self.whisper_model_dir())
+        present = backend_support.whisper_model_present(
+            self.whisper_model_dir(),
+            self.cfg.backend_config.get("whisper_model",
+                                        backend_support.WHISPER_DEFAULT_MODEL))
         return {
             "installed": backend_support.whisper_installed(),
             # Whether this is a frozen app or a source checkout. It decides

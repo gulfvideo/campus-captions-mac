@@ -130,6 +130,13 @@ def load(path: Path | None = None) -> CaptureConfig:
     # faster-whisper's hidden ~/.cache default: the status page offers a
     # one-click download of this model, which means something has to be able
     # to check for it, and an operator has to be able to find it.
+    # base.en was the default until 0.3.22, and every event.toml the app
+    # wrote named it, so an install that never chose a model would otherwise
+    # stay on it forever. small.en is clearly more accurate and still keeps
+    # up live (see WHISPER_DEFAULT_MODEL). Someone who wants a lighter model
+    # than small.en can name tiny.en.
+    if backend_config.get("whisper_model") == "base.en":
+        backend_config["whisper_model"] = backend_support.WHISPER_DEFAULT_MODEL
     if not backend_config.get("whisper_model_dir"):
         backend_config["whisper_model_dir"] = str(
             backend_support.whisper_model_dir(DATA_DIR))

@@ -68,8 +68,14 @@ def whisper_model_dir(data_dir) -> Path:
     return Path(data_dir).joinpath(*WHISPER_MODEL_SUBDIR)
 
 
-def whisper_model_present(model_dir) -> bool:
-    """Has a Whisper model actually been downloaded into `model_dir`?
+def whisper_model_present(model_dir, size: str) -> bool:
+    """Has the Whisper model `size` actually been downloaded into `model_dir`?
+
+    Per model, not "any model.bin": a Mac that downloaded base.en and is now
+    configured for small.en must be offered the download, not told it is
+    ready and then fetch 480 MB the first time the stream opens. Models sit
+    where faster-whisper's own loader (WhisperModel(download_root=...)) and
+    fetch_model both put them, models--<org>--faster-whisper-<size>/.
 
     Takes the model directory itself, not the data directory, so an
     event.toml that points `whisper_model_dir` somewhere else is checked
@@ -78,12 +84,13 @@ def whisper_model_present(model_dir) -> bool:
     A directory check, not an import: the relay calls this too, and it must
     not pull faster-whisper (and numpy behind it) into its process just to
     decide whether to offer a download button. CTranslate2 models always
-    carry a model.bin, so its presence anywhere beneath the directory is the
+    carry a model.bin, so its presence beneath that model's folder is the
     signal; a half-finished download leaves the .incomplete files
     huggingface_hub writes and no model.bin, which correctly reads as absent.
     """
     try:
-        return any(Path(model_dir).rglob("model.bin"))
+        return any(any(d.rglob("model.bin"))
+                   for d in Path(model_dir).glob(f"models--*-{size}"))
     except OSError:
         return False
 

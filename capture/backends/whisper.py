@@ -194,7 +194,10 @@ def fetch_model(size: str, model_dir, on_progress=None) -> str:
     # huggingface_hub resumes a partial download and no-ops a complete one,
     # so pressing the button twice is safe and a dropped wifi connection
     # costs only the bytes not yet fetched.
-    path = download_model(size, output_dir=str(model_dir))
+    # cache_dir, not output_dir: the backend loads with
+    # WhisperModel(download_root=model_dir), which looks in the
+    # huggingface cache layout, and whisper_model_present checks there too.
+    path = download_model(size, cache_dir=str(model_dir))
     if on_progress:
         on_progress("")
     return str(path)
