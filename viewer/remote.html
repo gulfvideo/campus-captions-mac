@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Captions">
+<title>Captions remote</title>
+<!-- include theme.css -->
+<style>
+  /* The phone remote: one column, thumb-sized buttons, nothing that needs
+     the booth. Generic pieces come from theme.css. */
+  body { background: var(--bg); }
+  main {
+    max-width: 480px; margin: 0 auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  header { display: flex; flex-direction: column; gap: 10px; }
+  header .top { display: flex; align-items: center; gap: 10px; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2); flex-grow: 1; }
+  #title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  #sub { margin: 0; font-size: 16px; color: var(--text-2); }
+  #fault { margin: 0; padding: 12px 14px; border-radius: var(--r-field);
+           background: var(--bad-wash); color: var(--bad-soft); font-size: 15px; font-weight: 500; }
+
+  .actions { display: flex; flex-direction: column; gap: 12px; }
+  .big {
+    width: 100%; min-height: 64px; border: none; border-radius: 18px;
+    font-family: inherit; font-size: 20px; font-weight: 600; cursor: pointer;
+    background: var(--raised); color: var(--text);
+  }
+  .big.go { background: var(--ok); color: #000; }
+  .big.pause { background: var(--warn); color: #000; }
+  .big.danger { min-height: 52px; font-size: 17px; background: var(--bad-wash); color: var(--bad-soft); }
+  .big[disabled] { opacity: 0.5; cursor: default; }
+  .big:focus-visible { outline: 3px solid var(--accent-hi); outline-offset: 2px; }
+
+  #last { margin: 0; padding: 14px 16px; border-radius: var(--r-card);
+          background: var(--card); font-size: 16px; line-height: 1.4; color: var(--text-2); min-height: 1.4em; }
+
+  form { display: flex; flex-direction: column; gap: 14px; }
+  form h2 { margin: 0; font-size: 17px; font-weight: 600; }
+  /* 17px so iOS does not zoom the page when a field gets focus. */
+  form input[type="text"] { font-size: 17px; padding: 12px 14px; }
+  #save { min-height: 52px; font-size: 17px; background: var(--accent); color: #fff; }
+
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom));
+    max-width: 448px; margin: 0 auto; padding: 14px 16px; border-radius: 14px;
+    background: var(--raised-2); color: var(--text); font-size: 15px;
+    box-shadow: var(--shadow-float); opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="top">
+      <h1>Captions remote</h1>
+      <span class="status-pill" id="pill"><span class="dot"></span><span id="pill-text">Connecting…</span></span>
+    </div>
+    <p id="title">&nbsp;</p>
+    <p id="sub"></p>
+    <p id="fault" role="alert" hidden></p>
+  </header>
+
+  <section class="actions" aria-label="Event controls">
+    <button class="big go" id="btn-live" type="button" hidden>Go live</button>
+    <button class="big pause" id="btn-pause" type="button" hidden>Pause captions</button>
+    <button class="big go" id="btn-resume" type="button" hidden>Resume captions</button>
+    <button class="big go" id="btn-next" type="button" hidden>Set up next event</button>
+    <button class="big" id="btn-stop" type="button" hidden>Stop listening</button>
+    <button class="big danger" id="btn-end" type="button" hidden>End event</button>
+  </section>
+
+  <section aria-label="Latest caption">
+    <p id="last" aria-live="off"></p>
+  </section>
+
+  <form id="text-form">
+    <h2>What phones show</h2>
+    <label class="field"><span>Event title</span>
+      <input type="text" id="f-title" maxlength="80" autocomplete="off"></label>
+    <label class="field"><span>Welcome message (before it starts)</span>
+      <input type="text" id="f-message" maxlength="300" autocomplete="off"
+             placeholder="Live captions will begin when the program starts."></label>
+    <label class="field"><span>Pause message</span>
+      <input type="text" id="f-pause" maxlength="120" autocomplete="off" placeholder="Captions paused"></label>
+    <button class="big" id="save" type="submit">Save</button>
+  </form>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+
+  var state = null, busy = false, dirty = false, signedOut = false, toastTimer = null;
+  var FIELDS = { title: 'f-title', message: 'f-message', pause_message: 'f-pause' };
+  var FAULTS = {
+    no_source: 'The booth Mac is not listening (no capture client).',
+    source_error: 'The recognizer reported an error. Check the booth.',
+    audio_stalled: 'No audio is reaching the booth Mac.',
+    stream_closed: 'The booth Mac stopped listening. Press Go live again or check the booth.'
+  };
+
+  function toast(text) {
+    var t = $('toast');
+    t.textContent = text;
+    t.className = 'on';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = ''; }, 3200);
+  }
+
+  function post(url, body) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 404) { signOut(); throw new Error('signed out'); }
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'failed'); });
+      return r.json();
+    });
+  }
+
+  // One press, one action; the buttons stay disabled until the relay answers
+  // so a double tap cannot pause and resume in the same breath.
+  function act(label, fn) {
+    if (busy) return;
+    busy = true; render();
+    fn().then(function () { toast(label); })
+      ['catch'](function (e) { toast(label + ' failed: ' + e.message); })
+      .then(function () { busy = false; refresh(); });
+  }
+
+  function setEvent(fields) { return post('/api/event', fields); }
+
+  function signOut() {
+    signedOut = true;
+    document.querySelector('main').innerHTML =
+      '<header><h1>Captions remote</h1><p id="title">Signed out</p>' +
+      '<p id="sub">This remote link was reset, or this phone was never signed in. ' +
+      'At the booth, open the status page, go to Screens, and scan the Phone remote code.</p></header>';
+  }
+
+  function render() {
+    if (!state || signedOut) return;
+    var ev = state.event || {}, s = ev.state;
+    $('title').textContent = ev.title || 'Untitled event';
+    var pill = $('pill'), text = $('pill-text');
+    // Before and after the event a closed stream is normal, not trouble.
+    var fault = (s === 'live' || s === 'paused') && state.health && state.health.fault;
+    if (s === 'live' && !fault) { pill.className = 'status-pill ok'; text.textContent = 'On air'; }
+    else if (s === 'live') { pill.className = 'status-pill bad'; text.textContent = 'Trouble'; }
+    else if (s === 'paused') { pill.className = 'status-pill warn'; text.textContent = 'Paused'; }
+    else if (s === 'ended') { pill.className = 'status-pill'; text.textContent = 'Ended'; }
+    else { pill.className = 'status-pill warn'; text.textContent = 'Not live yet'; }
+
+    var n = state.viewers || 0;
+    var sub = n + (n === 1 ? ' phone' : ' phones') + ' watching';
+    if (!state.stream_open && s !== 'ended') sub += ' · booth is not listening yet';
+    $('sub').textContent = sub;
+
+    $('fault').hidden = !fault;
+    $('fault').textContent = fault ? (FAULTS[fault] || 'Problem at the booth: ' + fault) : '';
+
+    $('btn-live').hidden = s !== 'starting';
+    $('btn-pause').hidden = s !== 'live';
+    $('btn-resume').hidden = s !== 'paused';
+    $('btn-end').hidden = s !== 'live' && s !== 'paused';
+    $('btn-next').hidden = s !== 'ended';
+    $('btn-stop').hidden = !(s === 'ended' && state.stream_open);
+    var buttons = document.querySelectorAll('.actions .big');
+    for (var i = 0; i < buttons.length; i++) buttons[i].disabled = busy;
+
+    $('last').textContent = state.last_line || 'No captions yet.';
+
+    // Never overwrite what the operator is typing.
+    if (!dirty) {
+      $('f-title').value = ev.title || '';
+      $('f-message').value = ev.message || '';
+      $('f-pause').value = ev.pause_message || '';
+    }
+  }
+
+  function refresh() {
+    if (signedOut) return;
+    fetch('/api/remote', { cache: 'no-store' }).then(function (r) {
+      if (r.status === 401 || r.status === 404) { signOut(); return null; }
+      return r.ok ? r.json() : null;
+    }).then(function (s) {
+      if (s) { state = s; render(); }
+    })['catch'](function () {
+      $('pill').className = 'status-pill bad';
+      $('pill-text').textContent = 'No connection';
+    });
+  }
+
+  $('btn-live').onclick = function () {
+    act('You are live', function () {
+      return post('/api/control', { action: 'open_stream' })
+        .then(function () { return setEvent({ state: 'live' }); });
+    });
+  };
+  $('btn-pause').onclick = function () { act('Paused', function () { return setEvent({ state: 'paused' }); }); };
+  $('btn-resume').onclick = function () { act('Resumed', function () { return setEvent({ state: 'live' }); }); };
+  $('btn-end').onclick = function () {
+    if (!window.confirm('End the event? Phones will show that it has ended.')) return;
+    act('Event ended', function () { return setEvent({ state: 'ended' }); });
+  };
+  $('btn-stop').onclick = function () {
+    act('Stopped listening', function () { return post('/api/control', { action: 'close_stream' }); });
+  };
+  $('btn-next').onclick = function () {
+    var title = window.prompt('Title for the next event:', '');
+    if (title === null) return;
+    title = title.trim();
+    act('Ready for the next event', function () {
+      return post('/api/event/next', title ? { title: title } : {});
+    });
+  };
+
+  Object.keys(FIELDS).forEach(function (k) {
+    $(FIELDS[k]).addEventListener('input', function () { dirty = true; });
+  });
+  $('text-form').onsubmit = function (e) {
+    e.preventDefault();
+    var body = {};
+    Object.keys(FIELDS).forEach(function (k) { body[k] = $(FIELDS[k]).value.trim(); });
+    $('save').disabled = true;
+    setEvent(body).then(function () { dirty = false; toast('Saved'); refresh(); })
+      ['catch'](function (err) { toast('Save failed: ' + err.message); })
+      .then(function () { $('save').disabled = false; });
+  };
+
+  refresh();
+  setInterval(refresh, 2000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
+</script>
+</body>
+</html>

@@ -289,6 +289,18 @@ dashboard stays usable from the booth LAN or localhost with the operator link
 hostname is set, and the hostname cannot be cleared while the tunnel is
 enabled - press Disable first.
 
+**The phone remote** is the one way to control the event through the tunnel.
+On the status page, open **Screens** and scan the **Phone remote** QR code
+with the operator's phone. That signs the phone in for 30 days. From
+`/remote` it can go live, pause, resume, end the event, set up the next one,
+and change the title, welcome message and pause message. Nothing else:
+settings, audio, backends, transcripts and the status page stay booth-only.
+The remote has its own key (`CAPTIONS_REMOTE_TOKEN` in `.env`), so the
+operator token never crosses the tunnel. Anyone with the code can control the
+event, so if it leaks or a phone is lost, press **Reset link**: every signed-in
+phone is signed out and needs the new code. Without a tunnel the same QR
+works on the booth wifi.
+
 ---
 
 ## 3d. The Whisper backend (any macOS version)

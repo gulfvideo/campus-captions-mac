@@ -18,6 +18,9 @@ Endpoints (see docs/MESSAGES.md):
     POST /api/control              {"action": "open_stream"} etc.
     POST /api/youtube-captions     {"enabled": true} - relay-local, not forwarded
     POST /api/tunnel               {"token": "...", "enabled": true} - relay-local
+    GET  /remote                   phone remote: pause/resume/go live/titles
+    GET  /api/remote               the phone remote's state (remote key or operator)
+    POST /api/remote/reset         new phone remote key; old link stops working
 
 Everything operator-only (marked above, plus /status, /settings, /tune, and
 any other viewer page not explicitly public) needs the operator token - see
@@ -25,7 +28,10 @@ require_operator() below. The status page gets it once from the link the
 launcher opens (`/status?token=...`) and keeps it in a cookie; scripts send
 `Authorization: Bearer ...`. On top of that, none of it is ever reachable
 through `public_hostname` - see is_public()/require_local() - so the tunnel
-stays read-only even for someone holding the token. Both gates are
+stays read-only even for someone holding the token. The one exception is
+the phone remote: its own key (`remote_token`, from /remote?key=...) works
+through the tunnel, but only for /api/remote, /api/event, /api/event/next
+and the open/close stream actions - see remote_caller(). Both gates are
 orthogonal to `source_token`, which is about who may claim to be the capture
 client, not who may view or control things.
 """
@@ -78,7 +84,7 @@ STATUS_PUSH_SECONDS = 0.4
 
 PAGES = {"wall": "wall.html", "phone": "phone.html", "status": "status.html",
          "settings": "settings.html", "tune": "tune.html", "qr": "qr.html",
-         "setup": "setup.html"}
+         "setup": "setup.html", "remote": "remote.html"}
 
 # Bundled font files, served under /fonts/<name>. See serve_font() below.
 FONT_FILES = {
@@ -111,6 +117,30 @@ SAFE_HOSTNAME = re.compile(
 # the JSON POSTs below safe from cross-site request forgery.
 OPERATOR_COOKIE = "captions_operator"
 OPERATOR_COOKIE_MAX_AGE = 30 * 24 * 3600
+
+# The phone remote's session. Its own cookie, holding remote_token, so it
+# grants only what remote_caller() allows and dies when the key is reset.
+REMOTE_COOKIE = "captions_remote"
+# The only /api/control actions a phone remote may send: Go live has to
+# start the recognizer, and an ended event should be able to stop it.
+REMOTE_CONTROL_ACTIONS = {"open_stream", "close_stream"}
+
+REMOTE_LOGIN_HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Captions remote - link needed</title>
+<style>
+  body { margin: 0; background: #000; color: #f5f5f7; font: 17px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width: 30rem; margin: 12vh auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .75rem; }
+  p { margin: 0 0 .75rem; color: #c7cdd8; }
+</style></head><body><main>
+<h1>Scan the remote code</h1>
+<p>This phone isn't signed in to the captions remote, or its link was reset.
+At the booth, open the status page, go to <b>Screens</b>, and scan the
+<b>Phone remote</b> QR code with this phone's camera.</p>
+</main></body></html>
+"""
 
 OPERATOR_LOGIN_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -351,6 +381,21 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
                 return True
             return headers.get("sec-fetch-site", "") in ("", "same-origin", "none")
         return False
+
+    def remote_caller(request: Request) -> str:
+        """"operator" or "remote" for the endpoints the phone remote may use;
+        raises otherwise. The operator token still counts, but only off the
+        tunnel (require_operator); the remote key counts everywhere. POSTs
+        get the same same-origin check as the operator cookie."""
+        if token_matches(request.cookies.get(REMOTE_COOKIE), cfg.remote_token):
+            if request.method == "GET" or request.headers.get("sec-fetch-site", "") in (
+                    "", "same-origin", "none"):
+                return "remote"
+        require_operator(request)
+        return "operator"
+
+    def remote_url() -> str:
+        return f"{cfg.base_url(local_ip())}/remote?key={cfg.remote_token}"
 
     def require_operator(request: Request) -> None:
         """The other half of the operator guard, for the API: the LAN is
@@ -766,6 +811,27 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     async def qr_page() -> FileResponse:
         return page("qr")
 
+    @app.get("/remote")
+    async def remote_page(request: Request) -> Response:
+        """The phone remote. Reachable through the tunnel - that is its
+        point - but only with the remote key. ?key=... signs the phone in
+        (cookie) and redirects to the clean URL, like ?token= on /status."""
+        offered = request.query_params.get("key")
+        if offered is not None:
+            if not token_matches(offered, cfg.remote_token):
+                return HTMLResponse(REMOTE_LOGIN_HTML, status_code=401, headers=NO_STORE)
+            response = RedirectResponse(url="/remote", status_code=303, headers=NO_STORE)
+            response.set_cookie(REMOTE_COOKIE, cfg.remote_token,
+                                max_age=OPERATOR_COOKIE_MAX_AGE, path="/",
+                                httponly=True, samesite="strict",
+                                secure=is_public(request.headers))
+            return response
+        try:
+            remote_caller(request)
+        except HTTPException:
+            return HTMLResponse(REMOTE_LOGIN_HTML, status_code=401, headers=NO_STORE)
+        return page("remote")
+
     @app.get("/robots.txt")
     async def robots() -> PlainTextResponse:
         # A live transcript of a room should never turn up in a search engine.
@@ -981,8 +1047,38 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
             "window_mode": cfg.window_mode,
             "app_window": appwindow.describe(),
             "tour_completed": setup_state["tour"],
+            "remote_url": remote_url(),
         }
         return JSONResponse(snap, headers=NO_STORE)
+
+    @app.get("/api/remote")
+    async def api_remote(request: Request) -> JSONResponse:
+        """What the phone remote shows: the event, whether the recognizer is
+        listening, and how many people are watching - nothing else from the
+        operator snapshot (no audio devices, no tokens, no config paths)."""
+        remote_caller(request)
+        snap = hub.snapshot()
+        return JSONResponse({
+            "event": event.public(),
+            "stream_open": snap["asr"]["stream_open"],
+            "source_connected": snap["source"]["connected"],
+            "health": hub.health(),
+            "viewers": snap["viewers"]["phone"],
+            "last_line": snap["asr"]["last_final_text"],
+        }, headers=NO_STORE)
+
+    @app.post("/api/remote/reset")
+    async def api_remote_reset(request: Request) -> JSONResponse:
+        """Operator-only. A new remote key: every phone signed in with the
+        old one is signed out on its next request."""
+        require_operator(request)
+        cfg.remote_token = secrets.token_urlsafe(24)
+        try:
+            config_module.save_env_var("CAPTIONS_REMOTE_TOKEN", cfg.remote_token)
+        except (OSError, ValueError) as exc:
+            print(f"[relay] new phone remote key is for this run only: {exc}")
+        print("[relay] phone remote key reset")
+        return JSONResponse({"ok": True, "remote_url": remote_url()}, headers=NO_STORE)
 
     def remember_audio_device(index: int) -> None:
         """Persist the operator's input choice so the next launch comes up on
@@ -1005,9 +1101,11 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
 
     @app.post("/api/control")
     async def api_control(request: Request) -> JSONResponse:
-        require_operator(request)
+        who = remote_caller(request)
         body = await read_json(request)
         action = (body or {}).get("action")
+        if who == "remote" and action not in REMOTE_CONTROL_ACTIONS:
+            raise HTTPException(status_code=403, detail="not available from the phone remote")
 
         if action in RELAY_ACTIONS:
             if action == "caption":
@@ -1071,8 +1169,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
     async def api_event(request: Request) -> JSONResponse:
         """Relay-local. {"state": "live"} and/or the welcome-screen text:
         title, message, notice, pause_message, disclaimer - any subset.
-        Every change is pushed to viewers at once and saved to event.toml."""
-        require_operator(request)
+        Every change is pushed to viewers at once and saved to event.toml.
+        Open to the phone remote."""
+        remote_caller(request)
         body = await read_json(request)
         body = body or {}
         fields: dict[str, str] = {}
@@ -1112,8 +1211,9 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         """Relay-local. The next event without quitting: the transcript so
         far is written to <data dir>/transcripts, then cleared; every phone and
         the wall are wiped; the state goes back to the welcome screen with the
-        new title (or the old one). Settings, images and the input all stay."""
-        require_operator(request)
+        new title (or the old one). Settings, images and the input all stay.
+        Open to the phone remote."""
+        remote_caller(request)
         body = await read_json(request) or {}
         saved = []
         try:

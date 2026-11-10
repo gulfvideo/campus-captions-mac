@@ -300,6 +300,11 @@ class RelayConfig:
     # Gates the status page, the tuner, every /api/* route and /ws/status.
     # Never comes from event.toml: env or .env only, generated on first run.
     operator_token: str = ""
+    # The phone remote's key: /remote?key=... signs a phone in to pause,
+    # resume, go live and rename the event - from anywhere, including the
+    # tunnel. Separate from operator_token so the full one never crosses
+    # the tunnel, and so resetting the remote link leaves the booth signed in.
+    remote_token: str = ""
     public_hostname: str = ""
     tunnel_start_enabled: bool = False
     youtube_url: str = ""
@@ -494,6 +499,8 @@ def load(path: Path | None = None) -> RelayConfig:
     cfg.source_token = _ensure_secret("CAPTIONS_SOURCE_TOKEN", cfg.source_token, "source token")
     cfg.operator_token = _ensure_secret(
         "CAPTIONS_OPERATOR_TOKEN", os.environ.get("CAPTIONS_OPERATOR_TOKEN", ""), "operator token")
+    cfg.remote_token = _ensure_secret(
+        "CAPTIONS_REMOTE_TOKEN", os.environ.get("CAPTIONS_REMOTE_TOKEN", ""), "phone remote key")
     return cfg
 
 
