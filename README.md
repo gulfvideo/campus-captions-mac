@@ -288,8 +288,11 @@ with `NOTARY_PROFILE`) and staples the ticket. Make that profile once per Mac:
 
     xcrun notarytool store-credentials campus-captions --apple-id <apple id> --team-id 7V4HF8KNDA
 
-Without a certificate - a contributor's Mac, or CI today - the app is ad-hoc
-signed and not notarized, and first launch on another Mac needs
+The release workflow does the same when the repository has four secrets:
+`DEVID_P12_BASE64` (the certificate and key as a base64 .p12),
+`DEVID_P12_PASSWORD`, `APPLE_ID` and `APPLE_APP_PASSWORD` (an app-specific
+password for notarytool). Without a certificate - a contributor's Mac, a
+fork's CI - the app is ad-hoc signed and not notarized, and first launch on another Mac needs
 Control-click → Open once to get past Gatekeeper.
 
 ## Configuration

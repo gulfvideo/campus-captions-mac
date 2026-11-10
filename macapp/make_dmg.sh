@@ -74,13 +74,17 @@ codesign --sign "$identity" --timestamp "$dmg"
 #   xcrun notarytool store-credentials campus-captions --apple-id ... --team-id ...
 # (CI makes one from secrets; see .github/workflows/release.yml).
 profile="${NOTARY_PROFILE:-campus-captions}"
+# CI keeps the profile in a throwaway keychain, which notarytool only reads
+# when told; on a Mac the login keychain is the default and this is unset.
+set -- --keychain-profile "$profile"
+[ -n "${NOTARY_KEYCHAIN:-}" ] && set -- "$@" --keychain "$NOTARY_KEYCHAIN"
 echo "--- notarizing (usually a few minutes) ---"
-out="$(xcrun notarytool submit "$dmg" --keychain-profile "$profile" --wait 2>&1)" || true
+out="$(xcrun notarytool submit "$dmg" "$@" --wait 2>&1)" || true
 echo "$out"
 if ! echo "$out" | grep -q "status: Accepted"; then
     id="$(echo "$out" | sed -n 's/^ *id: //p' | head -1)"
     echo "notarization failed. Apple's reasons:" >&2
-    [ -n "$id" ] && xcrun notarytool log "$id" --keychain-profile "$profile" >&2
+    [ -n "$id" ] && xcrun notarytool log "$id" "$@" >&2
     exit 1
 fi
 xcrun stapler staple "$dmg"
