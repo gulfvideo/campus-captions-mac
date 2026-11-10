@@ -26,10 +26,10 @@ Python, no terminal, no zip to unpack:
 
 | | |
 |---|---|
-| macOS (Apple Silicon) | `CampusCaptions-<version>-AppleSilicon.dmg` — open, drag to Applications, Control-click → Open the first time |
+| macOS (Apple Silicon) | `CampusCaptions-<version>-AppleSilicon.dmg` — open, drag to Applications, double-click |
 
-It is not code-signed, so it shows a one-time warning the first time it runs
-on a given Mac (Control-click → Open). See [SETUP.md §1](SETUP.md).
+It is signed with Faulkner University's Developer ID and notarized by Apple,
+so it opens like any other app. See [SETUP.md §1](SETUP.md).
 
 This README is for working on the code.
 

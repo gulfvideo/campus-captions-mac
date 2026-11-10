@@ -26,9 +26,9 @@ have; Intel Macs are not supported.
 1. Double-click the `.dmg`. A window opens with the app and a shortcut to
    Applications.
 2. Drag **Campus Captions** onto **Applications**.
-3. **Control-click** it in Applications and choose **Open**, then confirm.
-   (Double-clicking the first time gives an "unidentified developer" refusal
-   with no way past it. Once per Mac.)
+3. Double-click it in Applications. It is signed and notarized, so macOS
+   opens it without an "unidentified developer" warning. (Releases before
+   0.3.21 were not; if one of those refuses to open, Control-click → Open.)
 4. macOS asks for microphone access, and for speech recognition if you use the
    on-device backend. Allow both, or there is nothing to caption.
 
@@ -462,10 +462,10 @@ download, install — and nothing on a timer: an app that downloads 75 MB over a
 venue's wifi and restarts itself mid-service is not something to do to an
 operator. Installing is refused outright while the event is live.
 
-On macOS the app replaces itself and reopens. Because it is currently ad-hoc
-signed, **macOS will ask for microphone access again after an update** — the
-app says so next to the Install button. A Developer ID certificate ends that;
-see [docs/UPDATES.md](docs/UPDATES.md).
+On macOS the app replaces itself and reopens. From 0.3.21 the app is signed
+with a Developer ID, so microphone access carries over from one update to the
+next. Updating *to* 0.3.21 from an older, ad-hoc signed copy asks once more;
+the app says so next to the Install button. See [docs/UPDATES.md](docs/UPDATES.md).
 
 Publishing an update is a maintainer job and is documented separately in
 [docs/UPDATES.md](docs/UPDATES.md).
