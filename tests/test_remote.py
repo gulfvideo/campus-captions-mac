@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from relay import config as config_module  # noqa: E402
 from relay import server  # noqa: E402
 
-try:  # TestClient needs httpx, which the app itself does not
+try:  # TestClient needs httpx/httpx2, which the app itself does not
     from fastapi.testclient import TestClient
-except ImportError:  # pragma: no cover
+except (ImportError, RuntimeError):  # starlette raises RuntimeError when httpx2 is missing
     TestClient = None
 
 TUNNEL = "captions.example.org"
