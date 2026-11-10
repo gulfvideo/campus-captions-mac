@@ -3,18 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Campus Captions — $0.00 per hour, and the audio never leaves the building</title>
-<meta name="description" content="Live captioning for chapel, lectures, ceremonies and services. A free, open-source Mac app that runs on the Mac you already own, on transcription engines that cost nothing and work offline. Currently in private beta.">
+<title>Campus Captions — live captions on the wall and on every phone, from one Mac</title>
+<meta name="description" content="A free, open-source Mac app for the booth. The speaker's words go on the wall, onto every phone in the room in the reader's own language, and into the stream. Everything runs on the Mac; nothing is sent anywhere and nothing is billed.">
 <meta property="og:title" content="Campus Captions">
-<meta property="og:description" content="Captioning that costs $0.00 per hour and never sends your room's audio anywhere. Wall, phones and stream from one capture.">
+<meta property="og:description" content="Live captions on the wall, on every phone in the reader's own language, and in the stream. One Mac, no account, no bill.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://campuscaptions.app/">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230A84FF'/><rect x='7' y='12' width='18' height='2.6' rx='1.3' fill='white'/><rect x='7' y='17.4' width='11' height='2.6' rx='1.3' fill='white'/></svg>">
 
 <style>
-/* Atkinson Hyperlegible: the face the audience views offer for low-vision
-   readers. It appears here only where caption text appears, which is the only
-   place it means anything. */
+/* Atkinson Hyperlegible is the face the phone and wall offer to low-vision
+   readers. It appears here only where caption text appears. */
 @font-face {
   font-family: "Atkinson Hyperlegible";
   src: url("fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype");
@@ -27,1000 +26,405 @@
 }
 
 :root {
-  /* Surfaces, darkest first. Depth is lightness; no border does a surface's job. */
   --bg: #000000;
   --card: #1C1C1E;
   --raised: #2C2C2E;
-  --raised-2: #3A3A3C;
   --rule: #38383A;
-
   --text: #F5F5F7;
   --text-2: #A1A1A6;
   --text-3: #8E8E93;
-  --text-4: #6E6E73;
-
-  --blue: #0A84FF;
-  --blue-lit: #5AB0FF;
-  /* Signal Blue carries white label text at only 3.6:1, which fails AA for
-     anything short of large bold. Same hue, taken down in lightness until
-     white clears 4.5:1 — used for filled surfaces under text, while --blue
-     stays the system accent for marks, carets, dots and focus rings. */
-  --blue-btn: #0A6FD9;
+  --blue: #0A84FF;        /* accent on dark: marks, focus rings */
+  --blue-btn: #0A6FD9;    /* white text on this clears 4.5:1 */
   --blue-btn-hover: #0B5FB8;
   --green: #30D158;
-  --amber: #FF9F0A;
-  --red-soft: #FF6961;
-
-  --r-field: 10px;
-  --r-card: 16px;
-  --r-stage: 22px;
-
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
-  /* Mono carries measured facts only — figures, specs, labels. Never prose. */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-
   --gutter: 16px;
-  --max: 1000px;
+  --max: 980px;
 }
 
 * { box-sizing: border-box; }
 html { color-scheme: dark; scroll-behavior: smooth; }
-
 body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 17px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
-
-/* The surfaces the browser draws for us still belong to the design. */
-::selection { background: rgba(10,132,255,0.32); color: #fff; }
-:root { scrollbar-color: var(--raised-2) var(--bg); }
-::-webkit-scrollbar { width: 11px; height: 11px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--raised-2); border-radius: 6px; border: 3px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover { background: #4A4A4C; }
-input, textarea, select { caret-color: var(--blue); }
-
-a {
-  color: var(--blue-lit);
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1px;
-}
-:focus-visible { outline: 2px solid var(--blue-lit); outline-offset: 3px; border-radius: 6px; }
+a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: #5AB0FF; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+img { max-width: 100%; height: auto; display: block; }
+h1, h2, h3 { margin: 0; letter-spacing: -0.015em; line-height: 1.15; }
+h1 { font-size: clamp(32px, 5.6vw, 54px); font-weight: 700; max-width: 18ch; }
+h2 { font-size: clamp(24px, 3.4vw, 34px); font-weight: 700; }
+h3 { font-size: 19px; font-weight: 700; }
+p { margin: 0; }
+p + p { margin-top: 1em; }
 
 .skip {
-  position: absolute; left: -9999px; top: 0; z-index: 99;
-  background: var(--blue-btn); color: #fff; padding: 12px 18px;
-  border-radius: 10px; margin: 6px; text-decoration: none; font-weight: 600;
+  position: absolute; left: -9999px; top: 12px; z-index: 20;
+  padding: 10px 14px; background: var(--card); color: var(--text); border-radius: 8px;
 }
-.skip:focus { left: 0; }
+.skip:focus { left: 12px; }
 
 .wrap { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
-
-/* ---- the document's own type ------------------------------------------ */
-
-/* Measured facts: tabular figures so columns of numbers line up. */
-.mono {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-}
-
-/* A section heading in the document's idiom: it IS the heading, sitting on
-   its own rule. Nothing is labelled above it. */
-.sec-head {
-  display: flex; align-items: baseline; gap: 16px;
-  border-bottom: 1px solid var(--raised);
-  padding-bottom: 10px; margin: 0 0 26px;
-  font-family: var(--mono);
-  font-size: 13px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--text);
-}
-/* A note that measures something stays in the measurement face; an editorial
-   aside is set in sans, because mono on prose is costume. */
-.sec-head .note {
-  font-family: var(--mono);
-  font-weight: 400; letter-spacing: 0.04em; text-transform: none;
-  color: var(--text-3); font-size: 12px; margin-left: auto; text-align: right;
-}
-.sec-head .note.aside {
-  font-family: var(--sans); font-size: 13px; letter-spacing: 0;
-}
-
-/* The quiet moments between dense blocks. */
-.statement {
-  font-family: var(--display);
-  font-size: clamp(27px, 4vw, 44px);
-  line-height: 1.24; font-weight: 700; letter-spacing: -0.03em;
-  max-width: 17em; margin: 0;
-  text-wrap: balance;
-}
-.lede { font-size: 18px; line-height: 1.6; color: var(--text-2); max-width: 68ch; }
-p { margin: 0; max-width: 72ch; }
+section { padding: 64px 0; border-top: 1px solid var(--raised); }
+section:first-of-type { border-top: 0; }
+.lede { font-size: 19px; line-height: 1.6; color: var(--text-2); max-width: 62ch; }
 .small { font-size: 14px; line-height: 1.55; color: var(--text-3); max-width: 70ch; }
+.mono { font-family: var(--mono); font-size: 13px; letter-spacing: 0.01em; }
+.kicker {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 14px;
+}
+.sec-head { margin-bottom: 28px; }
+.sec-head .lede { margin-top: 14px; }
 
-/* scroll-margin keeps an anchored section clear of the sticky masthead. */
-section { padding: clamp(50px, 7vw, 78px) 0; scroll-margin-top: 72px; }
-
-/* ---- header ------------------------------------------------------------ */
-
-header {
-  position: sticky; top: 0; z-index: 50;
-  background: rgba(0,0,0,0.78);
-  -webkit-backdrop-filter: saturate(160%) blur(16px);
-  backdrop-filter: saturate(160%) blur(16px);
-  border-bottom: 1px solid var(--rule);
-}
-header .wrap { display: flex; align-items: center; gap: 16px; min-height: 56px; }
-.brand {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--mono); font-size: 13px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text); text-decoration: none; margin-right: auto;
-}
-/* Not blue: the rider card's action is the one blue object in this viewport. */
-/* The card states the wordmark 60px below; the header holds it back until the
-   card is gone, so the first viewport says it once. Default is visible, so
-   without JS nothing is lost — the script only hides it over the card. */
-.brand-name { transition: opacity 220ms ease; }
-header.over-card .brand-name { opacity: 0; }
-
-.brand .mark {
-  width: 24px; height: 24px; border-radius: 7px; background: var(--raised);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-/* Deliberately not blue: the one blue action in this viewport is the card's. */
-.header-link {
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-2); text-decoration: none;
-  border: 1px solid var(--raised); border-radius: 17px;
-  padding: 8px 15px; white-space: nowrap;
-  transition: border-color 180ms ease, color 180ms ease;
-}
-.header-link:hover { color: var(--text); border-color: var(--raised-2); }
-
-/* ---- the rider card (first viewport) ----------------------------------- */
-
-.rider {
-  margin-top: clamp(24px, 4vw, 38px);
-  background: var(--card);
-  border-radius: 20px;
-  padding: clamp(22px, 3.4vw, 36px);
-}
-.rider-top {
-  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-  border-bottom: 1px solid var(--raised);
-  padding-bottom: 14px;
-}
-.rider-title {
-  font-family: var(--mono); font-size: clamp(14px, 2vw, 17px);
-  font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  margin: 0;
-}
-.rider-rev {
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
-  color: var(--text-3); margin-left: auto; line-height: 1.5;
-}
-
-/* The spec row: the page's one display moment. */
-.spec-row {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 10px 24px;
-  border: 1px solid var(--raised);
-  border-radius: var(--r-card);
-  padding: clamp(22px, 3vw, 34px);
-  margin: 16px 0 0;
-}
-.spec-label {
-  font-family: var(--mono); font-size: 12px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
-}
-/* Sans: this is a sentence, not a measurement. */
-.spec-label span {
-  display: block; font-family: var(--sans); color: var(--text-2);
-  font-weight: 400; letter-spacing: 0; text-transform: none;
-  font-size: 14px; margin-top: 7px; line-height: 1.5; max-width: 30ch;
-}
-
-/* The function line: what this thing is, in the rider's own register. */
-.rider-what {
-  font-family: var(--mono); font-size: clamp(11.5px, 1.5vw, 13px);
-  font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--text-2); margin: 13px 0 0; line-height: 1.6;
-  /* Two even lines on a phone instead of one long one and an orphaned word. */
-  text-wrap: balance;
-}
-.rider-what b { color: var(--text); font-weight: 700; }
-
-/* The second measured fact, in the rider's row grammar rather than a second
-   bordered box — the box is what makes $0.00 singular, and it only works once.
-   The value pairs with its LABEL on one line, not with the whole block: on a
-   phone the explanatory line pushes the block two deep and a value floated
-   beside it reads as unrelated to anything. */
-.spec-second {
-  border-bottom: 1px solid var(--raised);
-  padding: 0 2px 14px; margin: 14px 0 16px;
-}
-.spec-second-top {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 16px;
-}
-.spec-second .spec-figure { font-size: clamp(21px, 3vw, 28px); margin-left: 0; }
-.spec-second .spec-sub {
-  font-family: var(--sans); font-size: 14px; line-height: 1.5;
-  color: var(--text-2); margin: 7px 0 0; max-width: 46ch;
-}
-.spec-figure {
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: clamp(48px, 11vw, 92px);
-  font-weight: 700; letter-spacing: -0.04em; line-height: 1.04;
-  margin-left: auto;
-}
-
-.cols { display: grid; gap: 22px 36px; grid-template-columns: 1fr; }
-@media (min-width: 620px) { .cols { grid-template-columns: 1fr 1fr; } }
-.col-head {
-  font-family: var(--mono); font-size: 12px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
-  border-bottom: 1px solid var(--rule); padding-bottom: 7px; margin-bottom: 4px;
-}
-.col-list { list-style: none; margin: 0; padding: 0; }
-.col-list li {
-  font-family: var(--mono); font-variant-numeric: tabular-nums;
-  font-size: 13.5px; line-height: 1.5; color: var(--text-2);
-  padding: 7px 0; border-bottom: 0.5px solid var(--rule);
-}
-.col-list li:last-child { border-bottom: none; }
-.col-list .opt { color: var(--text-3); }
-
-.rider-foot {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 14px; flex-wrap: wrap;
-  border-top: 1px solid var(--raised);
-  margin-top: 16px; padding-top: 16px;
-}
-.rider-foot .stamp {
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3);
-}
-
-/* ---- the one blue action ------------------------------------------------ */
-
-.act {
-  display: inline-flex; align-items: center; gap: 10px;
-  min-height: 48px; padding: 0 24px;
-  border: none; border-radius: 24px;
-  background: var(--blue-btn); color: #fff;
-  font-family: var(--sans); font-size: 16px; font-weight: 600;
-  letter-spacing: -0.01em; text-decoration: none; cursor: pointer;
-  box-shadow: 0 10px 30px rgba(10,132,255,0.30);
-  transition: background 180ms ease;
-}
-.act:hover { background: var(--blue-btn-hover); color: #fff; }
-.act[disabled] { opacity: 0.45; box-shadow: none; cursor: default; }
-.act[disabled]:hover { background: var(--blue-btn); }
-.act svg { flex-shrink: 0; }
-
-/* ---- spec tables -------------------------------------------------------- */
-
-.tbl-scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; min-width: 560px; }
-
-/* Narrow: the table stacks into one block per engine rather than scrolling
-   sideways. The last column is the privacy answer — the half of this page's
-   argument a reader must not have to drag into view. */
-@media (max-width: 660px) {
-  .tbl-scroll { overflow-x: visible; }
-  table { min-width: 0; }
-  thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  tbody tr { display: block; padding: 16px 0; border-bottom: 0.5px solid var(--rule); }
-  tbody tr:last-child { border-bottom: none; }
-  tbody th, tbody td { display: flex; gap: 14px; padding: 3px 0; border: none; align-items: baseline; }
-  tbody th { font-size: 16px; padding-bottom: 8px; }
-  tbody td::before {
-    content: attr(data-l);
-    flex: 0 0 9.5em;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--text-3);
-  }
-}
-caption { text-align: left; color: var(--text-3); font-size: 14px; padding-bottom: 14px; max-width: 70ch; }
-th, td {
-  text-align: left; padding: 13px 14px 13px 0;
-  border-bottom: 0.5px solid var(--rule); vertical-align: baseline;
-}
-thead th {
-  font-family: var(--mono); font-size: 11.5px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(0,0,0,0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--raised);
 }
-tbody th { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; }
-tbody td { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--text-2); }
-tbody td.prose { font-family: var(--sans); font-size: 15px; line-height: 1.5; }
-tbody tr:last-child th, tbody tr:last-child td { border-bottom: none; }
-/* Status hues report machine state, not categories — so "no" is simply
-   emphatic, and amber is spent on the single row where the privacy claim
-   does not hold. One coloured cell in the table points straight at the
-   caveat. */
-.yes { color: var(--text); font-weight: 700; }
-.no  { color: var(--amber); font-weight: 700; }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; white-space: nowrap; }
+.brand svg { width: 24px; height: 24px; flex: none; }
+.top nav { display: flex; gap: 6px; align-items: center; }
+.top nav a { color: var(--text-2); text-decoration: none; padding: 8px 10px; border-radius: 8px; font-size: 15px; }
+.top nav a:hover { color: var(--text); background: var(--card); }
+.top nav a.btn { color: #fff; }
+@media (max-width: 520px) { .top nav a.plain { display: none; } .top nav a.btn { padding: 10px 12px; font-size: 14px; } }
 
-/* ---- ruled rows (used instead of a card grid) --------------------------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--blue-btn); color: #fff; text-decoration: none; font-weight: 700;
+  padding: 12px 18px; border-radius: 10px; font-size: 16px; line-height: 1; white-space: nowrap;
+}
+.btn:hover { background: var(--blue-btn-hover); color: #fff; }
+.btn.ghost { background: var(--card); color: var(--text); }
+.btn.ghost:hover { background: var(--raised); }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 
-.rows { border-top: 1px solid var(--raised); }
-.row {
-  display: grid; gap: 6px 32px; grid-template-columns: 1fr;
-  padding: 24px 0; border-bottom: 0.5px solid var(--rule);
-}
-@media (min-width: 740px) { .row { grid-template-columns: 210px 1fr; } }
-.row:last-child { border-bottom: none; }
-.row-key {
-  font-family: var(--mono); font-size: 13px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text);
-}
-.row-key .sub {
-  display: block; margin-top: 6px; font-weight: 400; letter-spacing: 0.04em;
-  text-transform: none; color: var(--text-3); font-size: 12.5px;
-}
-.row-body p + p { margin-top: 10px; }
-.row-body .small { margin-top: 10px; }
+.hero { padding: 72px 0 56px; }
+.hero .lede { margin-top: 20px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 22px; padding: 0; list-style: none; }
+.facts li { font-family: var(--mono); font-size: 13px; color: var(--text-2); display: inline-flex; gap: 8px; align-items: center; }
+.facts li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none; }
 
-/* The system's grouped-list block, used here so the three destinations read
-   at a different density from the ruled rows above and below them. */
-.glist {
-  background: var(--card); border-radius: var(--r-list, 14px);
-  overflow: hidden;
-}
-.glist-row {
-  display: grid; gap: 8px 28px; grid-template-columns: 1fr;
-  padding: 22px clamp(18px, 2.4vw, 26px);
-  border-bottom: 0.5px solid var(--rule);
-}
-@media (min-width: 740px) { .glist-row { grid-template-columns: 190px 1fr; } }
-.glist-row:last-child { border-bottom: none; }
-
-/* ---- the demo stage ----------------------------------------------------- */
-
+/* A caption bar as the wall shows it, replaying the rehearsal script. */
 .stage {
-  border-radius: var(--r-stage);
-  border: 1px solid var(--raised);
-  background: radial-gradient(120% 140% at 50% 120%, #1A1A1D 0%, #000 60%);
-  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
-  overflow: hidden;
+  margin-top: 40px; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(160deg, #1b2230 0%, #0b0d12 55%, #000 100%);
+  padding: 120px 20px 20px; position: relative; min-height: 260px;
 }
-.stage-body {
-  display: flex; flex-direction: column; justify-content: flex-end;
-  gap: 9px; padding: clamp(24px, 4vw, 44px); min-height: clamp(200px, 30vw, 290px);
+.stage-bar {
+  background: rgba(0,0,0,0.86); border-radius: 12px; padding: 16px 20px;
+  font-family: "Atkinson Hyperlegible", var(--sans); font-size: clamp(18px, 2.8vw, 28px); line-height: 1.35;
 }
-.stage-line {
-  margin: 0; max-width: none;
-  font-family: "Atkinson Hyperlegible", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  font-size: clamp(18px, 2.6vw, 27px);
-  /* The product dims a spent line to #6E6E73; at this page's size that is
-     3.4:1, so the demo uses the next step up and still reads as receded. */
-  line-height: 1.38; font-weight: 400; color: var(--text-3);
-  transition: color 400ms ease;
-}
+.stage-line { color: #C8C8CC; margin: 0; }
 .stage-line.now { color: #fff; font-weight: 700; }
 .stage-line.fresh { animation: rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
-.caret {
-  display: inline-block; width: 0.42em; height: 1.02em;
-  background: var(--blue); vertical-align: -0.14em;
-  margin-left: 0.08em; border-radius: 1px;
-  animation: blink 1.1s steps(1) infinite;
-}
-@keyframes blink { 0%,55% { opacity: 1; } 56%,100% { opacity: 0; } }
-.stage-foot {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 9px 18px;
-  padding: 13px 18px;
-  background: rgba(28,28,30,0.85);
-  border-top: 1px solid var(--raised);
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--text-3);
-}
-/* Not green, not "Live": this is the mock backend replaying a script, and
-   green is reserved for a stream that is actually open. */
-.live { display: inline-flex; align-items: center; gap: 7px; color: var(--text-3); font-weight: 700; }
-/* Solid, not pulsing: the typing caption is this page's one authored motion,
-   and a second infinite loop beside it only competes with it. */
-.live .dot { width: 7px; height: 7px; border-radius: 4px; background: currentColor; }
-.stage-foot .end { margin-left: auto; }
+.stage-foot { position: absolute; top: 14px; left: 20px; right: 20px; display: flex; justify-content: space-between; gap: 12px; }
+.stage-foot span { font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,0.55); }
+@media (max-width: 520px) { .stage-foot span + span { display: none; } .stage { padding-top: 90px; } }
 
-/* ---- limitations -------------------------------------------------------- */
+.two { display: grid; gap: 28px; grid-template-columns: 1fr; align-items: start; }
+.two.flip > :first-child { order: 2; }
+@media (min-width: 760px) { .two { grid-template-columns: 1fr 1fr; gap: 40px; } .two.flip > :first-child { order: 0; } }
+.points { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 18px; }
+.points li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; color: var(--text-2); }
+.points li::before { content: ""; width: 22px; height: 22px; border-radius: 50%; background: var(--card); border: 1px solid var(--rule); margin-top: 2px; }
+.points strong { color: var(--text); display: block; margin-bottom: 2px; }
 
-/* Prominence by scale and position, not by status hue. Amber reports machine
-   state; this is the most important sentence on the page, so it is set as a
-   panel at display scale instead of dressed as an alert. */
-.limit {
-  background: var(--card);
-  border-radius: var(--r-card);
-  padding: clamp(24px, 3.4vw, 40px);
-  margin-top: 34px;
-}
-.limit p {
-  font-family: var(--display);
-  font-size: clamp(21px, 2.7vw, 30px);
-  line-height: 1.32; letter-spacing: -0.02em;
-  color: var(--text-2); max-width: 42ch; margin: 0;
-}
-.limit strong { color: var(--text); font-weight: 700; display: block; margin-bottom: 10px; }
-.limit .after { font-family: var(--sans); font-size: 15px; line-height: 1.55; color: var(--text-3); max-width: 62ch; margin-top: 18px; letter-spacing: 0; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.shot { background: var(--card); border-radius: 22px; padding: 10px; }
+.shot img { border-radius: 14px; }
+.shot figcaption { font-size: 13px; color: var(--text-3); padding: 10px 6px 4px; line-height: 1.45; }
+@media (max-width: 520px) { .shots { grid-template-columns: 1fr; } .shot { max-width: 320px; } }
 
-/* ---- form --------------------------------------------------------------- */
+.cards { display: grid; gap: 14px; grid-template-columns: 1fr; margin-top: 28px; }
+@media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 900px) { .cards.three { grid-template-columns: 1fr 1fr 1fr; } }
+.card { background: var(--card); border-radius: 16px; padding: 22px; }
+.card h3 { margin-bottom: 8px; }
+.card p { color: var(--text-2); font-size: 15px; line-height: 1.55; }
+.card .mono { color: var(--text-3); display: block; margin-top: 12px; }
 
-.form-wrap { border-top: 1px solid var(--raised); margin-top: 8px; }
-.field {
-  display: grid; gap: 7px 32px; grid-template-columns: 1fr;
-  padding: 16px 0; border-bottom: 0.5px solid var(--rule);
-  align-items: baseline;
-}
-@media (min-width: 740px) { .field { grid-template-columns: 210px 1fr; } }
-.field label {
-  font-family: var(--mono); font-size: 12.5px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-2);
-}
-/* Not blue: the submit button is this viewport's one blue thing. */
-.field label .req { color: var(--text-3); }
-.field .hint {
-  display: block; margin-top: 6px; font-family: var(--sans);
-  font-size: 12.5px; letter-spacing: 0; text-transform: none;
-  color: var(--text-3); font-weight: 400;
-}
-input[type="text"], input[type="email"], select, textarea {
-  font-family: var(--sans); font-size: 16px;
-  color: var(--text); background: var(--raised);
-  border: 1px solid transparent; border-radius: var(--r-field);
-  padding: 11px 13px; width: 100%; min-width: 0;
-}
-textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
-select {
-  cursor: pointer; appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' stroke='%238E8E93' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px;
-}
-/* --text-3 on the raised fill is under 4.5:1; --text-2 clears it. */
-input::placeholder, textarea::placeholder { color: var(--text-2); }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
-input[aria-invalid="true"] { border-color: var(--red-soft); }
+.flow { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 10px; grid-template-columns: 1fr; counter-reset: step; }
+@media (min-width: 760px) { .flow { grid-template-columns: repeat(4, 1fr); } }
+.flow li { background: var(--card); border-radius: 14px; padding: 18px; font-size: 15px; color: var(--text-2); }
+.flow li::before { counter-increment: step; content: counter(step); display: block; font-family: var(--mono); font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.flow strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 16px; }
 
-.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.tbl-scroll { overflow-x: auto; margin-top: 24px; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 12px 14px 12px 0; border-bottom: 1px solid var(--raised); vertical-align: top; }
+th { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+td.num { font-family: var(--mono); font-size: 14px; white-space: nowrap; color: var(--text); }
+td { color: var(--text-2); }
+td:first-child { color: var(--text); }
 
-.submit-row {
-  display: flex; flex-wrap: wrap; gap: 16px 22px;
-  align-items: center; padding-top: 24px;
-}
-.form-msg { font-family: var(--mono); font-size: 13px; width: 100%; }
-.form-msg.bad { color: var(--red-soft); }
+.rows { border-top: 1px solid var(--raised); margin-top: 24px; }
+.row { display: grid; gap: 6px 24px; padding: 18px 0; border-bottom: 1px solid var(--raised); grid-template-columns: 1fr; }
+@media (min-width: 740px) { .row { grid-template-columns: 220px 1fr; } }
+.row-key { font-weight: 700; }
+.row p { color: var(--text-2); font-size: 15px; }
 
-.done { padding: 32px 0 8px; }
-.done h3 {
-  font-family: var(--mono); font-size: 15px; font-weight: 700;
-  letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 12px;
-  display: flex; align-items: center; gap: 12px;
-}
-.done h3 .tick { color: var(--green); display: flex; }
+.callout { background: var(--card); border-radius: 16px; padding: 22px 24px; margin-top: 28px; }
+.callout p { color: var(--text-2); font-size: 15px; }
+.callout strong { color: var(--text); }
 
-/* ---- notes (faq) -------------------------------------------------------- */
+.dl { display: grid; gap: 28px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .dl { grid-template-columns: 1.2fr 1fr; } }
+.dl-box { background: var(--card); border-radius: 18px; padding: 26px; }
+.dl-box .btn { margin-top: 18px; }
+.dl-box p { color: var(--text-2); font-size: 15px; }
 
-/* No border-top on the first row: the section head already draws that rule. */
-details { border-bottom: 0.5px solid var(--rule); }
-summary {
-  cursor: pointer; list-style: none; position: relative;
-  padding: 18px 34px 18px 0;
-  font-family: var(--mono); font-size: 13.5px; font-weight: 700;
-  letter-spacing: 0.06em; text-transform: uppercase;
-}
-summary::-webkit-details-marker { display: none; }
-summary::after {
-  content: ""; position: absolute; right: 4px; top: 50%;
-  width: 9px; height: 9px; margin-top: -6px;
-  border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3);
-  transform: rotate(45deg); transition: transform 180ms ease;
-}
-details[open] summary::after { transform: rotate(-135deg); margin-top: -2px; }
-details .ans { padding: 0 0 20px; }
-details .ans p + p { margin-top: 12px; }
-
-/* ---- footer ------------------------------------------------------------- */
-
-footer { border-top: 1px solid var(--rule); padding: 32px 0 48px; }
-footer .wrap {
-  display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline;
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--text-3);
-}
-footer .end { margin-left: auto; }
-
-[hidden] { display: none !important; }
+footer { padding: 36px 0 48px; border-top: 1px solid var(--raised); color: var(--text-3); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+  .stage-line.fresh { animation: none; }
 }
 </style>
 </head>
-
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header>
+<header class="top">
   <div class="wrap">
-    <a class="brand" href="#top">
-      <span class="mark" aria-hidden="true">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="#fff"><rect y="4" width="16" height="2.4" rx="1.2"/><rect y="9.6" width="9.5" height="2.4" rx="1.2"/></svg>
-      </span>
-      <span class="brand-name">Campus Captions</span>
+    <a class="brand" href="#top" aria-label="Campus Captions, top of page">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0A84FF"/><rect x="7" y="12" width="18" height="2.6" rx="1.3" fill="#fff"/><rect x="7" y="17.4" width="11" height="2.6" rx="1.3" fill="#fff"/></svg>
+      Campus Captions
     </a>
-    <a class="header-link" href="#download">Download for Mac</a>
+    <nav aria-label="Site">
+      <a class="plain" href="#how">How it works</a>
+      <a class="plain" href="#measured">Measured</a>
+      <a class="plain" href="#limits">Limits</a>
+      <a class="btn" href="https://github.com/gulfvideo/campus-captions-mac/releases/latest">Download latest version</a>
+    </nav>
   </div>
 </header>
 
 <main id="main">
 
-<!-- ========== FIRST VIEWPORT: THE RIDER CARD ========== -->
-<div class="wrap" id="top">
-  <article class="rider">
-    <div class="rider-top">
-      <h1 class="rider-title">Campus Captions</h1>
-      <span class="rider-rev mono">Beta — free, open source, Mac only</span>
-    </div>
-
-    <p class="rider-what"><b>Live captioning for events</b> — wall · phones · stream</p>
-
-    <div class="spec-row">
-      <div class="spec-label">
-        Cost / hour
-        <span>No account, no subscription, no metering.</span>
-      </div>
-      <div class="spec-figure" aria-label="Zero dollars and zero cents per hour">$0.00</div>
-    </div>
-
-    <div class="spec-second">
-      <div class="spec-second-top">
-        <span class="spec-label">Audio leaves the room</span>
-        <span class="spec-figure">No</span>
-      </div>
-      <p class="spec-sub">Apple and Whisper transcribe on the booth machine itself.</p>
-    </div>
-
-    <div class="cols">
-      <div>
-        <h2 class="col-head">Requires</h2>
-        <ul class="col-list">
-          <li>1 × Apple silicon Mac in the booth</li>
-          <li>1 × line-level feed from the desk</li>
-          <li>LAN reachable by wall + phones</li>
-          <li class="opt">Internet — optional</li>
-        </ul>
-      </div>
-      <div>
-        <h2 class="col-head">Outputs</h2>
-        <ul class="col-list">
-          <li>Browser source, transparent</li>
-          <li>Phone page over LAN, QR to join</li>
-          <li>YouTube Live captions, pushed</li>
-          <li>.srt transcript on close</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="rider-foot">
-      <span class="stamp">Open beta · built for Apple silicon</span>
-      <a class="act" href="#download">
-        Download for Mac
-        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7.5h10M8 3.5l4 4-4 4"/></svg>
-      </a>
-    </div>
-  </article>
-</div>
-
-<!-- ========== WHY THE FIGURE IS ZERO ========== -->
-<section id="cost">
+<section class="hero" id="top">
   <div class="wrap">
-    <h2 class="statement">Speech recognition is a part you choose, not a vendor you hire.</h2>
-    <p class="lede" style="margin-top:22px">
-      Every engine runs entirely on the Mac in your booth. No account, no API key,
-      no subscription, and after the first model download, no network at all. That
-      is the whole argument, and it is checkable.
+    <p class="kicker">Free · open source · Mac app for the booth</p>
+    <h1>Captions for the events that have none.</h1>
+    <p class="lede">
+      The speaker's words go on the wall, onto every phone in the room in the reader's
+      own language, and into the stream. All of it runs on the Mac already in your booth.
+      Nothing is sent anywhere, and nothing is billed.
     </p>
+    <ul class="facts" aria-label="Key facts">
+      <li>MIT licence, no account</li>
+      <li>Speech and translation on the Mac</li>
+      <li>Phones join by QR, no app</li>
+      <li>Works with no internet</li>
+    </ul>
+    <div class="btn-row">
+      <a class="btn" href="https://github.com/gulfvideo/campus-captions-mac/releases/latest">Download latest version</a>
+      <a class="btn ghost" href="https://github.com/gulfvideo/campus-captions-mac">Source on GitHub</a>
+    </div>
 
-    <div class="tbl-scroll" style="margin-top:34px">
+    <div class="stage" aria-label="The caption bar as the wall shows it, replaying a rehearsal script">
+      <div class="stage-foot" aria-hidden="true"><span>Wall view · browser source · transparent</span><span>Rehearsal script, not a recording</span></div>
+      <div class="stage-bar" id="demo" aria-live="off">
+        <p class="stage-line">so turn with me, if you would, to the second reading</p>
+        <p class="stage-line now">and that is the heart of what we are asking this semester</p>
+      </div>
+    </div>
+    <p class="small" style="margin-top:12px">The bar above replays a script the app ships for training volunteers. Every caption on this page comes from that script, not from a real event.</p>
+  </div>
+</section>
+
+<section id="phone">
+  <div class="wrap two flip">
+    <div class="shots">
+      <figure class="shot">
+        <img src="img/phone-es.jpg" width="750" height="1624" alt="A phone showing the Campus Captions phone page: white Spanish captions on black, several lines of scrollback, with Pause, Español and Aa buttons along the bottom." loading="lazy">
+        <figcaption>The phone page, reading the rehearsal script in Spanish. Taken from the app, not drawn.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/phone-sheet.jpg" width="375" height="812" alt="The phone page's settings sheet: text size 24 px with smaller and larger buttons, six text colour swatches, Default and Dyslexia-friendly font buttons, and a Read aloud switch labelled Speak each line." loading="lazy">
+        <figcaption>The one settings sheet: size, colour, font, and Read aloud.</figcaption>
+      </figure>
+    </div>
+    <div>
+      <p class="kicker">For the person in the seat</p>
+      <h2>Read along on your own phone, in your own language.</h2>
+      <p class="lede">Put the QR code on screen before doors. Anyone who scans it gets a web page, not an app, and keeps it for the whole event.</p>
+      <ul class="points">
+        <li><div><strong>Scrollback</strong> Looking up late costs nothing. Committed lines stay on the page, and the screen stays awake for the whole service.</div></li>
+        <li><div><strong>A language per phone</strong> Each reader picks their language. Someone joining halfway through and choosing Spanish gets the Spanish history, not the English.</div></li>
+        <li><div><strong>Read aloud</strong> Flip one switch and each translated line is spoken. The voice is synthesized on the booth Mac and played as audio, so it works with the phone on silent, on iPhone and on Android.</div></li>
+        <li><div><strong>Their size, their colour</strong> Eight text sizes from 19 to 64 px, a colour picker that refuses anything below 4.5:1 contrast, and Atkinson Hyperlegible, the face designed for low vision. Each choice stays on that phone.</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="outputs">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">For the room and the stream</p>
+      <h2>One capture, three places the words go.</h2>
+    </div>
+    <div class="cards three">
+      <div class="card">
+        <h3>The wall</h3>
+        <p>A transparent browser source you add once to ProPresenter, OBS or vMix. Font, size, position and line count are set from the URL. It never shows a spinner or an error on a screen the audience can see; when something breaks, the bar goes empty.</p>
+        <p>It can also send captions straight into ProPresenter over its network API, with no web layer at all.</p>
+        <span class="mono">ProPresenter prop · OBS browser source · vMix title</span>
+      </div>
+      <div class="card">
+        <h3>Every phone</h3>
+        <p>The page above, served from the booth Mac over the building's network. Phones need the Wi-Fi, not the internet. A Cloudflare tunnel, which you set up once, lets people outside the building join too.</p>
+        <span class="mono">QR page · one language per phone · Read aloud</span>
+      </div>
+      <div class="card">
+        <h3>The stream</h3>
+        <p>Captions push into YouTube Live as the event runs. Afterwards, the whole event exports as a timed transcript in five formats, per language, so the archive video carries real captions instead of auto-generated ones.</p>
+        <span class="mono">YouTube Live · .srt · .vtt · .txt · .json · .csv</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">How it works</p>
+      <h2>Everything runs on the Mac in the booth.</h2>
+      <p class="lede">There is no server of ours and no vendor's. Each part is something macOS already ships, so there is no account to open and no meter running.</p>
+    </div>
+    <ol class="flow">
+      <li><strong>Audio from the desk</strong> A line-level feed into the Mac. The mic you already run is fine; a cheap USB interface covers a desk with no spare output.</li>
+      <li><strong>Speech to text, on the Mac</strong> Apple's own engine on macOS 26 or newer, or Whisper on any Mac. Audio never leaves the computer.</li>
+      <li><strong>Translation, on the Mac</strong> Apple's Translation framework turns each committed line into every language you offer. Read aloud uses macOS's own voices.</li>
+      <li><strong>Out over the network</strong> The wall, the phones and the QR page are web pages served by the Mac. YouTube is the one output that needs the internet.</li>
+    </ol>
+    <div class="callout">
+      <p><strong>When it needs the internet:</strong> once, the first time a speech or translation language is used, when macOS downloads its model. After that, only for pushing captions to YouTube Live or letting people outside the building connect. A venue with no internet still gets the wall, the phones and the transcript.</p>
+    </div>
+  </div>
+</section>
+
+<section id="measured">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Measured, not promised</p>
+      <h2>The numbers we actually have.</h2>
+      <p class="lede">Taken on one Mac with the rehearsal script, so you can compare against your own booth. Where nothing has been measured, it says so.</p>
+    </div>
+    <div class="tbl-scroll">
       <table>
-        <caption>Nothing bills, and nothing sends audio anywhere. Every engine is on-device.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Engine</th>
-            <th scope="col">Cost / hr</th>
-            <th scope="col">Runs on</th>
-            <th scope="col">Audio leaves the room</th>
-          </tr>
-        </thead>
+        <caption class="small" style="text-align:left;caption-side:bottom;padding-top:12px">Apple M5 Pro, macOS 27.0.1, Campus Captions 0.3.19. Rehearsal script, 19 lines, three translation languages running at once. Delay is from the English line committing to the translated line reaching the phone.</caption>
+        <thead><tr><th scope="col">What</th><th scope="col">Median</th><th scope="col">95th percentile</th><th scope="col">Notes</th></tr></thead>
         <tbody>
-          <tr>
-            <th scope="row">Apple</th>
-            <td data-l="Cost / hr">$0.00</td>
-            <td data-l="Runs on">macOS 26+</td>
-            <td data-l="Audio leaves the room"><span class="yes">No</span></td>
-          </tr>
-          <tr>
-            <th scope="row">Whisper</th>
-            <td data-l="Cost / hr">$0.00</td>
-            <td data-l="Runs on">Mac</td>
-            <td data-l="Audio leaves the room"><span class="yes">No</span></td>
-          </tr>
-          <tr>
-            <th scope="row">Rehearsal</th>
-            <td data-l="Cost / hr">$0.00</td>
-            <td data-l="Runs on">Anywhere</td>
-            <td data-l="Audio leaves the room"><span class="yes">No audio at all</span></td>
-          </tr>
+          <tr><td>Spanish line on the phone</td><td class="num">1.0 s</td><td class="num">1.7 s</td><td>After the English line commits</td></tr>
+          <tr><td>Chinese or Korean line on the phone</td><td class="num">1.6 s</td><td class="num">2.0 s</td><td>Same run, same lines</td></tr>
+          <tr><td>Read aloud clip ready</td><td class="num">0.6 s</td><td class="num">1.6 s (max)</td><td>Per line, 48 characters median, synthesized on the Mac</td></tr>
+          <tr><td>ProPresenter round trip</td><td class="num" colspan="2">Shown live in the app</td><td>The settings panel reports median and p95 for your own ProPresenter</td></tr>
+          <tr><td>Cost per hour</td><td class="num" colspan="2">$0.00</td><td>No account, no key, no metering anywhere in the app</td></tr>
+          <tr><td>Tests run on every change</td><td class="num" colspan="2">256</td><td>In the public repository's continuous integration</td></tr>
         </tbody>
       </table>
     </div>
-
-    <p class="small" style="margin-top:26px">
-      Rehearsal replays a script you write, with no microphone and no key — which is
-      how you train a volunteer at two o'clock on a Tuesday without booking the room.
-    </p>
-  </div>
-</section>
-
-<!-- ========== THE WALL, RUNNING ========== -->
-<section id="wall">
-  <div class="wrap">
-    <h2 class="sec-head">Wall output<span class="note">Browser source · transparent · any resolution</span></h2>
-
-    <div class="stage">
-      <div class="stage-body" id="demo" aria-hidden="true">
-        <p class="stage-line">and that is the heart of what we are asking this semester</p>
-        <p class="stage-line">so turn with me, if you would, to the second reading</p>
-        <p class="stage-line now" id="demo-now">Dr.&nbsp;Whitfield will take questions in Rotunda&nbsp;B<span class="caret"></span></p>
-      </div>
-      <div class="stage-foot">
-        <span class="live"><span class="dot" aria-hidden="true"></span>Rehearsal</span>
-        <span>Roll-up · 3 lines</span>
-        <span class="end">Atkinson Hyperlegible</span>
-      </div>
-    </div>
-
-    <p class="small" style="margin-top:18px">
-      The wall view, replaying a written script through the rehearsal backend — the
-      same mode you train a volunteer on, so nothing above is a recording of a real
-      event. Captions roll up from the bottom; the newest line is the bright one, and
-      the face is the reader-selectable one drawn for low-vision legibility. Drop it
-      into ProPresenter, OBS or vMix as a layer over whatever is already on screen —
-      font, size, position, alignment and line count all set from the URL.
-    </p>
-  </div>
-</section>
-
-<!-- ========== WHERE THE WORDS GO ========== -->
-<section id="outputs">
-  <div class="wrap">
-    <h2 class="sec-head">Where the words go<span class="note">One capture · three destinations</span></h2>
-
-    <div class="glist">
-      <div class="glist-row">
-        <div class="row-key">The wall<span class="sub">ProPresenter · OBS · vMix</span></div>
-        <div class="row-body">
-          <p>A transparent browser source you add once as a web Prop, a browser source
-          or a title. It can also drive ProPresenter directly, with no web layer at all.</p>
-          <p class="small">It never shows a spinner, an error or a placeholder on a screen an
-          audience can see. When something breaks the bar goes empty — not red.</p>
-        </div>
-      </div>
-
-      <div class="glist-row">
-        <div class="row-key">Every phone<span class="sub">LAN · QR to join</span></div>
-        <div class="row-body">
-          <p>Put the QR page on screen before doors. Anyone who scans it reads along on
-          their own phone, at their own text size, in their own colour, with scrollback —
-          so arriving late or glancing away costs nothing.</p>
-          <p class="small">No app, no account, no sign-in. It is a web page. Each reader can
-          pick a language if you have turned translation on.</p>
-        </div>
-      </div>
-
-      <div class="glist-row">
-        <div class="row-key">The stream<span class="sub">YouTube Live · .srt</span></div>
-        <div class="row-body">
-          <p>Captions push into YouTube Live as the event runs. Afterwards you get a timed
-          <code>.srt</code> of every committed line, so the archive video carries real
-          captions instead of auto-generated ones.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== THE BOOTH ========== -->
-<section id="booth">
-  <div class="wrap">
-    <h2 class="statement">The booth, most nights, is one student worker running three other things.</h2>
-
-    <div class="rows" style="margin-top:38px">
-      <div class="row">
-        <div class="row-key">First run</div>
-        <div class="row-body">
-          <p>A setup wizard — microphone, engine, event title — then a guided tour that
-          points at each control on the real page and says what it is for. Every run after
-          that opens straight on the status page.</p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-key">Before doors</div>
-        <div class="row-body">
-          <p>A preflight check reads the network, the audio and the config and returns
-          plain-language findings, each with what to do about it, and one verdict:
-          ready, ready with warnings, or not ready.</p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-key">During</div>
-        <div class="row-body">
-          <p>One page shows whether audio is arriving, whether text is coming back, how
-          many viewers are connected, and whether the engine stream is open. Most of the
-          job is watching one green dot.</p>
-          <p class="small">There is a Bitfocus Companion module too, so the caption controls sit on
-          the same surface as the switcher rather than in a browser tab nobody can reach.</p>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-key">Proper nouns</div>
-        <div class="row-body">
-          <p>You give it a list — people, places, programmes, the words peculiar to your
-          campus — and the recognizer is primed with them before anyone speaks. There is a
-          blocklist too, for words you never want appearing eight feet tall behind a speaker.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== KNOWN LIMITATIONS ========== -->
-<section id="limitations">
-  <div class="wrap">
-    <h2 class="sec-head">Known limitations<span class="note aside">Stated before you ask for them</span></h2>
-
     <div class="rows">
       <div class="row">
-        <div class="row-key">Installer unsigned</div>
-        <div class="row-body"><p>The app is not notarized with Apple, so macOS shows a
-        one-time warning the first time it opens on a given Mac. Control-click the app and
-        choose Open. Installation is not frictionless and we will not pretend otherwise.</p></div>
+        <div class="row-key">Not measured: accuracy</div>
+        <p>It depends on the engine, how clean the feed off the desk is, and the room. No figure has been measured, so none is quoted. Good enough that a room follows along; not the official record of what was said.</p>
       </div>
       <div class="row">
-        <div class="row-key">Accuracy varies</div>
-        <div class="row-body"><p>It depends on the engine, how clean the feed off the desk
-        is, and whether you supplied a keyterm list. No accuracy figure has been measured,
-        so none is quoted here. Good enough that a room follows along; not good enough to
-        be the official record of what was said.</p></div>
+        <div class="row-key">Not measured: speech to wall</div>
+        <p>How long from a word being spoken to it appearing on the wall has not been timed with real audio yet. Apple's engine commits a line as the speaker pauses; Whisper runs about a second behind that.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="running">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Running it</p>
+      <h2>Built for a booth that is one student worker running three other things.</h2>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <h3>First run</h3>
+        <p>A setup wizard asks for the microphone, the engine and the event title, then a guided tour points at each control on the real page and says what it is for. Every run after that opens on the status page.</p>
+      </div>
+      <div class="card">
+        <h3>Before doors</h3>
+        <p>A preflight check reads the network, the audio and the config and returns plain findings with what to do about each, and one verdict: ready, ready with warnings, or not ready.</p>
+      </div>
+      <div class="card">
+        <h3>During</h3>
+        <p>One page shows whether audio is arriving, whether text is coming back, how many phones are connected and whether the engine is open. There is a Bitfocus Companion module, so the controls can live on the same surface as the switcher.</p>
+      </div>
+      <div class="card">
+        <h3>Your words</h3>
+        <p>A keyterm list of your people, places and programmes biases spelling on the Whisper engine; Apple's engine does not take one yet. A blocklist keeps words you never want eight feet tall off the wall.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Limits</p>
+      <h2>Stated before you ask.</h2>
+    </div>
+    <div class="rows">
       <div class="row">
-        <div class="row-key">Remote viewers</div>
-        <div class="row-body"><p>Reaching people outside the building needs a tunnel you
-        set up. On the local network it just works.</p></div>
+        <div class="row-key">The installer is unsigned</div>
+        <p>The app is not notarized with Apple, so macOS shows a one-time warning the first time it opens on a Mac. Control-click the app and choose Open.</p>
       </div>
       <div class="row">
         <div class="row-key">Mac only</div>
-        <div class="row-body"><p>There is no Windows or Linux build, and none is planned.
-        Everything it does — speech, translation, the relay — leans on what macOS already
-        ships. Apple's own engine needs macOS 26; Whisper covers older Macs.</p></div>
+        <p>There is no Windows or Linux build and none is planned. Speech, translation and the voices all lean on what macOS ships. Apple's engine and translation need macOS 26; Whisper covers older Macs, without translation.</p>
       </div>
-    </div>
-
-    <div class="limit">
-      <p><strong>Automatic captions are not a legal accommodation.</strong>
-      Where someone has a documented accommodation requiring verbatim captioning,
-      that remains a human CART writer's job.</p>
-      <p class="after">Your disability services office makes that call, not us. Campus
-      Captions is for the much larger set of events that today have no captions at all.</p>
+      <div class="row">
+        <div class="row-key">Beta</div>
+        <p>It runs real events today, and things still change between releases. The installed app checks GitHub for updates itself.</p>
+      </div>
+      <div class="row">
+        <div class="row-key">Not a legal accommodation</div>
+        <p>Where someone has a documented accommodation requiring verbatim captioning, that remains a human CART writer's job, and your disability services office makes that call. Campus Captions is for the much larger set of events that today have no captions at all.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ========== DOWNLOAD ========== -->
 <section id="download">
-  <div class="wrap">
-    <h2 class="sec-head">Download for Mac<span class="note aside">Free · open source · Apple silicon</span></h2>
-
-    <p class="lede">
-      One disk image from GitHub. Open it, drag Campus Captions to Applications, and
-      Control-click → Open the first time. No Python, no terminal, no account.
-    </p>
-
-    <div class="rows" style="margin-top:30px">
-      <div class="row">
-        <div class="row-key">Latest build</div>
-        <div class="row-body"><p><a href="https://github.com/gulfvideo/campus-captions-mac/releases/download/v0.3.12-beta/CampusCaptions-0.3.12-beta-AppleSilicon.dmg">CampusCaptions-0.3.12-beta-AppleSilicon.dmg</a>
-        — 82 MB. Every release is on the
-        <a href="https://github.com/gulfvideo/campus-captions-mac/releases/latest">Releases page</a>; the installed app checks there for updates itself.</p></div>
-      </div>
-      <div class="row">
-        <div class="row-key">Needs</div>
-        <div class="row-body"><p>An Apple silicon Mac. Apple's speech engine needs macOS 26 or
-        newer; on an older Mac pick Whisper in Settings instead. The first time a language
-        is used, macOS downloads its model, so have internet once.</p></div>
-      </div>
-      <div class="row">
-        <div class="row-key">Setting up</div>
-        <div class="row-body"><p>The <a href="https://github.com/gulfvideo/campus-captions-mac/blob/main/SETUP.md">setup guide</a>
-        covers audio from the desk, ProPresenter, the firewall, and a pre-event checklist.</p></div>
-      </div>
-      <div class="row">
-        <div class="row-key">Source</div>
-        <div class="row-body"><p>MIT licensed on
-        <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a>. Read it, build it, open an issue.</p></div>
+  <div class="wrap dl">
+    <div class="dl-box">
+      <p class="kicker">Download</p>
+      <h2>Get the latest version.</h2>
+      <p style="margin-top:12px">One disk image from GitHub. Open it, drag Campus Captions to Applications, and Control-click → Open the first time. No Python, no terminal, no account.</p>
+      <a class="btn" href="https://github.com/gulfvideo/campus-captions-mac/releases/latest">Download latest version</a>
+      <p class="small" style="margin-top:14px">Opens the newest release on GitHub; the disk image is under Assets. Older releases are on the <a href="https://github.com/gulfvideo/campus-captions-mac/releases">Releases page</a>.</p>
+    </div>
+    <div>
+      <div class="rows" style="margin-top:0">
+        <div class="row" style="grid-template-columns:1fr">
+          <div class="row-key">Needs</div>
+          <p>An Apple silicon Mac. Apple's speech engine and translation need macOS 26 or newer; on an older Mac pick Whisper in Settings. Have internet the first time a language is used, so macOS can download its model.</p>
+        </div>
+        <div class="row" style="grid-template-columns:1fr">
+          <div class="row-key">Setting up</div>
+          <p>The <a href="https://github.com/gulfvideo/campus-captions-mac/blob/main/SETUP.md">setup guide</a> covers audio from the desk, ProPresenter, OBS, the firewall, translation, YouTube and a pre-event checklist.</p>
+        </div>
+        <div class="row" style="grid-template-columns:1fr">
+          <div class="row-key">Source</div>
+          <p>MIT licensed on <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a>. Read it, build it, open an issue.</p>
+        </div>
       </div>
     </div>
-
-    <p class="lede" style="margin-top:46px">
-      Running it somewhere? Tell us about the room and we will let you know when a release
-      matters to you.
-    </p>
-
-    <div class="form-wrap" style="margin-top:30px">
-      <form id="waitlist-form" novalidate>
-        <div class="field">
-          <label for="name">Name <span class="req" aria-hidden="true">*</span></label>
-          <input id="name" name="name" type="text" required autocomplete="name" maxlength="120">
-        </div>
-        <div class="field">
-          <label for="email">Email <span class="req" aria-hidden="true">*</span>
-            <span class="hint">A work address, ideally.</span>
-          </label>
-          <input id="email" name="email" type="email" required autocomplete="email" maxlength="200" inputmode="email">
-        </div>
-        <div class="field">
-          <label for="org">Organisation <span class="req" aria-hidden="true">*</span></label>
-          <input id="org" name="org" type="text" required autocomplete="organization" maxlength="160" placeholder="College, church, conference centre…">
-        </div>
-        <div class="field">
-          <label for="role">Your role</label>
-          <input id="role" name="role" type="text" autocomplete="organization-title" maxlength="120" placeholder="AV director, accessibility services, volunteer…">
-        </div>
-        <div class="field">
-          <label for="kind">Events</label>
-          <select id="kind" name="kind">
-            <option value="">Choose one…</option>
-            <option>Chapel or worship services</option>
-            <option>Lectures and classes</option>
-            <option>Ceremonies and commencement</option>
-            <option>Conferences and panels</option>
-            <option>A mix of these</option>
-            <option>Something else</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="cadence">Frequency</label>
-          <select id="cadence" name="cadence">
-            <option value="">Choose one…</option>
-            <option>Several times a week</option>
-            <option>Weekly</option>
-            <option>A few times a month</option>
-            <option>Occasionally</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="notes">Notes
-            <span class="hint">Please leave out anyone's personal or student information.</span>
-          </label>
-          <textarea id="notes" name="notes" maxlength="2000" placeholder="What you run the room on, what you have tried, what is pushing you to caption now."></textarea>
-        </div>
-
-        <div class="hp" aria-hidden="true">
-          <label for="website">Leave this field empty</label>
-          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
-        </div>
-
-        <div class="submit-row">
-          <button class="act" type="submit" id="submit">
-            Send
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7.5h10M8 3.5l4 4-4 4"/></svg>
-          </button>
-          <p class="small" style="margin:0;max-width:30ch">Used to contact you about Campus Captions. Nothing else, and nobody else.</p>
-          <p class="form-msg" id="form-msg" role="status" aria-live="polite"></p>
-        </div>
-      </form>
-
-      <div class="done" id="done" hidden>
-        <h3 tabindex="-1">
-          <span class="tick" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13.5 10.5 19 21 7.5"/></svg>
-          </span>
-          Thanks, got it
-        </h3>
-        <p class="lede">We will be in touch when there is something worth hearing about. If an
-        event is coming up soon and you need a hand, say so when you hear from us.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ========== NOTES ========== -->
-<section id="notes">
-  <div class="wrap">
-    <h2 class="sec-head">Notes</h2>
-
-    <details>
-      <summary>Does it work with ProPresenter?</summary>
-      <div class="ans">
-        <p>Two ways. Add the wall view as a web Prop and lay it over your slides — that is
-        the usual setup. Or send captions into ProPresenter directly, with no web layer,
-        if your operator would rather drive it from inside ProPresenter.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>Do we need internet?</summary>
-      <div class="ans">
-        <p>Not for the captions, and not for translation. Both run on the Mac; audio never
-        leaves the computer and nothing is billed. The one exception is the first time a
-        speech or translation language is used, when macOS downloads its model.</p>
-        <p>You need the local network so the wall and phones can reach the relay. Internet is
-        only for the optional extras: pushing captions to YouTube Live, or letting people
-        outside the building connect.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>What do we need to buy?</summary>
-      <div class="ans">
-        <p>Most likely nothing. One Mac — the one already in the booth is
-        usually fine — and a feed from the desk you already run. If there is no spare output,
-        a cheap USB interface covers it.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>How accurate is it?</summary>
-      <div class="ans">
-        <p>It depends on three things you control: the engine, how clean the feed is, and
-        whether you gave it your keyterm list. A clean lectern mic plus a list of your proper
-        nouns is a different experience from a room mic and no list.</p>
-        <p>No figure is quoted because none has been measured.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>Can the audience read in another language?</summary>
-      <div class="ans">
-        <p>Yes, if you turn it on. Every completed line is translated into the languages you
-        offer, and each person picks theirs on their own phone. A phone joining halfway
-        through and choosing Spanish replays the Spanish history, not the English. Only
-        languages with a working translator behind them are ever shown.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>What does it cost?</summary>
-      <div class="ans">
-        <p>Nothing. It is free and open source under the MIT licence. There is no account to
-        create and no subscription behind any of it; every engine runs on your own Mac.</p>
-      </div>
-    </details>
-
-    <details>
-      <summary>Does it run on Windows?</summary>
-      <div class="ans">
-        <p>No. Campus Captions is a Mac app, built for Apple silicon, and the speech and
-        translation engines it uses are Apple's own. There is no Windows or Linux build.
-        <a href="#download">Download it for Mac</a>, or read the source on
-        <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a>.</p>
-      </div>
-    </details>
   </div>
 </section>
 
@@ -1028,130 +432,41 @@ footer .end { margin-left: auto; }
 
 <footer>
   <div class="wrap">
-    <span>Campus Captions</span>
-    <span>Beta · macOS · MIT</span>
-    <span class="end"><a href="#download">Download for Mac</a> · <a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a></span>
+    <span>Campus Captions · MIT licence</span>
+    <span><a href="https://github.com/gulfvideo/campus-captions-mac">GitHub</a> · <a href="https://github.com/gulfvideo/campus-captions-mac/releases">Releases</a> · <a href="https://github.com/gulfvideo/campus-captions-mac/blob/main/SETUP.md">Setup guide</a></span>
   </div>
 </footer>
 
 <script>
-/* The page's one authored motion: the wall, running. A fixed script typed a
-   word at a time, so the demo shows what the output actually looks like
-   without a video file. Frozen entirely under reduced-motion — the three
-   static lines in the markup are already a complete picture. */
+// The wall bar replays the rehearsal script the app ships for training
+// volunteers; nothing here is a recording of a real event.
 (function () {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  var SCRIPT = [
-    "that is at four o'clock, immediately after the recital",
-    "before we close, a word about the Harris Scholarship",
-    "applications are open through the twenty-first",
-    "and the committee reads every one of them",
-    "so if you have been putting it off, this is the week"
+  var script = [
+    "Good morning, and welcome to chapel.",
+    "Please take a moment to silence your phones.",
+    "Our reading this morning comes from the second letter to the church at Corinth.",
+    "We do not lose heart.",
+    "Though outwardly we are wasting away, inwardly we are being renewed day by day.",
+    "so turn with me, if you would, to the second reading",
+    "and that is the heart of what we are asking this semester",
+    "Dr. Whitfield will take questions in Rotunda B.",
+    "Let us close the way we opened, in gratitude."
   ];
-
   var demo = document.getElementById('demo');
-  var now = document.getElementById('demo-now');
-  var caret = '<span class="caret"></span>';
-  var i = 0;
-
-  function esc(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function pushLine(text) {
-    now.classList.remove('now');
-    now.innerHTML = esc(now.textContent);
+  if (!demo || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var i = 2;
+  setInterval(function () {
     var lines = demo.querySelectorAll('.stage-line');
-    if (lines.length >= 3) lines[0].remove();
-    var el = document.createElement('p');
-    el.className = 'stage-line now fresh';
-    el.id = 'demo-now';
-    demo.appendChild(el);
-    now = el;
-    typeLine(text);
-  }
-
-  function typeLine(text) {
-    var words = text.split(' '), w = 0;
-    (function step() {
-      w++;
-      now.innerHTML = esc(words.slice(0, w).join(' ')) + caret;
-      if (w < words.length) {
-        setTimeout(step, 110 + words[w - 1].length * 24 + Math.random() * 90);
-      } else {
-        setTimeout(function () {
-          i = (i + 1) % SCRIPT.length;
-          pushLine(SCRIPT[i]);
-        }, 1500);
-      }
-    })();
-  }
-
-  setTimeout(function () { pushLine(SCRIPT[0]); }, 1400);
-})();
-
-/* Hold the header wordmark back while the rider card — which states it — is
-   still on screen. */
-(function () {
-  var card = document.querySelector('.rider');
-  var head = document.querySelector('header');
-  if (!card || !head || !('IntersectionObserver' in window)) return;
-  new IntersectionObserver(function (entries) {
-    head.classList.toggle('over-card', entries[0].isIntersecting);
-  }, { rootMargin: '-56px 0px 0px 0px' }).observe(card);
-})();
-
-/* The request form. */
-(function () {
-  var form = document.getElementById('waitlist-form');
-  var msg = document.getElementById('form-msg');
-  var btn = document.getElementById('submit');
-  var done = document.getElementById('done');
-  var label = btn.childNodes[0];
-
-  function fail(text, field) {
-    msg.className = 'form-msg bad';
-    msg.textContent = text;
-    if (field) { field.setAttribute('aria-invalid', 'true'); field.focus(); }
-  }
-
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    msg.textContent = '';
-    msg.className = 'form-msg';
-    ['name', 'email', 'org'].forEach(function (id) {
-      document.getElementById(id).removeAttribute('aria-invalid');
-    });
-
-    var data = Object.fromEntries(new FormData(form).entries());
-    if (!data.name.trim()) return fail('A name is required.', document.getElementById('name'));
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(data.email.trim()))
-      return fail('That email address does not look right.', document.getElementById('email'));
-    if (!data.org.trim()) return fail('An organisation is required.', document.getElementById('org'));
-
-    btn.disabled = true;
-    label.nodeValue = 'Sending… ';
-
-    fetch('/api/waitlist', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(data)
-    }).then(function (r) {
-      return r.json().then(function (body) { return { ok: r.ok, body: body }; });
-    }).then(function (res) {
-      if (!res.ok) throw new Error(res.body && res.body.error || 'Something went wrong.');
-      form.hidden = true;
-      done.hidden = false;
-      done.querySelector('h3').focus();
-    }).catch(function (err) {
-      btn.disabled = false;
-      label.nodeValue = 'Send ';
-      fail(err.message + ' Try again in a moment.');
-    });
-  });
+    if (lines.length >= 2) demo.removeChild(lines[0]);
+    lines = demo.querySelectorAll('.stage-line');
+    for (var k = 0; k < lines.length; k++) lines[k].className = 'stage-line';
+    var p = document.createElement('p');
+    p.className = 'stage-line now fresh';
+    p.textContent = script[i % script.length];
+    demo.appendChild(p);
+    i++;
+  }, 3200);
 })();
 </script>
-
 </body>
 </html>
