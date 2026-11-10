@@ -2,10 +2,11 @@
 """PyInstaller spec for the Campus Captions macOS menu bar app.
 
 Build with macapp/build.sh, not `pyinstaller` directly - that script also
-(re)builds and signs the Swift speech_helper this bundles, and ad-hoc signs
-the finished .app afterward. See macapp/menubar.py for what actually runs.
+(re)builds the Swift speech_helper this bundles and decides how the app is
+signed (CODESIGN_IDENTITY, below). See macapp/menubar.py for what actually runs.
 """
 
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
@@ -87,6 +88,14 @@ a = Analysis(  # noqa: F821
 
 pyz = PYZ(a.pure)  # noqa: F821
 
+# Set by build.sh when a Developer ID certificate is in the keychain. With an
+# identity, PyInstaller signs every collected binary and then the bundle with
+# the hardened runtime and a secure timestamp, which is what notarization
+# demands. Without one it ad-hoc signs, as every build before this did.
+CODESIGN_IDENTITY = os.environ.get("CODESIGN_IDENTITY") or None
+ENTITLEMENTS = (str(ROOT / "macapp" / "CampusCaptions.entitlements")
+                if CODESIGN_IDENTITY else None)
+
 exe = EXE(  # noqa: F821
     pyz,
     a.scripts,
@@ -97,6 +106,8 @@ exe = EXE(  # noqa: F821
     strip=False,
     upx=False,
     console=False,
+    codesign_identity=CODESIGN_IDENTITY,
+    entitlements_file=ENTITLEMENTS,
 )
 
 coll = COLLECT(  # noqa: F821

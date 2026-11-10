@@ -279,10 +279,18 @@ is the numeric part, which the updater compares.
 
 ### Signing
 
-The app is ad-hoc signed (no paid Apple Developer ID), so first launch on
-another Mac needs Control-click → Open once to get past Gatekeeper. That is
-one-time per computer, not per launch. A certificate is the only thing that
-removes it.
+`macapp/build.sh` signs with the first "Developer ID Application" certificate
+in the keychain (or the one `CODESIGN_IDENTITY` names): every binary, hardened
+runtime, secure timestamp, and the microphone entitlement in
+`macapp/CampusCaptions.entitlements`. `macapp/make_dmg.sh` then signs the disk
+image, notarizes it with the `notarytool` profile `campus-captions` (override
+with `NOTARY_PROFILE`) and staples the ticket. Make that profile once per Mac:
+
+    xcrun notarytool store-credentials campus-captions --apple-id <apple id> --team-id 7V4HF8KNDA
+
+Without a certificate - a contributor's Mac, or CI today - the app is ad-hoc
+signed and not notarized, and first launch on another Mac needs
+Control-click → Open once to get past Gatekeeper.
 
 ## Configuration
 

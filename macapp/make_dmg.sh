@@ -58,3 +58,30 @@ hdiutil create \
     "$dmg"
 
 echo "built $dmg"
+
+# A Developer ID build gets the disk image signed too, then sent to Apple to
+# notarize and the ticket stapled on, so it opens on a Mac with no warning and
+# no internet. An ad-hoc build has nothing Apple would accept, so it stops here.
+identity="$(codesign -dvv "$app" 2>&1 | sed -n 's/^Authority=\(Developer ID Application: .*\)$/\1/p')"
+if [ -z "$identity" ]; then
+    echo "ad-hoc signed app: not notarizing"
+    exit 0
+fi
+
+codesign --sign "$identity" --timestamp "$dmg"
+
+# The profile is made once per Mac with
+#   xcrun notarytool store-credentials campus-captions --apple-id ... --team-id ...
+# (CI makes one from secrets; see .github/workflows/release.yml).
+profile="${NOTARY_PROFILE:-campus-captions}"
+echo "--- notarizing (usually a few minutes) ---"
+out="$(xcrun notarytool submit "$dmg" --keychain-profile "$profile" --wait 2>&1)" || true
+echo "$out"
+if ! echo "$out" | grep -q "status: Accepted"; then
+    id="$(echo "$out" | sed -n 's/^ *id: //p' | head -1)"
+    echo "notarization failed. Apple's reasons:" >&2
+    [ -n "$id" ] && xcrun notarytool log "$id" --keychain-profile "$profile" >&2
+    exit 1
+fi
+xcrun stapler staple "$dmg"
+spctl --assess --type open --context context:primary-signature --verbose "$dmg"

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Used only for a Developer ID build (macapp/build.sh). Those are
+         signed with the hardened runtime, which blocks the microphone
+         unless this is declared: capture/audio.py opens it from the main
+         process through sounddevice, and without this key the stream opens
+         and delivers silence with no permission prompt at all. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

@@ -60,20 +60,21 @@ the old app is put back and reopened.
 * `CFBundleShortVersionString` inside the bundle matches what the manifest
   claimed, so a manifest and a binary that have drifted apart stop here.
 
-### The gap, while the app is ad-hoc signed
+### The gap, for an ad-hoc signed build
 
-Today the app is signed with `codesign --sign -`, and two things follow.
+`macapp/build.sh` signs with the Faulkner Developer ID (team `7V4HF8KNDA`)
+when the certificate is in the keychain, and ad-hoc otherwise. An ad-hoc
+build has two weaknesses.
 
 **Microphone access resets on every update.** macOS records the build's code
-hash when a tester grants it. Every build produces a different one, so each
-update looks like an unrelated app and the prompt comes back. The app says so
-next to the Install button.
+hash when a tester grants it. Every ad-hoc build produces a different one, so
+each update looks like an unrelated app and the prompt comes back. The app
+says so next to the Install button. A Developer ID build is identified by its
+team and bundle ID instead, so access survives updates from the first signed
+build onward.
 
 **The checksum is the whole trust root.** Anyone who can publish a release
-can publish a matching manifest. A Developer ID certificate closes this:
-`expect_team` in `app_from_disk_image` starts matching a real Team ID, and a
-build signed by anyone else is refused by macOS rather than by our own code.
-
-An Apple Developer Program membership is $99/yr and fixes both, plus the
-right-click-to-open dance a new tester currently has to be talked through.
-Sign with the certificate in `macapp/build.sh` and the check turns itself on.
+can publish a matching manifest. In a Developer ID build, `expect_team` in
+`app_from_disk_image` matches the running app's Team ID, and an update signed
+by anyone else is refused. An installed ad-hoc copy has no team to match, so
+its first update to a signed build is trusted on the checksum alone, as before.

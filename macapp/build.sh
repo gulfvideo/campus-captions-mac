@@ -13,9 +13,12 @@
 #
 # Output: macapp/dist/Campus Captions.app
 #
-# The app is ad-hoc signed (no Apple Developer ID), so the first launch on
-# another Mac needs Control-click -> Open once to get past Gatekeeper. There
-# is no way around that without a paid Developer ID to notarize with.
+# Signing: if a "Developer ID Application" certificate is in the keychain
+# (or CODESIGN_IDENTITY names one), every binary and the bundle are signed
+# with it, hardened runtime on, ready for macapp/make_dmg.sh to notarize.
+# Without one - a contributor's Mac, or CI with no certificate - the app is
+# ad-hoc signed as before, and the first launch on another Mac needs
+# Control-click -> Open once to get past Gatekeeper.
 #
 #   macapp/build.sh [--skip-helper]
 #
@@ -44,6 +47,20 @@ if [ "$skip_helper" -eq 0 ]; then
     "$root/capture/backends/native/build.sh"
 fi
 
+if [ -z "${CODESIGN_IDENTITY:-}" ]; then
+    CODESIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -1)"
+fi
+export CODESIGN_IDENTITY
+if [ -n "$CODESIGN_IDENTITY" ]; then
+    echo "--- signing with: $CODESIGN_IDENTITY ---"
+    # PyInstaller only warns when signing fails; a half-signed bundle would
+    # then be found by notarization minutes later, or by a tester.
+    export PYINSTALLER_STRICT_BUNDLE_CODESIGN_ERROR=1
+else
+    echo "--- no Developer ID certificate found: ad-hoc signing ---"
+fi
+
 echo "--- running PyInstaller ---"
 cd "$here"
 rm -rf build dist
@@ -51,12 +68,13 @@ rm -rf build dist
 
 app="$here/dist/Campus Captions.app"
 
-echo "--- ad-hoc signing the app bundle ---"
-# Not --deep: the bundled speech_helper is already signed with its own
-# entitlements (native/build.sh); a deep re-sign here would overwrite that
-# signature with one that has no entitlements at all, and it would SIGKILL at
-# launch. Signing only the outer app is what Gatekeeper checks on open.
-codesign --force --sign - "$app"
+if [ -z "$CODESIGN_IDENTITY" ]; then
+    echo "--- ad-hoc signing the app bundle ---"
+    # PyInstaller already ad-hoc signed every binary inside; this re-signs
+    # the outer app, which is what Gatekeeper checks on open.
+    codesign --force --sign - "$app"
+fi
+codesign --verify --deep --strict "$app"
 
 echo
 echo "built: $app"
