@@ -342,7 +342,7 @@
   }
   #settings .font-btn.selected { background: rgba(255,255,255,0.28); }
   #speak-row[hidden] { display: none; }
-  #settings #speak-btn[aria-checked="true"] { background: #0A84FF; }
+  #settings #speak-btn[aria-checked="true"] { background: #0060DF; }
   #speak-note, #speak-status { color: rgba(255,255,255,0.6); font-size: 0.8125rem; margin: 8px 0 0; }
   #speak-status { color: #8ab4ff; }
   #speak-status[hidden] { display: none; }
@@ -387,7 +387,7 @@
   }
 
   #latest {
-    background: #0A84FF; color: #FFFFFF; border: none;
+    background: #0060DF; color: #FFFFFF; border: none;
     font-weight: 600;
     box-shadow: 0 10px 30px rgba(10, 132, 255, 0.35);
     height: 44px; padding: 0 20px; line-height: 44px;
@@ -774,6 +774,7 @@
   }
 
   function stopSpeaking() {
+    ++playId; // the abandoned clip's late rejection and error are ignored
     speakQueue.length = 0;
     speakBusy = false;
     if (player) { try { player.pause(); } catch (e) {} }
@@ -842,7 +843,11 @@
         if (my !== playId) return;
         // NotAllowedError: the unlock is gone (a page reload, a long
         // background stretch). Everything else: a bad clip; move on.
-        if (e && e.name === 'NotAllowedError') { speakStatus('Tap Read aloud again'); setSpeak(false); }
+        if (e && e.name === 'NotAllowedError') {
+          setSpeak(false);
+          speakStatus('Tap Read aloud again');
+          announce('Read aloud stopped');
+        }
         else speakFailed();
       });
     }

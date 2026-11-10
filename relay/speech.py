@@ -37,8 +37,15 @@ GREETING = {
 }
 
 _VOICE_LINE = re.compile(r"^(.+?)\s+([a-z]{2,3}_[A-Za-z0-9]+)\s+#")
-# Apple's novelty voices; used only when a language has nothing else.
-_NOVELTY = {"Eddy", "Flo", "Grandma", "Grandpa", "Reed", "Rocko", "Sandy", "Shelley"}
+# Apple's novelty and legacy voices; used only when a language has nothing else.
+_NOVELTY = {"Albert", "Bad News", "Bahh", "Bells", "Boing", "Bubbles", "Cellos", "Eddy",
+            "Flo", "Fred", "Good News", "Grandma", "Grandpa", "Jester", "Junior", "Kathy",
+            "Organ", "Ralph", "Reed", "Rocko", "Sandy", "Shelley", "Superstar", "Trinoids",
+            "Whisper", "Wobble", "Zarvox"}
+
+
+def _bare(name: str) -> str:
+    return re.sub(r"\s*\(.*", "", name)
 _CACHE_MAX = 300
 _TIMEOUT = 20.0
 
@@ -52,7 +59,7 @@ def parse_voices(listing: str) -> dict[str, str]:
             continue
         name, locale = m.group(1).strip(), m.group(2)
         have = voices.get(locale)
-        if have is None or (have.split()[0] in _NOVELTY and name.split()[0] not in _NOVELTY):
+        if have is None or (_bare(have) in _NOVELTY and _bare(name) not in _NOVELTY):
             voices[locale] = name
     return voices
 
@@ -72,6 +79,7 @@ class Speech:
     def __init__(self) -> None:
         self._voices: dict[str, str] | None = None
         self._clips: OrderedDict[tuple[str, str], bytes] = OrderedDict()
+        self._inflight: dict[tuple[str, str], asyncio.Task] = {}
         # ponytail: two synths at once; a dozen languages would want a pool.
         self._gate = asyncio.Semaphore(2)
 
@@ -81,12 +89,12 @@ class Speech:
                 out = subprocess.run(["say", "-v", "?"], capture_output=True,
                                      text=True, timeout=10).stdout
             except (OSError, subprocess.TimeoutExpired):
-                out = ""
+                return {}  # not cached: tried again next request
             self._voices = parse_voices(out)
         return self._voices
 
-    def voice(self, lang: str) -> str | None:
-        return voice_for(lang, self.voices())
+    async def voice(self, lang: str) -> str | None:
+        return voice_for(lang, await asyncio.to_thread(self.voices))
 
     async def clip(self, lang: str, text: str) -> bytes | None:
         """AAC bytes for `text` spoken in `lang`, or None with no voice."""
@@ -95,7 +103,18 @@ class Speech:
         if hit is not None:
             self._clips.move_to_end(key)
             return hit
-        voice = self.voice(lang)
+        # Every phone on the same language asks for the same line at the same
+        # moment: one synthesis, shared, and shielded so a phone dropping off
+        # does not cancel it for the others.
+        task = self._inflight.get(key)
+        if task is None:
+            task = self._inflight[key] = asyncio.ensure_future(self._synth(lang, text))
+            task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
+        return await asyncio.shield(task)
+
+    async def _synth(self, lang: str, text: str) -> bytes | None:
+        key = (lang, text)
+        voice = await self.voice(lang)
         if not voice or not text.strip():
             return None
         fd, path = tempfile.mkstemp(suffix=".m4a")

@@ -833,7 +833,7 @@ def create_app(cfg: config_module.RelayConfig | None = None) -> FastAPI:
         """
         if request.query_params:
             raise HTTPException(status_code=400, detail="no query parameters accepted")
-        if not re.fullmatch(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?", lang):
+        if lang not in translation.languages():
             raise HTTPException(status_code=404, detail="unknown language", headers=NO_STORE)
         if utterance == "hello":
             text = speech_module.GREETING.get(lang) or lang
