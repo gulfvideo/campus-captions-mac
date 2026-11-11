@@ -173,6 +173,23 @@ class RefusalTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("live", status["error"])
         self.assertTrue(status["blocked_by_event"])
 
+    def test_install_starts_the_swap_and_then_quits_the_app(self):
+        """The swap helper waits for this process to exit. Before 0.3.25
+        nothing made it exit, so every install timed out and did nothing."""
+        from unittest import mock
+        self.up.state = "ready"
+        self.up.staged = Path(self.dir.name) / "Campus Captions.app"
+        self.up.available = mock.Mock(version="9.9.9")
+        with mock.patch.object(up, "running_bundle", return_value=Path("/Applications/X.app")), \
+             mock.patch.object(up.subprocess, "Popen") as popen, \
+             mock.patch.object(up, "_quit_soon") as quit_soon:
+            status = self.up.install()
+        self.assertEqual("installing", status["state"])
+        swaps = [c for c in popen.call_args_list
+                 if c.args and str(c.args[0][0]).endswith("swap.sh")]
+        self.assertEqual(1, len(swaps))
+        quit_soon.assert_called_once()
+
     def test_status_reports_the_ad_hoc_trust_note(self):
         """While the app is ad-hoc signed the operator is told so, next to the
         button, rather than it being silently weaker."""

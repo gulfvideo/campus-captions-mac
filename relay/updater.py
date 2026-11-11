@@ -43,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -304,6 +305,15 @@ def download(build: Build, into: Path, on_progress=None) -> Path:
 # Waits for the app to quit, swaps the bundle, relaunches - and puts the old one
 # back if the copy fails, because the failure mode to design against is a tester
 # left with no app at all the morning of a service.
+def _quit_soon() -> None:
+    """Exit the app a moment after the install request returns, so the swap
+    helper (which waits on this PID) can replace the bundle. The pause lets
+    the HTTP response reach the settings page first. os._exit, as Quit in the
+    menu bar ends the process: every child this app starts (the speech and
+    translation helpers, caffeinate -w) goes when it does."""
+    threading.Timer(1.5, os._exit, (0,)).start()
+
+
 SWAP_SCRIPT = r"""#!/bin/sh
 target="$1"; staged="$2"; pid="$3"
 waited=0
@@ -572,4 +582,7 @@ class Updater:
         self.state = "installing"
         print(f"[update] installing {self.available.version}; the app will "
               f"restart itself")
+        # Until 0.3.25 nothing did this: the helper waited a minute for an app
+        # that never quit, then gave up, and the update silently didn't happen.
+        _quit_soon()
         return self.status()
