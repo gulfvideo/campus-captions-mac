@@ -1,0 +1,17 @@
+# Friendly "captions aren't running" page for faulknercaptions.com when the
+# booth Mac is off or Campus Captions is closed. See worker.js.
+#
+# Deploy:  cd infra/offline-page && npx wrangler deploy
+# Test:    node infra/offline-page/worker.test.mjs
+#
+# A route, not a custom domain: the hostname's DNS record stays the tunnel's,
+# and this Worker runs in front of it. fetch(request) from here goes on to
+# that origin, not back into the Worker.
+
+name = "faulknercaptions-offline-page"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+routes = [
+  { pattern = "faulknercaptions.com/*", zone_name = "faulknercaptions.com" },
+]
