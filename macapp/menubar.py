@@ -101,7 +101,7 @@ class CampusCaptionsApp(rumps.App):
             "Live captioning for campus events. Runs the relay and capture "
             "client in this one menu bar app - see Open Status Page to run "
             "an event, Open Settings for API keys and setup.\n\n"
-            "github.com/koakley3/campus-captions",
+            "github.com/gulfvideo/campus-captions-mac",
         )
 
     def open_status(self, _sender) -> None:

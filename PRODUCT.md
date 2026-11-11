@@ -130,7 +130,7 @@ translated) versus *committed lines* (final, recorded, translated, exported).
 **Real.**
 - A complete, running system used for actual events — not a prototype.
   Source at `capture/`, `relay/`, `viewer/`.
-- Shipped installers via GitHub Releases on `koakley3/campus-captions`.
+- Shipped installers via GitHub Releases on `gulfvideo/campus-captions-mac`.
 - The marketing site, live at `campuscaptions.app`, source at `site/`.
 - `SETUP.md` — a genuine operator manual covering install, network, audio
   devices, ProPresenter, keyterms and a pre-event checklist.

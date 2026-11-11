@@ -6,8 +6,8 @@
 	"description": "Live event captioning - event state, ASR stream, canned captions, and status feedback",
 	"version": "1.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/koakley3/campus-captions.git",
-	"bugs": "https://github.com/koakley3/campus-captions/issues",
+	"repository": "git+https://github.com/gulfvideo/campus-captions-mac.git",
+	"bugs": "https://github.com/gulfvideo/campus-captions-mac/issues",
 	"maintainers": [
 		{
 			"name": "Jackson Dean",

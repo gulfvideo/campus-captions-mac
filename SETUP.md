@@ -13,7 +13,7 @@ the same booth machine that runs the capture, and it may be the ProPresenter
 machine or a separate one).
 
 **You do not need Python, a terminal, or a copy of the source code.** Go to
-[Releases](https://github.com/koakley3/campus-captions/releases) and take the
+[Releases](https://github.com/gulfvideo/campus-captions-mac/releases) and take the
 download for your operating system.
 
 

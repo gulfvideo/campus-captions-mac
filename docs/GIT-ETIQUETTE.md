@@ -191,7 +191,7 @@ you want a safety net, `git stash -u` parks everything instead of deleting it.
 
 ## Why bother
 
-You are doing this for the person who maintains this after you, for Karson
-reviewing your branch, and mostly for yourself in eight months when a caption
+You are doing this for the person who maintains this after you, for whoever
+reviews your branch, and mostly for yourself in eight months when a caption
 wall misbehaves ten minutes before an event and the only thing standing between
 you and guesswork is what you wrote down at the time.
