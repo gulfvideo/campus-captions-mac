@@ -858,6 +858,14 @@ ProPresenter cue thumbnails to the phone viewer. It is disabled by default and
 independent of outgoing caption delivery. See the setup and preview limitations
 before enabling it for an event.
 
+## Support
+
+Campus Captions is free, has no ads, collects nothing and never will. If it
+helped your event, you're welcome to [buy me a coffee](https://buymeacoffee.com/gulfvideo).
+It's entirely optional and doesn't unlock anything, because there's nothing locked.
+
+<a href="https://buymeacoffee.com/gulfvideo"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy me a coffee" height="34"></a>
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

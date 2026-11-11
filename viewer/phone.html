@@ -163,15 +163,21 @@
     content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
     background: linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.75));
   }
-  #event .panel {
+  #about {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: rgba(0,0,0,0.72); animation: fadein 260ms ease-out;
+  }
+  #event-title, #brand-img { touch-action: manipulation; }   /* quick taps, no zoom */
+  #event .panel, #about .panel {
     position: relative; max-width: 34rem; width: 100%;
     background: rgba(0,0,0,0.80); border: 1px solid rgba(255,255,255,0.18);
     border-radius: 16px; padding: 22px 24px; color: #ffffff; text-align: center;
     overflow-wrap: break-word;
   }
-  #event h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 10px; }
-  #event p { font-size: 1.05rem; line-height: 1.45; margin: 0 0 10px; }
-  #event .notice { color: #d9d9d9; font-size: 0.95rem; margin: 0; }
+  #event h1, #about h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 10px; }
+  #event p, #about p { font-size: 1.05rem; line-height: 1.45; margin: 0 0 10px; }
+  #event .notice, #about .notice { color: #d9d9d9; font-size: 0.95rem; margin: 0; }
   #event .notice:empty { display: none; }
 
   #interim {
@@ -1456,6 +1462,50 @@
     elLatest.addEventListener('click', function () { if (holdScroll) togglePause(); else scrollToBottom(); });
     elPause.addEventListener('click', togglePause);
     elLang.addEventListener('change', function () { setLang(this.value); });
+
+    // Seven quick taps on the title or the logo. Only this phone sees it.
+    var taps = 0, tapTimer;
+    function tapped() {
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(function () { taps = 0; }, 1500);
+      if (++taps < 7 || document.getElementById('about')) return;
+      taps = 0;
+      var card = document.createElement('div');
+      card.id = 'about';
+      card.setAttribute('role', 'dialog');
+      card.setAttribute('aria-label', 'About Campus Captions');
+      card.innerHTML = '<div class="panel"><h1>Campus Captions</h1>' +
+        '<p>Made by Jackson Dean at Faulkner University, so everyone in the room can follow along.</p>' +
+        '<p class="count"></p>' +
+        '<p><a href="https://buymeacoffee.com/gulfvideo" target="_blank" rel="noopener" ' +
+        'style="color:#FFDD00">Buy me a coffee &#9749;</a></p>' +
+        '<p class="notice">Tap anywhere to go back.</p></div>';
+      card.querySelector('.count').textContent = lineCount
+        ? lineCount + (lineCount === 1 ? ' line' : ' lines') + ' captioned on this phone so far.'
+        : '';
+      function close() { if (card.parentNode) card.parentNode.removeChild(card); }
+      card.addEventListener('click', close);
+      setTimeout(close, 12000);
+      document.body.appendChild(card);
+    }
+    elEventTitle.addEventListener('click', tapped);
+    elBrandImg.addEventListener('click', tapped);
+
+    // Open the language menu five times in a row: one line in Pirate, once a
+    // visit, on this phone only. Never spoken, never sent anywhere.
+    var opens = 0, openTimer, pirated = false;
+    elLang.addEventListener('pointerdown', function () {
+      clearTimeout(openTimer);
+      openTimer = setTimeout(function () { opens = 0; }, 8000);
+      if (++opens < 5 || pirated) return;
+      pirated = true;
+      var d = document.createElement('div');
+      d.className = 'new';
+      d.textContent = '\u{1F3F4}\u200D\u2620\uFE0F Arr, ye found the Pirate tongue! ' +
+        'Back to yer regular captions now, matey.';
+      elLines.appendChild(d);
+      trimScrollback();
+    });
     // Tapping outside or Escape keeps the current language and stops the sheet
     // from asking again.
     elLangPick.addEventListener('click', function (e) { if (e.target === elLangPick) pickLang(chosenLang); });
