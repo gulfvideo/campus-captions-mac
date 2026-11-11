@@ -27,6 +27,40 @@
   .page-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
   .page-head .headings { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
+  /* ---- audience bar: what phones show, always on screen -------------- */
+  .audience { display: flex; gap: 18px; align-items: center; margin-bottom: 14px; }
+  .audience .aud-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+  .aud-label { font-size: 13px; color: var(--text-2); }
+  .aud-seg { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--raised);
+             border-radius: var(--r-field); padding: 3px; gap: 3px; }
+  .aud-seg button { display: flex; align-items: center; justify-content: center; height: 40px;
+                    margin: 0; padding: 0 4px; border: 0; background: none; color: var(--text-2);
+                    font: inherit; font-size: 14px; line-height: 1; border-radius: 8px; cursor: pointer; }
+  .aud-seg button:hover { color: var(--text); }
+  .aud-seg button[aria-checked="true"] { background: var(--text); color: #000; font-weight: 600; }
+  .aud-seg button[data-state="live"][aria-checked="true"] { background: var(--ok); }
+  .aud-seg button[data-state="paused"][aria-checked="true"] { background: var(--warn); }
+  .aud-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #btn-captions[aria-pressed="true"] { background: var(--ok-wash); color: var(--ok); }
+  .aud-phone { flex: none; width: 104px; height: 172px; border-radius: 18px; background: #000;
+               border: 3px solid var(--raised-2); display: flex; align-items: center;
+               justify-content: center; text-align: center; padding: 10px; box-sizing: border-box;
+               overflow: hidden; }
+  .aud-phone span { color: #fff; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+  .aud-phone b { display: block; font-size: 12px; margin-bottom: 8px; }
+  .aud-warn { display: flex; align-items: center; gap: 10px; margin: -4px 0 14px; padding: 10px 14px;
+              border-radius: var(--r-field); background: var(--warn-wash); color: var(--warn); font-size: 14px; }
+  .aud-warn[hidden] { display: none; }
+  .aud-warn span { flex: 1; }
+  @media (max-width: 640px) { .aud-phone { display: none; } }
+
+  /* ---- event pane -------------------------------------------------------- */
+  .ev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .ev-grid .wide { grid-column: 1 / -1; }
+  .ev-field { display: flex; flex-direction: column; gap: 6px; }
+  .ev-field label { font-size: 13px; color: var(--text-2); }
+  .ev-field .hint { font-size: 12px; color: var(--text-3); }
+
   /* ---- the ready screen ----------------------------------------------
      Two columns: what has to be true on the left, what it will look like
      and the one button that starts it on the right. */
@@ -144,6 +178,8 @@
 
   <button type="button" class="nav-link on" id="nav-console" data-pane="console">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 18.4a9 9 0 0 0 0-12.8"></path></svg>Console</button>
+  <button type="button" class="nav-link" id="nav-event" data-pane="event">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>Event</button>
   <button type="button" class="nav-link" id="nav-transcript" data-pane="transcript">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line></svg>Transcript</button>
   <button type="button" class="nav-link" id="nav-screens" data-pane="screens">
@@ -166,6 +202,30 @@
 
 <!-- ======================= CONSOLE ======================= -->
 <div class="pane" id="pane-console">
+
+  <!-- What every phone shows right now, and whether captions are running.
+       Two separate switches, both always visible, because they can disagree. -->
+  <div class="card audience" id="audience">
+    <div class="aud-main">
+      <span class="aud-label" id="aud-label">Audience sees</span>
+      <div class="aud-seg" role="radiogroup" aria-labelledby="aud-label" id="aud-seg">
+        <button type="button" role="radio" data-state="starting" aria-checked="false">Welcome</button>
+        <button type="button" role="radio" data-state="live" aria-checked="false">Live</button>
+        <button type="button" role="radio" data-state="paused" aria-checked="false">Paused</button>
+        <button type="button" role="radio" data-state="ended" aria-checked="false">Ended</button>
+      </div>
+      <div class="aud-row">
+        <span class="aud-label">Captions</span>
+        <button class="pill" id="btn-captions" type="button" aria-pressed="false">Stopped</button>
+        <span class="subtitle" id="captions-sub">&nbsp;</span>
+      </div>
+    </div>
+    <div class="aud-phone" aria-hidden="true"><span id="aud-preview">&mdash;</span></div>
+  </div>
+  <div class="aud-warn" id="aud-warn" role="status" hidden>
+    <span id="aud-warn-text">Phones show Live, but captions are stopped, so they see &ldquo;Captions paused&rdquo;.</span>
+    <button class="pill warn" id="btn-aud-fix" type="button">Start captions</button>
+  </div>
 
   <!-- ---------- ready: nothing is running yet ---------- -->
   <div id="view-ready" class="ready-cols">
@@ -284,14 +344,6 @@
       </div>
       <div class="stage-foot">
         <span>What the room sees</span>
-        <div class="row spacer">
-          <button class="pill tall filled" id="btn-event-start" type="button">Go live to audience</button>
-          <button class="pill tall light" id="btn-event-pause" type="button">Pause</button>
-          <button class="pill tall light" id="btn-event-resume" type="button">Resume</button>
-          <button class="pill tall danger" id="btn-event-end" type="button">End event&hellip;</button>
-          <button class="pill tall filled" id="btn-event-next" type="button">Next event&hellip;</button>
-          <button class="pill tall" id="btn-close" type="button">Stop captions</button>
-        </div>
       </div>
     </section>
 
@@ -340,6 +392,42 @@
         <code>&gt;&gt;</code> in front of a name, which is how a caption wall marks that someone
         else has started talking.</p>
     </div>
+  </div>
+</div>
+
+<!-- ======================= EVENT ======================= -->
+<div class="pane" id="pane-event" hidden>
+  <div class="headings">
+    <h1 class="title">Event</h1>
+    <span class="subtitle">What the audience reads for this event. Logo, background and disclaimer are in Settings.</span>
+  </div>
+  <div class="card">
+    <div class="ev-grid">
+      <div class="ev-field">
+        <label for="ev-title">Event title</label>
+        <input id="ev-title" type="text" autocomplete="off" placeholder="Fall Convocation" maxlength="80">
+      </div>
+      <div class="ev-field">
+        <label for="ev-pause">Message while paused</label>
+        <input id="ev-pause" type="text" autocomplete="off" placeholder="Intermission" maxlength="120">
+        <span class="hint">Blank shows &ldquo;Captions paused&rdquo;.</span>
+      </div>
+      <div class="ev-field wide">
+        <label for="ev-message">Welcome message</label>
+        <input id="ev-message" type="text" autocomplete="off" placeholder="Live captions will begin when the program starts." maxlength="300">
+        <span class="hint">Shown before the event starts. Blank uses that wording.</span>
+      </div>
+      <div class="ev-field wide">
+        <label for="ev-notice">Accessibility notice</label>
+        <input id="ev-notice" type="text" autocomplete="off" placeholder="Captions are automatic. Accommodations: Disability Services, 334-555-0100" maxlength="300">
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="pill filled" id="btn-ev-save" type="button">Save</button>
+      <button class="pill" id="btn-event-next" type="button">Set up next event&hellip;</button>
+    </div>
+    <p class="group-note" style="margin:12px 0 0">Set up next event saves the transcript so far, clears every
+      screen and brings back the welcome screen under a new title.</p>
   </div>
 </div>
 
@@ -637,14 +725,7 @@
     ev = ev || {};
     $('event-state-label').textContent = EVENT_LABELS[ev.state] || '—';
 
-    // Four buttons, but never four at once: the pair that applies to the
-    // state the event is actually in.
-    $('btn-event-start').hidden = ev.state === 'live';
-    $('btn-event-pause').hidden = ev.state !== 'live';
-    $('btn-event-resume').hidden = ev.state !== 'paused';
-    $('btn-event-end').disabled = ev.state === 'ended';
-    $('btn-event-end').hidden = ev.state === 'ended';
-    $('btn-event-next').hidden = ev.state !== 'ended';
+    fillEventFields(ev);
 
     var fault = health && health.fault;
     var sub;
@@ -660,8 +741,13 @@
       sub = 'Everything’s running smoothly.';
     }
     $('event-sub').textContent = sub;
+    var READY_SUB = { live: 'Live, but captions are stopped', paused: 'Paused', ended: 'Ended' };
     $('ready-sub').textContent = (ev.title ? ev.title + ' · ' : '')
-      + (ev.state === 'ended' ? 'Ended' : 'Not live yet');
+      + (READY_SUB[ev.state] || 'Not live yet');
+    $('btn-golive').textContent = ev.state === 'live' ? 'Start captions' : 'Go Live';
+    $('ready-preview').textContent = ev.state === 'live'
+      ? 'Phones show \u201cCaptions paused\u201d until captions start.'
+      : 'Welcome. Live captions will appear here once the event begins.';
 
     // The pill is the one thing someone glances at from across the booth.
     var pill = $('onair'), text = $('onair-text');
@@ -740,8 +826,84 @@
       }).then(function () { $('btn-preflight').disabled = false; });
   }
 
+  function segButtons() {
+    return Array.prototype.slice.call(document.querySelectorAll('#aud-seg button'));
+  }
+
+  // The bar at the top of the console: what phones show, from the same state
+  // the phone page renders, so the two cannot drift apart.
+  function renderAudience(s) {
+    var ev = s.event || {}, open = !!(s.asr && s.asr.stream_open);
+    var fault = s.health && s.health.fault;
+    segButtons().forEach(function (b) {
+      b.disabled = false;
+      b.setAttribute('aria-checked', b.getAttribute('data-state') === ev.state ? 'true' : 'false');
+    });
+    var btn = $('btn-captions');
+    btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    btn.textContent = open ? 'Listening' : 'Stopped';
+    $('captions-sub').textContent = open
+      ? (ev.state === 'live' ? 'Phones are getting captions' : 'Running, phones get lines once you go Live')
+      : 'Not listening';
+    var preview;
+    if (ev.state === 'starting') {
+      preview = '<b></b><span></span>';
+    } else if (ev.state === 'live') {
+      preview = fault ? 'Captions paused \u2014 technical difficulty'
+        : ((s.asr && s.asr.last_final_text) || 'Captions appear here');
+    } else if (ev.state === 'paused') {
+      preview = ev.pause_message || 'Captions paused';
+    } else if (ev.state === 'ended') {
+      preview = 'This event has ended. Thank you for attending.';
+    } else {
+      preview = '\u2014';
+    }
+    var el = $('aud-preview');
+    if (ev.state === 'starting') {
+      el.innerHTML = preview;
+      el.firstChild.textContent = ev.title || 'Live captions';
+      el.lastChild.textContent = ev.message || 'Live captions will begin when the program starts.';
+    } else {
+      el.textContent = preview;
+    }
+    var connected = !!(s.source && s.source.connected);
+    $('aud-warn').hidden = !(ev.state === 'live' && !open);
+    $('aud-warn-text').textContent = connected
+      ? 'Phones show Live, but captions are stopped, so they see \u201cCaptions paused\u201d.'
+      : 'Phones show Live, but nothing is listening: the capture client is not connected, so they see \u201cCaptions paused\u201d.';
+    $('btn-aud-fix').hidden = !connected;
+  }
+
+  // The Event pane's fields follow the relay, but never under someone typing.
+  var EV_BOX = { title: 'ev-title', message: 'ev-message', notice: 'ev-notice', pause_message: 'ev-pause' };
+  var evDirty = false;
+  function fillEventFields(ev) {
+    if (evDirty) return;
+    Object.keys(EV_BOX).forEach(function (k) {
+      var box = $(EV_BOX[k]);
+      if (document.activeElement !== box) box.value = ev[k] || '';
+    });
+  }
+
+  function setAudience(state) {
+    var ev = (lastSnap && lastSnap.event) || {};
+    if (state === ev.state) return;
+    var open = !!(lastSnap && lastSnap.asr && lastSnap.asr.stream_open);
+    if (state === 'ended' && !window.confirm('End the event? Phones will show that it has ended.')) return;
+    var LABEL = { starting: 'Phones show the welcome screen', live: 'Live \u2014 phones now show captions',
+                  paused: 'Paused \u2014 phones show the pause message', ended: 'Event ended' };
+    // Going live with captions stopped is the one mismatch that looks broken
+    // to every attendee, so Live starts them first.
+    if (state === 'live' && !open && !(lastSnap.source && lastSnap.source.connected)) {
+      toast('Nothing is listening yet: start the capture client, then go Live');
+    }
+    var first = (state === 'live' && !open) ? control('open_stream', 'Captions started') : Promise.resolve();
+    first.then(function () { eventPost({ state: state }, LABEL[state]); });
+  }
+
   function render(s) {
     lastSnap = s;
+    renderAudience(s);
     renderPreflight(s.preflight);
     renderEvent(s.event, s.health);
     renderBackends(s.source || {});
@@ -811,7 +973,7 @@
     // Go Live is only pressable when there is something to go live with.
     $('btn-golive').disabled = !s.source.connected;
     $('btn-open').disabled = !s.source.connected;
-    $('btn-close').disabled = !s.source.connected;
+    $('btn-captions').disabled = !s.source.connected;
     // Undo what renderOffline() switched off: the relay is answering again.
     $('btn-preflight').disabled = preflightRunning;
     $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = false;
@@ -854,10 +1016,10 @@
     $('event-state-label').textContent = '—';
     $('meta').textContent = 'relay unreachable — retrying';
     $('error-banner').classList.remove('on');
-    $('btn-golive').disabled = $('btn-open').disabled = $('btn-close').disabled = true;
+    $('btn-golive').disabled = $('btn-open').disabled = $('btn-captions').disabled = true;
     $('audio-device').disabled = $('btn-refresh-devices').disabled = true;
     $('btn-mark-start').disabled = $('btn-reset-transcript').disabled = true;
-    $('btn-event-end').disabled = true;
+    segButtons().forEach(function (b) { b.disabled = true; });
     $('event-sub').textContent = 'Relay unreachable.';
     $('btn-preflight').disabled = true;
   }
@@ -962,7 +1124,7 @@
   // The sidebar switches panes in the page rather than loading three pages:
   // the websocket stays up, which is the whole point of a console.
   function showPane(name) {
-    ['console', 'transcript', 'screens'].forEach(function (p) {
+    ['console', 'event', 'transcript', 'screens'].forEach(function (p) {
       $('pane-' + p).hidden = (p !== name);
       var nav = $('nav-' + p);
       if (nav) nav.className = 'nav-link' + (p === name ? ' on' : '');
@@ -1006,7 +1168,7 @@
     }
     try {
       var saved = localStorage.getItem('campus-captions:pane');
-      if (saved === 'transcript' || saved === 'screens') showPane(saved);
+      if (saved === 'event' || saved === 'transcript' || saved === 'screens') showPane(saved);
     } catch (e) {}
 
     var copies = document.querySelectorAll('[data-copy]');
@@ -1031,13 +1193,24 @@
       });
     };
     $('btn-open').onclick = function () { control('open_stream', 'Captions started'); };
-    $('btn-close').onclick = function () { control('close_stream', 'Captions stopped'); };
+    $('btn-captions').onclick = function () {
+      var open = !!(lastSnap && lastSnap.asr && lastSnap.asr.stream_open);
+      control(open ? 'close_stream' : 'open_stream', open ? 'Captions stopped' : 'Captions started');
+    };
+    $('btn-aud-fix').onclick = function () { control('open_stream', 'Captions started'); };
+    segButtons().forEach(function (b) {
+      b.onclick = function () { setAudience(this.getAttribute('data-state')); };
+    });
+    Object.keys(EV_BOX).forEach(function (k) {
+      $(EV_BOX[k]).oninput = function () { evDirty = true; };
+    });
+    $('btn-ev-save').onclick = function () {
+      var fields = {};
+      Object.keys(EV_BOX).forEach(function (k) { fields[k] = $(EV_BOX[k]).value.trim(); });
+      eventPost(fields, 'Event saved').then(function () { evDirty = false; });
+    };
     $('btn-clear').onclick = function () { control('clear', 'Cleared'); };
 
-    $('btn-event-start').onclick = function () { eventPost({ state: 'live' }, 'Event started — attendees now see captions'); };
-    $('btn-event-pause').onclick = function () { eventPost({ state: 'paused' }, 'Paused — attendees see the pause message'); };
-    $('btn-event-resume').onclick = function () { eventPost({ state: 'live' }, 'Resumed'); };
-    $('btn-event-end').onclick = function () { eventPost({ state: 'ended' }, 'Event ended'); };
     // Fast turnaround between two services: the transcript so far is saved
     // to the data folder, phones and the wall are wiped, and the welcome
     // screen comes back under the new title.

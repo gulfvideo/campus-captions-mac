@@ -266,7 +266,7 @@
 
 <nav class="tabs" id="tabs" role="tablist">
   <button role="tab" class="tab" id="tab-event" data-tab="event"
-          aria-controls="tabpanel-event" aria-selected="false">Event</button>
+          aria-controls="tabpanel-event" aria-selected="false">Branding</button>
   <button role="tab" class="tab" id="tab-captions" data-tab="captions"
           aria-controls="tabpanel-captions" aria-selected="false">Captions</button>
   <button role="tab" class="tab" id="tab-audience" data-tab="audience"
@@ -280,43 +280,21 @@
 <div class="tabpanel" id="tabpanel-event" role="tabpanel"
      aria-labelledby="tab-event" hidden>
 <section class="panel" id="panel-event">
-  <h2 class="panel-head">Event &amp; welcome screen
+  <h2 class="panel-head">Branding
   </h2>
   <div class="panel-body" id="event-body">
       <div class="disclosure-sub">
-        Attendees who open the phone view see the welcome screen until you press <b>Go Live</b>
-        on the status page, and again after <b>End event</b>. The words sit on a dark panel over
-        the image, so any photo keeps them readable. The logo sits in a slim row above the captions
-        while they are live. The disclaimer appears once per device the first time someone opens
-        the phone view, with a dismiss button &mdash; it reappears if you change the wording, but
-        not just because you saved the field again.
+        The look of the phone view, set once for a room or an organization. The event title and
+        messages change per event, so they live on the status page under <a href="/status">Event</a>.
+        The welcome words sit on a dark panel over the background image, so any photo keeps them
+        readable. The logo sits in a slim row above the captions while they are live. The
+        disclaimer appears once per device the first time someone opens the phone view, with a
+        dismiss button &mdash; it reappears if you change the wording, but not just because you
+        saved the field again.
       </div>
 
-      <div class="subhead">What the audience reads</div>
       <div class="fieldgrid">
-        <div class="field">
-          <label for="event-title">Event title</label>
-          <input id="event-title" type="text" autocomplete="off" spellcheck="false"
-                 placeholder="Fall Convocation">
-        </div>
-        <div class="field">
-          <label for="event-message">Welcome message</label>
-          <input id="event-message" type="text" autocomplete="off"
-                 placeholder="Live captions will begin when the program starts.">
-          <span class="hint">Shown before the event starts. Blank uses that wording.</span>
-        </div>
         <div class="field wide">
-          <label for="event-notice">Accessibility notice</label>
-          <input id="event-notice" type="text" autocomplete="off"
-                 placeholder="Captions are automatic. Accommodations: Disability Services, 334-555-0100">
-        </div>
-        <div class="field">
-          <label for="event-pause-message">Message while paused</label>
-          <input id="event-pause-message" type="text" autocomplete="off"
-                 placeholder="Intermission">
-          <span class="hint">Blank shows &ldquo;Captions paused&rdquo;.</span>
-        </div>
-        <div class="field">
           <label for="event-disclaimer">Caption accuracy disclaimer</label>
           <input id="event-disclaimer" type="text" autocomplete="off"
                  placeholder="Captions are auto-generated and may not be 100% accurate.">
@@ -358,7 +336,7 @@
       </div>
 
       <div class="row">
-        <button id="btn-event-save" class="go" type="button">Save welcome screen</button>
+        <button id="btn-event-save" class="go" type="button">Save branding</button>
       </div>
     </div>
 </section>
@@ -802,7 +780,8 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
     });
   }
   var eventDirty = {};
-  var EVENT_FIELDS = ['title', 'message', 'notice', 'pause_message', 'logo_alt', 'disclaimer'];
+  // Title and messages moved to the status page's Event pane.
+  var EVENT_FIELDS = ['logo_alt', 'disclaimer'];
 
   // The relay never echoes a saved secret back, so the field is cleared right
   // after Save - otherwise it would just sit there in the DOM. Left with its
@@ -1697,7 +1676,7 @@ In ProPresenter: <b>Settings &rarr; Network &rarr; Enable Network</b>, and note 
   function saveEventText() {
     var fields = {};
     EVENT_FIELDS.forEach(function (field) { fields[field] = eventBox(field).value.trim(); });
-    eventPost(fields, 'Welcome screen saved');
+    eventPost(fields, 'Branding saved');
   }
 
   function uploadEventImage(file, path, label) {

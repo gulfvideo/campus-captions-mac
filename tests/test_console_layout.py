@@ -75,10 +75,15 @@ class IdsTests(unittest.TestCase):
         # The promise made when the console was redesigned: one button for
         # the ordinary path, and the two things it does still available on
         # their own. Losing either half silently is the regression to catch.
-        for button in ("btn-golive", "btn-open", "btn-close",
-                       "btn-event-start", "btn-event-pause",
-                       "btn-event-resume", "btn-event-end"):
+        for button in ("btn-golive", "btn-open", "btn-captions"):
             self.assertIn(f'id="{button}"', STATUS, button)
+
+    def test_the_audience_switch_offers_every_event_state(self):
+        # The four states the relay accepts (relay/event.py STATES), each one
+        # tap away at the top of the console, whichever screen is showing.
+        for state in ("starting", "live", "paused", "ended"):
+            self.assertIn(f'data-state="{state}"', STATUS, state)
+        self.assertLess(STATUS.index('id="audience"'), STATUS.index('id="view-ready"'))
 
 
 class BehaviourTests(unittest.TestCase):
@@ -92,9 +97,17 @@ class BehaviourTests(unittest.TestCase):
     def test_starting_captions_alone_does_not_start_the_event(self):
         js = script_of(STATUS)
         handler = js[js.index("$('btn-open').onclick"):]
-        handler = handler[:handler.index("$('btn-close').onclick")]
+        handler = handler[:handler.index("$('btn-captions').onclick")]
         self.assertIn("open_stream", handler)
         self.assertNotIn("state: 'live'", handler)
+
+    def test_choosing_live_starts_captions_if_they_are_stopped(self):
+        """Live with captions stopped shows every attendee "Captions paused",
+        which is what the audience switch exists to prevent."""
+        js = script_of(STATUS)
+        fn = js[js.index("function setAudience"):js.index("function render(s)")]
+        self.assertIn("state === 'live' && !open", fn)
+        self.assertIn("open_stream", fn)
 
     def test_the_screen_shown_is_decided_by_whether_the_stream_is_open(self):
         js = script_of(STATUS)
