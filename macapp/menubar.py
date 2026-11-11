@@ -133,7 +133,7 @@ def main() -> None:
         session = embedded.existing_session(port, rcfg.operator_token)
         if session is not None:
             appwindow.open_link(
-                f"http://127.0.0.1:{port}/status?token={rcfg.operator_token}",
+                f"http://{embedded.LOCAL_HOST}:{port}/status?token={rcfg.operator_token}",
                 rcfg.window_mode, relay_config.DATA_DIR)
             rumps.alert("Campus Captions",
                         "Already running - opened its status page.\n\n"

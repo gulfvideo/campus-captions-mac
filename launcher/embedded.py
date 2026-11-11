@@ -50,6 +50,13 @@ class _SilentServer(uvicorn.Server):
         pass
 
 
+# What the booth's own pages open at. Any *.localhost name resolves to this
+# Mac (macOS and every current browser treat the whole .localhost domain as
+# loopback), so this reads better in the address bar than 127.0.0.1 and needs
+# no setup. Only for links opened on this Mac: phones get the LAN address or
+# the tunnel, and the app's own probes keep using 127.0.0.1.
+LOCAL_HOST = "captions.localhost"
+
 def port_in_use(port: int) -> bool:
     """Connect, don't bind: if a connection is accepted, something is there."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -109,7 +116,7 @@ class Supervisor:
         """`path` on this relay. `signed_in` appends the operator token, which
         the page trades for a month-long cookie - only for operator pages, and
         never for the wall or phone links an operator might read out loud."""
-        base = f"http://127.0.0.1:{self.port}{path}"
+        base = f"http://{LOCAL_HOST}:{self.port}{path}"
         return f"{base}?token={self.token}" if signed_in else base
 
     def open(self, path: str, signed_in: bool = False) -> str:

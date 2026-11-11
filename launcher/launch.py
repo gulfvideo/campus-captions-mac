@@ -293,7 +293,7 @@ def main() -> int:
             say("\nIf you want a fresh start, close the other Campus Captions")
             say("window first, then run this again.")
             try:
-                open_page(f"http://127.0.0.1:{port}/status?token={token}")
+                open_page(f"http://captions.localhost:{port}/status?token={token}")
             except Exception:
                 pass
             input("\npress Enter to close this window ")
@@ -317,7 +317,7 @@ def main() -> int:
         say("  started again - or you make the change permanent on the Settings")
         say("  page (Network - relay port) and update those URLs once.")
 
-    status_link = f"http://127.0.0.1:{port}/status?token={token}"
+    status_link = f"http://captions.localhost:{port}/status?token={token}"   # see embedded.LOCAL_HOST
     rule("starting")
     procs["relay"] = spawn(python, relay_args(port, fallback), "relay server")
 
