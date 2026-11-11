@@ -1492,20 +1492,31 @@
     elBrandImg.addEventListener('click', tapped);
 
     // Open the language menu five times in a row: one line in Pirate, once a
-    // visit, on this phone only. Never spoken, never sent anywhere.
-    var opens = 0, openTimer, pirated = false;
-    elLang.addEventListener('pointerdown', function () {
+    // visit, on this phone only. Never spoken, never sent anywhere. Counted on
+    // pointerdown and focus (iOS reports a tap on a native select as either),
+    // with taps closer than half a second treated as one.
+    var opens = 0, openTimer, lastOpen = 0, pirated = false;
+    function opened() {
+      var now = Date.now();
+      if (now - lastOpen < 500) return;
+      lastOpen = now;
       clearTimeout(openTimer);
       openTimer = setTimeout(function () { opens = 0; }, 8000);
       if (++opens < 5 || pirated) return;
       pirated = true;
+      var text = '\u{1F3F4}\u200D\u2620\uFE0F Arr, ye found the Pirate tongue! ' +
+        'Back to yer regular captions now, matey.';
+      // The welcome and ended screens cover the captions, so there the line
+      // goes in the status banner instead, where it can be seen.
+      if (elEvent.className === 'on') { announce(text); return; }
       var d = document.createElement('div');
       d.className = 'new';
-      d.textContent = '\u{1F3F4}\u200D\u2620\uFE0F Arr, ye found the Pirate tongue! ' +
-        'Back to yer regular captions now, matey.';
+      d.textContent = text;
       elLines.appendChild(d);
       trimScrollback();
-    });
+    }
+    elLang.addEventListener('pointerdown', opened);
+    elLang.addEventListener('focus', opened);
     // Tapping outside or Escape keeps the current language and stops the sheet
     // from asking again.
     elLangPick.addEventListener('click', function (e) { if (e.target === elLangPick) pickLang(chosenLang); });
