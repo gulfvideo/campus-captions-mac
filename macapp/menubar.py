@@ -78,6 +78,7 @@ class CampusCaptionsApp(rumps.App):
             rumps.MenuItem("Open Wall View", callback=self.open_wall),
             rumps.MenuItem("Open Phone View", callback=self.open_phone),
             rumps.separator,
+            rumps.MenuItem("Copy Token for Companion", callback=self.copy_token),
             rumps.MenuItem("Show Config Folder in Finder", callback=self.show_config_folder),
             rumps.MenuItem("Show Logs in Finder", callback=self.show_logs_folder),
             rumps.separator,
@@ -109,6 +110,14 @@ class CampusCaptionsApp(rumps.App):
 
     def open_settings(self, _sender) -> None:
         self.supervisor.open("/settings", signed_in=True)
+
+    def copy_token(self, _sender) -> None:
+        """The operator token, for the Bitfocus Companion connection's
+        settings, without opening .env by hand."""
+        subprocess.run(["pbcopy"], input=self.supervisor.token.encode(), check=False)
+        rumps.alert("Operator token copied",
+                    "Paste it into the Operator token field of the Campus Captions "
+                    "connection in Bitfocus Companion.")
 
     def show_config_folder(self, _sender) -> None:
         reveal_in_finder(relay_config.DATA_DIR)

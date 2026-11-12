@@ -29,13 +29,15 @@ class CampusCaptionsInstance extends InstanceBase {
 		this.setActionDefinitions(getActions(this))
 		this.setFeedbackDefinitions(getFeedbacks(this))
 		this.setVariableDefinitions(variableDefinitions)
-		this.setPresetDefinitions(getPresets())
+		this.setPresetDefinitions(getPresets(this.label))
 
 		this.#start()
 	}
 
 	async configUpdated(config, secrets) {
 		this.#absorb(config, secrets)
+		// Also called when the connection is renamed: preset text carries the label.
+		this.setPresetDefinitions(getPresets(this.label))
 		this.#stop()
 		this.#start()
 	}

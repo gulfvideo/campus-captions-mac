@@ -112,6 +112,63 @@ export function getFeedbacks(self) {
 			callback: ({ options }) => (snap()?.viewers?.total ?? 0) >= Number(options.minimum),
 		},
 
+		youtube_enabled: {
+			type: 'boolean',
+			name: 'YouTube captions are on',
+			defaultStyle: { bgcolor: RED, color: WHITE },
+			options: [],
+			callback: () => Boolean(snap()?.youtube?.enabled),
+		},
+
+		youtube_error: {
+			type: 'boolean',
+			name: 'YouTube captions have an error',
+			description: 'YouTube is on but the last push failed.',
+			defaultStyle: { bgcolor: AMBER, color: BLACK },
+			options: [],
+			callback: () => Boolean(snap()?.youtube?.enabled && snap()?.youtube?.error),
+		},
+
+		propresenter_state: {
+			type: 'boolean',
+			name: 'ProPresenter output is in state',
+			defaultStyle: { bgcolor: GREEN, color: WHITE },
+			options: [
+				{
+					type: 'dropdown',
+					id: 'state',
+					label: 'State',
+					default: 'connected',
+					choices: [
+						{ id: 'connected', label: 'Connected' },
+						{ id: 'connecting', label: 'Connecting' },
+						{ id: 'degraded', label: 'Degraded (some pushes failing)' },
+						{ id: 'disconnected', label: 'Disconnected' },
+						{ id: 'unsupported', label: 'Unsupported ProPresenter version' },
+						{ id: 'off', label: 'Off' },
+					],
+				},
+			],
+			callback: ({ options }) => snap()?.propresenter?.state === options.state,
+		},
+
+		profanity_filter_on: {
+			type: 'boolean',
+			name: 'Profanity filter is on',
+			defaultStyle: { bgcolor: GREEN, color: WHITE },
+			options: [],
+			callback: () => Boolean(snap()?.source?.mask_profanity),
+		},
+
+		audio_clipping: {
+			type: 'boolean',
+			name: 'Audio input is clipping',
+			description: 'The microphone is too hot. Turn the input gain down.',
+			defaultStyle: { bgcolor: RED, color: WHITE },
+			options: [],
+			callback: () => Boolean(snap()?.audio?.clipping),
+		},
+
 		tunnel_connected: {
 			type: 'boolean',
 			name: 'Public tunnel is connected',

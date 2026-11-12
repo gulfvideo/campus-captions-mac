@@ -7,9 +7,8 @@ export const configFields = [
 		width: 12,
 		label: 'Campus Captions',
 		value:
-			'Point this at the Mac running Campus Captions. The operator token is ' +
-			'<code>CAPTIONS_OPERATOR_TOKEN</code>, found in the app&apos;s <code>.env</code> file &mdash; ' +
-			'use the menu bar&apos;s <b>Show Config Folder in Finder</b> to open the folder it lives in.',
+			'Point this at the Mac running Campus Captions (<code>127.0.0.1</code> if it is this Mac). ' +
+			'For the token, click the Campus Captions menu bar icon &rarr; <b>Copy Token for Companion</b>, then paste it below.',
 	},
 	{
 		type: 'textinput',
@@ -43,6 +42,6 @@ export const configFields = [
 		label: 'Operator token',
 		width: 12,
 		required: true,
-		tooltip: "CAPTIONS_OPERATOR_TOKEN from the app's .env file.",
+		tooltip: 'Menu bar icon → Copy Token for Companion.',
 	},
 ]

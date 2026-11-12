@@ -218,11 +218,26 @@ jobs:
           hdiutil detach "$mnt" -quiet
           echo "disk image is good"
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Build the Companion module package
+        # A fixed asset name, so the site can link releases/latest/download/
+        # straight to it. Companion reads the version from inside the package.
+        run: |
+          cd integrations/companion-module-campus-captions
+          npm ci
+          npx companion-module-build
+          cp campus-captions-*.tgz ../../macapp/dist/campus-captions-companion.tgz
+
       - name: Upload the app as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: CampusCaptions-macOS-AppleSilicon
-          path: macapp/dist/*.dmg
+          path: |
+            macapp/dist/*.dmg
+            macapp/dist/campus-captions-companion.tgz
           if-no-files-found: error
 
       - name: Attach the app and the manifest to the release
@@ -235,6 +250,7 @@ jobs:
           files: |
             macapp/dist/*.dmg
             macapp/dist/latest.json
+            macapp/dist/campus-captions-companion.tgz
           draft: false
           prerelease: false
           fail_on_unmatched_files: true

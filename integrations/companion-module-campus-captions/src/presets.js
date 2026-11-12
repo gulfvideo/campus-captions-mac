@@ -21,7 +21,10 @@ const press = (actionId, options = {}) => [{ down: [{ actionId, options }], up: 
  * wiring. Laid out as an operator would want it: the event's life along the
  * top, the things you touch mid-service below, canned captions last.
  */
-export function getPresets() {
+export function getPresets(label) {
+	// Preset text names this connection by its label, which the operator can
+	// rename; index.js rebuilds the presets when it changes.
+	const v = (id) => `$(${label}:${id})`
 	return {
 		start_event: {
 			type: 'button',
@@ -70,6 +73,15 @@ export function getPresets() {
 			feedbacks: [
 				{ feedbackId: 'event_state', options: { state: 'starting' }, style: { bgcolor: AMBER, color: BLACK } },
 			],
+		},
+
+		next_event: {
+			type: 'button',
+			category: 'Event',
+			name: 'Next event (save transcript, wipe screens)',
+			style: base('Next\\nEvent'),
+			steps: press('next_event', { title: '' }),
+			feedbacks: [],
 		},
 
 		toggle_stream: {
@@ -132,7 +144,7 @@ export function getPresets() {
 				{
 					feedbackId: 'pipeline_fault',
 					options: {},
-					style: { bgcolor: RED, color: WHITE, text: 'FAULT\\n$(campus-captions:fault)' },
+					style: { bgcolor: RED, color: WHITE, text: `FAULT\\n${v('fault')}` },
 				},
 			],
 		},
@@ -140,7 +152,7 @@ export function getPresets() {
 			type: 'button',
 			category: 'Status',
 			name: 'Viewer count',
-			style: base('Viewers\\n$(campus-captions:viewers_total)'),
+			style: base(`Viewers\\n${v('viewers_total')}`),
 			steps: [],
 			feedbacks: [
 				{ feedbackId: 'viewers_present', options: { minimum: 1 }, style: { bgcolor: GREEN, color: WHITE } },
@@ -150,18 +162,75 @@ export function getPresets() {
 			type: 'button',
 			category: 'Status',
 			name: 'Audio state',
-			style: base('Audio\\n$(campus-captions:audio_state)'),
+			style: base(`Audio\\n${v('audio_state')}`),
 			steps: [],
 			feedbacks: [
 				{ feedbackId: 'audio_state', options: { state: 'live' }, style: { bgcolor: GREEN, color: WHITE } },
 				{ feedbackId: 'audio_state', options: { state: 'stale' }, style: { bgcolor: RED, color: WHITE } },
 			],
 		},
+		gain_down: {
+			type: 'button',
+			category: 'Audio',
+			name: 'Input gain down 3 dB',
+			style: base(`Gain -\\n${v('audio_gain_db')} dB`),
+			steps: press('set_audio_gain', { mode: 'down', db: 3 }),
+			feedbacks: [{ feedbackId: 'audio_clipping', options: {}, style: { bgcolor: RED, color: WHITE } }],
+		},
+		gain_up: {
+			type: 'button',
+			category: 'Audio',
+			name: 'Input gain up 3 dB',
+			style: base(`Gain +\\n${v('audio_gain_db')} dB`),
+			steps: press('set_audio_gain', { mode: 'up', db: 3 }),
+			feedbacks: [{ feedbackId: 'audio_clipping', options: {}, style: { bgcolor: RED, color: WHITE } }],
+		},
+		profanity: {
+			type: 'button',
+			category: 'Audio',
+			name: 'Profanity filter (toggle)',
+			style: base('Profanity\\nFilter'),
+			steps: press('set_profanity_toggle'),
+			feedbacks: [{ feedbackId: 'profanity_filter_on', options: {}, style: { bgcolor: GREEN, color: WHITE } }],
+		},
+
+		youtube: {
+			type: 'button',
+			category: 'Outputs',
+			name: 'YouTube captions (toggle)',
+			style: base('YouTube\\nCaptions'),
+			steps: press('youtube_captions', { mode: 'toggle' }),
+			feedbacks: [
+				{ feedbackId: 'youtube_enabled', options: {}, style: { bgcolor: RED, color: WHITE } },
+				{ feedbackId: 'youtube_error', options: {}, style: { bgcolor: AMBER, color: BLACK } },
+			],
+		},
+		propresenter: {
+			type: 'button',
+			category: 'Outputs',
+			name: 'ProPresenter output (toggle)',
+			style: base('ProPres\\nOutput'),
+			steps: press('propresenter', { mode: 'toggle' }),
+			feedbacks: [
+				{ feedbackId: 'propresenter_state', options: { state: 'connected' }, style: { bgcolor: GREEN, color: WHITE } },
+				{ feedbackId: 'propresenter_state', options: { state: 'degraded' }, style: { bgcolor: AMBER, color: BLACK } },
+				{ feedbackId: 'propresenter_state', options: { state: 'disconnected' }, style: { bgcolor: RED, color: WHITE } },
+			],
+		},
+		propresenter_clear: {
+			type: 'button',
+			category: 'Outputs',
+			name: 'Clear ProPresenter',
+			style: base('Clear\\nProPres'),
+			steps: press('propresenter_clear'),
+			feedbacks: [],
+		},
+
 		backend: {
 			type: 'button',
 			category: 'Status',
 			name: 'Backend in use',
-			style: base('Backend\\n$(campus-captions:backend)'),
+			style: base(`Backend\\n${v('backend')}`),
 			steps: [],
 			feedbacks: [],
 		},

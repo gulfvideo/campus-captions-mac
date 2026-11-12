@@ -10,33 +10,36 @@ API already exposed; the module wraps them in something an AV operator can
 press, and adds the half a Generic HTTP connection cannot do — keys that
 reflect live state.
 
-## Loading it into Companion
+## Installing it
 
-The module is not published to Bitfocus, so Companion loads it from disk.
+Needs Companion 4.2 or newer.
 
-1. Install its dependencies (needs Node 22 or newer, matching the runtime
-   Companion loads modules with):
+1. Download `campus-captions-companion.tgz` from the
+   [latest release](https://github.com/gulfvideo/campus-captions-mac/releases/latest).
+2. In Companion, open **Modules** → **Import module package** and pick the file.
+3. **Connections** → add **Campus Captions**. Address `127.0.0.1` if Companion
+   is on the same Mac; token from the menu bar's **Copy Token for Companion**.
+4. **Buttons** → **Presets** → Campus Captions, and drag keys onto a page.
 
-   ```bash
-   cd integrations/companion-module-campus-captions
-   npm install
-   ```
+### Working on it
 
-2. In Companion, open the launcher window → the gear/settings icon →
-   **Developer modules path**, and point it at the **`integrations` folder**,
-   not at the module folder itself. Companion scans that folder for modules.
+`npm install`, then point Companion's **Developer modules path** at the
+`integrations` folder (not this folder). Companion reloads the module when
+`src/` changes. Check against a running relay with:
 
-3. Restart Companion. Add a connection and search for **Campus Captions**.
+```bash
+CAPTIONS_URL=127.0.0.1:8000 CAPTIONS_TOKEN=<operator token> node test/smoke.js
+```
 
-Companion reloads a developer module when its files change, so edits to `src/`
-take effect without restarting the whole app.
+Use a throwaway relay: the smoke test changes the event state and title.
 
 ## How it talks to the relay
 
 Two connections, both authenticated with the operator token as
 `Authorization: Bearer`:
 
-- **HTTP POST** to `/api/control` and `/api/event` for actions.
+- **HTTP POST** to `/api/control`, `/api/event`, `/api/event/next`,
+  `/api/youtube-captions`, `/api/propresenter` and `/api/tunnel` for actions.
 - **A websocket** to `/ws/status` for state. The relay already pushes a full
   snapshot roughly every 0.4 s, so feedbacks and variables stay current
   without this module polling a machine that is also running speech
@@ -58,6 +61,7 @@ src/feedbacks.js          what makes a button light up
 src/variables.js          what a button can print
 src/presets.js            the ready-made page
 src/config.js             the connection settings form
+test/smoke.js             drives every action against a live relay
 ```
 
 ## Notes for whoever maintains this
@@ -85,7 +89,9 @@ single bundled CommonJS `main.js` with every dependency inlined, a minimal
 npx companion-module-build          # writes pkg/ and campus-captions-<version>.tgz
 ```
 
-Then in Companion: **Modules → Import**, and pick the `.tgz`.
+Then in Companion: **Modules → Import module package**, and pick the `.tgz`.
+The release workflow does this on every `v*` tag and attaches it as
+`campus-captions-companion.tgz`.
 
 Two things the build does for you, which are easy to get wrong by hand:
 

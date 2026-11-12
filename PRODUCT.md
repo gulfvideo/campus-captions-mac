@@ -100,7 +100,7 @@ translated) versus *committed lines* (final, recorded, translated, exported).
   viewer access and nothing else — the operator surfaces 404.
 - `robots.txt` disallows everything on the relay: a live transcript of a room
   must never reach a search index.
-- The Companion module is not published to Bitfocus and is loaded from disk.
+- The Companion module is not in the Bitfocus module store; it is imported as a `.tgz` from each GitHub release.
 - Accuracy depends on the engine, the feed off the board, and whether a
   keyterm list was supplied. No accuracy figure has been measured.
 

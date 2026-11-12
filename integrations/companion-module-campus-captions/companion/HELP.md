@@ -8,12 +8,9 @@ actually happening.
 
 | Field | What to put in it |
 | --- | --- |
-| **Address** | The LAN address of the Mac running Campus Captions, e.g. `10.0.1.24` |
+| **Address** | `127.0.0.1` if Companion runs on the same Mac, otherwise that Mac's LAN address, e.g. `10.0.1.24` |
 | **Port** | `8000` unless it was changed |
-| **Operator token** | `CAPTIONS_OPERATOR_TOKEN` from the app's `.env` |
-
-To find the token: on the Mac, use the Campus Captions menu bar icon →
-**Show Config Folder in Finder**, then open `.env` in that folder.
+| **Operator token** | Campus Captions menu bar icon → **Copy Token for Companion**, then paste |
 
 Two things that will otherwise cost you ten minutes:
 
@@ -26,14 +23,18 @@ Two things that will otherwise cost you ten minutes:
 
 ## Presets
 
-Drag them straight onto a page. They come in four groups:
+Drag them straight onto a page. They come in six groups:
 
-- **Event** — Start, Pause, Resume, End, and back to the welcome screen. Each
-  lights up when the event is in that state.
+- **Event** — Start, Pause, Resume, End, back to the welcome screen, and Next
+  event (saves the transcript, wipes every screen, back to welcome). Each
+  state key lights up when the event is in that state.
 - **Captions** — ASR stream toggle (red while running), Clear, Mark video start.
 - **Canned captions** — `[Applause]`, `[Music]`, `[Inaudible]`. These commit a
   line exactly as the recogniser would, so they reach the wall, the phones,
   the transcript and any translation.
+- **Audio** — input gain up/down 3 dB (red while clipping), profanity filter.
+- **Outputs** — YouTube captions and ProPresenter on/off with live state, and
+  Clear ProPresenter.
 - **Status** — read-only keys: fault alarm, viewer count, audio state, backend.
 
 ## The one key worth having in your eyeline
@@ -46,16 +47,17 @@ third row.
 
 ## Variables
 
-`$(campus-captions:…)` — `event_state`, `asr_state`, `asr_stream_open`,
-`audio_state`, `audio_level` (0–100), `backend`, `device`, `fault`,
-`viewers_total`, `viewers_phone`, `viewers_wall`, `transcript_lines`,
-`tunnel_connected`, `last_caption`.
+`$(<connection label>:…)` — `event_state`, `event_title`, `asr_state`,
+`asr_stream_open`, `audio_state`, `audio_level` (0–100), `audio_gain_db`,
+`backend`, `device`, `profanity_filter`, `fault`, `viewers_total`,
+`viewers_phone`, `viewers_wall`, `transcript_lines`, `tunnel_connected`,
+`last_caption`, `youtube`, `youtube_pushed`, `propresenter`, `latency_final`.
 
 ## If the connection will not come up
 
 | Connection says | Means |
 | --- | --- |
-| **Authentication failure** | The token is wrong. Copy it again from `.env` — it is long and easy to truncate. |
+| **Authentication failure** | The token is wrong. Use **Copy Token for Companion** again and paste it fresh. |
 | **Disconnected** | Nothing is answering. Check the app is running and the address is right. |
 | **Bad config** | Address or token is blank. |
 
